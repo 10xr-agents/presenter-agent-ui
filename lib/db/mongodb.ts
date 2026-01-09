@@ -3,21 +3,22 @@
 // See lib/db/mongoose.ts for the Mongoose connection
 
 import mongoose from "mongoose"
-import connectDB from "./mongoose"
+import connectDBDefault from "./mongoose"
 
 // Re-export Mongoose connection
 export { default as connectDB } from "./mongoose"
+export default connectDBDefault
 
 // Helper to get a Mongoose model (for backward compatibility)
-export async function getModel<T>(modelName: string): Promise<mongoose.Model<T>> {
-  await connectDB()
+export async function getModel<T extends mongoose.Document>(modelName: string): Promise<mongoose.Model<T>> {
+  await connectDBDefault()
   return mongoose.model<T>(modelName)
 }
 
 // Legacy exports (deprecated - use Mongoose models instead)
-export async function getCollection<T>(
+export async function getCollection<T = any>(
   name: string
-): Promise<mongoose.Collection<T>> {
-  await connectDB()
-  return mongoose.connection.collection<T>(name)
+): Promise<mongoose.Collection> {
+  await connectDBDefault()
+  return mongoose.connection.collection(name)
 }

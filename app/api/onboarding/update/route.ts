@@ -12,8 +12,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = (await req.json()) as {
+    step?: OnboardingStep
+    data?: Record<string, unknown>
+  }
   const { step, data } = body
+
+  if (!step || !stepOrder.includes(step)) {
+    return NextResponse.json(
+      { error: "Invalid step" },
+      { status: 400 }
+    )
+  }
 
   try {
     await updateOnboardingStep(session.user.id, step, data)

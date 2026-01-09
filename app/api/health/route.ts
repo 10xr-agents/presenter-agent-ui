@@ -12,7 +12,8 @@ export async function GET() {
     // Check Redis (if available)
     let redisStatus = "unknown"
     try {
-      const { redis } = await import("@/lib/queue/redis")
+      const { getRedis } = await import("@/lib/queue/redis")
+      const redis = getRedis()
       await redis.ping()
       redisStatus = "connected"
     } catch {

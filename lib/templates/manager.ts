@@ -86,7 +86,7 @@ export async function createTemplate(
 ): Promise<ITemplate> {
   await connectDB()
 
-  return Template.create({
+  return (Template as any).create({
     userId: data.userId,
     organizationId: data.organizationId,
     name: data.name,
@@ -97,8 +97,8 @@ export async function createTemplate(
     content: data.content,
     variables: data.variables,
     public: data.public || false,
-    featured: false,
-    usageCount: 0,
+    featured: false as any,
+    usageCount: 0 as any,
   })
 }
 
@@ -140,7 +140,7 @@ export async function getTemplates(
   }
   if (options.featured !== undefined) query.featured = options.featured
 
-  return Template.find(query)
+  return (Template as any).find(query)
     .sort({ featured: -1, usageCount: -1, createdAt: -1 })
     .limit(options.limit || 50)
 }
@@ -149,7 +149,7 @@ export async function getTemplates(
 export async function useTemplate(templateId: string): Promise<void> {
   await connectDB()
 
-  await Template.findByIdAndUpdate(templateId, {
+  await (Template as any).findByIdAndUpdate(templateId, {
     $inc: { usageCount: 1 },
   })
 }
@@ -158,6 +158,6 @@ export async function useTemplate(templateId: string): Promise<void> {
 export async function getTemplate(templateId: string): Promise<ITemplate | null> {
   await connectDB()
 
-  return Template.findById(templateId)
+  return (Template as any).findById(templateId)
 }
 

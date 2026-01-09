@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Cursor AI agents when working with code in this repository.
 
 ## Project Overview
 
@@ -793,6 +793,6 @@ docker compose up
 
 - [README.md](README.md) - **Complete setup and usage guide** - Installation, configuration, and how to use all features
 - [ARCHITECTURE.md](ARCHITECTURE.md) - **Architecture documentation** - Database architecture, multi-tenancy, AI agents, billing, analytics, and system design
-- [AGENTS.md](AGENTS.md) - **Cursor AI guidance** - Similar documentation for Cursor AI
+- [CLAUDE.md](CLAUDE.md) - **Claude Code guidance** - Similar documentation for Claude AI
 - [GEMINI.md](GEMINI.md) - **Gemini/Antigravity guidance** - Similar documentation for Gemini AI
 - [brand/brand.md](brand/brand.md) - Complete brand guidelines and assets

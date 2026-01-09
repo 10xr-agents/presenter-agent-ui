@@ -65,7 +65,7 @@ export async function trackUsage(
 ): Promise<void> {
   await connectDB()
 
-  await Usage.create({
+  await (Usage as any).create({
     userId: data.userId,
     organizationId: data.organizationId,
     apiKeyId: data.apiKeyId,
@@ -109,10 +109,10 @@ export async function getUsageStats(
     if (filters.endDate) query.timestamp.$lte = filters.endDate
   }
 
-  const usage = await Usage.find(query)
+  const usage = await (Usage as any).find(query)
 
-  const totalQuantity = usage.reduce((sum, u) => sum + u.quantity, 0)
-  const totalCost = usage.reduce((sum, u) => sum + (u.cost || 0), 0)
+  const totalQuantity = usage.reduce((sum: number, u: any) => sum + u.quantity, 0)
+  const totalCost = usage.reduce((sum: number, u: any) => sum + (u.cost || 0), 0)
 
   // Breakdown by resource
   const breakdownMap = new Map<string, { quantity: number; cost: number }>()

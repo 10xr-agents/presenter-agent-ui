@@ -1,10 +1,12 @@
 import mongoose from "mongoose"
 
+type MongooseConnection = Awaited<ReturnType<typeof mongoose.connect>>
+
 declare global {
   // eslint-disable-next-line no-var
   var mongoose: {
-    conn: typeof mongoose | null
-    promise: Promise<typeof mongoose> | null
+    conn: MongooseConnection | null
+    promise: Promise<MongooseConnection> | null
   } | undefined
 }
 
@@ -37,9 +39,7 @@ async function connectDB() {
       bufferCommands: false,
     }
 
-    cached!.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
-      return mongoose
-    })
+    cached!.promise = mongoose.connect(MONGODB_URI!, opts) as Promise<typeof mongoose>
   }
 
   try {
@@ -53,4 +53,5 @@ async function connectDB() {
 }
 
 export default connectDB
+export { connectDB }
 

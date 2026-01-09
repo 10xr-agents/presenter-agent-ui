@@ -47,17 +47,21 @@ export async function rateLimit(
   } else {
     // Default: use user ID or IP address
     const session = await auth.api.getSession({ headers: await headers() })
-    key = session?.user?.id || req.ip || "anonymous"
+    // Get IP from headers (NextRequest doesn't have .ip property)
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || 
+               req.headers.get("x-real-ip") || 
+               "anonymous"
+    key = session?.user?.id || ip
   }
 
   const now = new Date()
   const resetAt = new Date(now.getTime() + options.windowMs)
 
   // Get or create rate limit record
-  let rateLimit = await RateLimit.findOne({ key })
+  let rateLimit = await (RateLimit as any).findOne({ key })
 
   if (!rateLimit) {
-    rateLimit = await RateLimit.create({
+    rateLimit = await (RateLimit as any).create({
       key,
       count: 1,
       resetAt,

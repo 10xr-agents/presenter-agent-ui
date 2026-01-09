@@ -41,7 +41,7 @@ export async function isFeatureEnabled(
 ): Promise<boolean> {
   await connectDB()
 
-  const flag = await FeatureFlag.findOne({ key })
+  const flag = await (FeatureFlag as any).findOne({ key })
   if (!flag) return false
 
   // Check environment
@@ -79,7 +79,7 @@ export async function getEnabledFeatures(
 ): Promise<string[]> {
   await connectDB()
 
-  const flags = await FeatureFlag.find({ enabled: true })
+  const flags = await (FeatureFlag as any).find({ enabled: true })
   const enabled: string[] = []
 
   for (const flag of flags) {

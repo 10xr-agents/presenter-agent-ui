@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
-import { getUsageStats, checkQuota } from "@/lib/usage/tracker"
+import { getUsageStats, checkQuota, type UsageType } from "@/lib/usage/tracker"
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -38,8 +38,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = (await req.json()) as {
+    limit?: number
+    windowMs?: number
+    type?: string
+    resource?: string
+    organizationId?: string
+  }
   const { limit, windowMs, type, resource, organizationId } = body
+
+  if (!limit || !windowMs || !type) {
+    return NextResponse.json(
+      { error: "limit, windowMs, and type are required" },
+      { status: 400 }
+    )
+  }
 
   if (!limit || !windowMs || !type) {
     return NextResponse.json(
@@ -51,7 +64,7 @@ export async function POST(req: NextRequest) {
   const result = await checkQuota(
     session.user.id,
     organizationId,
-    { limit, windowMs, type, resource }
+    { limit: limit!, windowMs: windowMs!, type: type! as UsageType, resource }
   )
 
   return NextResponse.json(result)

@@ -67,7 +67,7 @@ export async function createNotification(
 ): Promise<INotification> {
   await connectDB()
 
-  const notification = await Notification.create({
+  const notification = await (Notification as any).create({
     userId: data.userId,
     organizationId: data.organizationId,
     type: data.type,
@@ -121,7 +121,7 @@ export async function getNotifications(
     query.organizationId = options.organizationId
   }
 
-  return Notification.find(query)
+  return (Notification as any).find(query)
     .sort({ createdAt: -1 })
     .limit(options.limit || 50)
 }
@@ -133,7 +133,7 @@ export async function markAsRead(
 ): Promise<void> {
   await connectDB()
 
-  await Notification.findOneAndUpdate(
+  await (Notification as any).findOneAndUpdate(
     { _id: notificationId, userId },
     { read: true, readAt: new Date() }
   )
@@ -169,6 +169,6 @@ export async function getUnreadCount(
     query.organizationId = organizationId
   }
 
-  return Notification.countDocuments(query)
+  return (Notification as any).countDocuments(query)
 }
 

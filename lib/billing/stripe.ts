@@ -1,12 +1,25 @@
 import Stripe from "stripe"
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set")
+// Lazy initialization to allow build without Stripe keys
+let stripeInstance: Stripe | null = null
+
+function getStripe(): Stripe {
+  if (!stripeInstance) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("STRIPE_SECRET_KEY is not set")
+    }
+    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2025-02-24.acacia",
+      typescript: true,
+    })
+  }
+  return stripeInstance
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-12-18.acacia",
-  typescript: true,
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    return getStripe()[prop as keyof Stripe]
+  },
 })
 
 // Subscription plans
@@ -43,7 +56,10 @@ export async function getOrCreateCustomer(
   })
 
   if (customers.data.length > 0) {
-    return customers.data[0]
+    const customer = customers.data[0]
+    if (customer) {
+      return customer
+    }
   }
 
   // Create new customer

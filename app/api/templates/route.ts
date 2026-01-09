@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
-import { getTemplates, createTemplate, useTemplate, getTemplate } from "@/lib/templates/manager"
+import { getTemplates, createTemplate, useTemplate, getTemplate, type TemplateType } from "@/lib/templates/manager"
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -47,7 +47,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = (await req.json()) as {
+    name?: string
+    description?: string
+    type?: string
+    category?: string
+    tags?: string[]
+    content?: string | Record<string, unknown>
+    variables?: Array<{
+      name: string
+      description: string
+      required: boolean
+      default?: string
+    }>
+    public?: boolean
+    organizationId?: string
+  }
   const {
     name,
     description,
@@ -67,15 +82,26 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  if (!["prompt", "workflow", "agent", "form"].includes(type)) {
+    return NextResponse.json(
+      { error: "Invalid template type" },
+      { status: 400 }
+    )
+  }
+
+  const parsedContent = typeof content === "string" 
+    ? (JSON.parse(content) as Record<string, unknown>)
+    : (content as Record<string, unknown>)
+
   const template = await createTemplate({
     userId: session.user.id,
     organizationId: organizationId || undefined,
     name,
     description,
-    type,
+    type: type as TemplateType,
     category,
     tags,
-    content,
+    content: parsedContent,
     variables,
     public: isPublic,
   })
@@ -89,7 +115,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = (await req.json()) as {
+    templateId?: string
+  }
   const { templateId } = body
 
   if (!templateId) {

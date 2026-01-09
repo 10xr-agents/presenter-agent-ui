@@ -1,8 +1,21 @@
 import { betterAuth } from "better-auth"
 import { prismaAdapter } from "better-auth/adapters/prisma"
 import { organization } from "better-auth/plugins"
-import { prisma } from "@/lib/db/prisma"
 import { Resend } from "resend"
+
+// Lazy import prisma to allow Better Auth CLI to read config without Prisma client
+function getPrisma() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const prismaModule = require("@/lib/db/prisma")
+    return prismaModule.prisma
+  } catch {
+    // Prisma not available yet - Better Auth CLI will handle this
+    return null
+  }
+}
+
+const prisma = getPrisma()
 
 // Lazy Resend client
 function getResendClient(): Resend | null {
@@ -15,16 +28,20 @@ function getResendClient(): Resend | null {
 const getEmailFrom = () =>
   process.env.EMAIL_FROM || "AppealGen AI <noreply@appealgen.ai>"
 
-export const auth = betterAuth({
+// Build auth config - conditionally include database adapter
+const authConfig: Parameters<typeof betterAuth>[0] = {
   // Database adapter - Using Prisma with MongoDB
-  database: prismaAdapter(prisma, {
-    provider: "mongodb",
-  }),
+  // Only include if prisma is available (after client generation)
+  ...(prisma ? {
+    database: prismaAdapter(prisma, {
+      provider: "mongodb",
+    }),
+  } : {}),
 
   // App configuration
   appName: "AppealGen AI",
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: process.env.BETTER_AUTH_SECRET || "development-secret-change-in-production-min-32-chars",
 
   // Plugins
   plugins: [
@@ -244,7 +261,9 @@ export const auth = betterAuth({
     window: 60, // 60 seconds
     max: 10, // 10 requests per window
   },
-})
+}
+
+export const auth = betterAuth(authConfig)
 
 // Export types
 export type Session = typeof auth.$Infer.Session

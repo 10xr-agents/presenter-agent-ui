@@ -10,7 +10,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = (await req.json()) as {
+    planId?: string
+    organizationId?: string
+  }
   const { planId, organizationId } = body
 
   if (!planId || !PLANS[planId as PlanId]) {

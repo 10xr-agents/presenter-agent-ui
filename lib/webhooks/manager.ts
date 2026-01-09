@@ -88,14 +88,15 @@ export async function triggerWebhook(
     query.organizationId = { $exists: false } // Global webhooks
   }
 
-  const webhooks = await Webhook.find(query)
+  const webhooks = await (Webhook as any).find(query)
 
   for (const webhook of webhooks) {
-    const payload = JSON.stringify({
+    const payloadData = {
       event,
       data,
       timestamp: new Date().toISOString(),
-    })
+    }
+    const payload = JSON.stringify(payloadData)
 
     const signature = createWebhookSignature(payload, webhook.secret)
 
@@ -107,8 +108,7 @@ export async function triggerWebhook(
         "X-Webhook-Signature": signature,
         "X-Webhook-Event": event,
       },
-      body: payload,
-      webhookId: webhook._id.toString(),
+      body: payloadData,
     })
   }
 }
@@ -130,6 +130,6 @@ export async function updateWebhookStatus(
     update.$inc = { failureCount: 1 }
   }
 
-  await Webhook.findByIdAndUpdate(webhookId, update)
+  await (Webhook as any).findByIdAndUpdate(webhookId, update)
 }
 

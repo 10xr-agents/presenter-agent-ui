@@ -28,7 +28,6 @@ async function seed() {
         tools: ["database", "email"],
       },
       public: true,
-      featured: true,
     })
 
     await createTemplate({

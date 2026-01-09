@@ -8,18 +8,18 @@ export const env = createEnv({
       .optional()
       .transform((value) => value === "true"),
     // Database
-    MONGODB_URI: z.string().url().optional(),
+    MONGODB_URI: z.string().refine((val) => !val || /^mongodb(\+srv)?:\/\//.test(val), "Invalid MongoDB URI").optional(),
     // Redis (for job queues)
-    REDIS_URL: z.string().url().optional(),
+    REDIS_URL: z.string().refine((val) => !val || /^redis(s)?:\/\//.test(val), "Invalid Redis URL").optional(),
     // Better Auth
     BETTER_AUTH_SECRET: z.string().min(32).optional(),
-    BETTER_AUTH_URL: z.string().url().optional(),
+    BETTER_AUTH_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     // Google OAuth
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     // Email (Resend)
     RESEND_API_KEY: z.string().optional(),
-    EMAIL_FROM: z.string().email().optional(),
+    EMAIL_FROM: z.string().refine((val) => !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), "Invalid email").optional(),
     // Uploadthing (file uploads)
     UPLOADTHING_TOKEN: z.string().optional(),
     // AI Agent Configuration
@@ -37,17 +37,17 @@ export const env = createEnv({
     STRIPE_PRICE_ID_ENTERPRISE: z.string().optional(),
     // PostHog Analytics
     NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
-    NEXT_PUBLIC_POSTHOG_HOST: z.string().url().optional(),
+    NEXT_PUBLIC_POSTHOG_HOST: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     // Sentry Error Tracking
-    SENTRY_DSN: z.string().url().optional(),
+    SENTRY_DSN: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),
     // Feature Flags
     FEATURE_FLAGS_ENABLED: z.string().optional(),
   },
   client: {
-    NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+    NEXT_PUBLIC_APP_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
-    NEXT_PUBLIC_POSTHOG_HOST: z.string().url().optional(),
+    NEXT_PUBLIC_POSTHOG_HOST: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
   },
   runtimeEnv: {
     ANALYZE: process.env.ANALYZE,

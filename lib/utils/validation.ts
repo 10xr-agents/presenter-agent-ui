@@ -35,9 +35,20 @@ export const createNotificationSchema = z.object({
   organizationId: z.string().optional(),
   type: z.enum(["info", "success", "warning", "error", "invitation", "mention", "system"]),
   title: z.string().min(1).max(200),
-  message: z.string().min(1).max(1000),
-  link: z.string().url().optional(),
-  metadata: z.record(z.any()).optional(),
+  message: z.string().min(1, "Message is required").max(1000, "Message too long"),
+  link: z.string().refine(
+    (val) => {
+      if (!val) return true
+      try {
+        new URL(val)
+        return true
+      } catch {
+        return false
+      }
+    },
+    { message: "Invalid URL format" }
+  ).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
   sendEmail: z.boolean().optional(),
 })
 
@@ -48,7 +59,7 @@ export const createTemplateSchema = z.object({
   type: z.enum(["prompt", "workflow", "agent", "form"]),
   category: z.string().max(50).optional(),
   tags: z.array(z.string()).optional(),
-  content: z.record(z.any()),
+  content: z.record(z.string(), z.any()),
   variables: z
     .array(
       z.object({
@@ -69,7 +80,7 @@ export const trackUsageSchema = z.object({
   resource: z.string().min(1),
   quantity: z.number().int().min(0),
   cost: z.number().min(0).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 })
 
 export const quotaSchema = z.object({

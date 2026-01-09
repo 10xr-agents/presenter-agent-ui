@@ -45,9 +45,9 @@ export const Onboarding =
 export async function getOnboarding(userId: string): Promise<IOnboarding> {
   await connectDB()
 
-  let onboarding = await Onboarding.findOne({ userId })
+  let onboarding = await (Onboarding as any).findOne({ userId })
   if (!onboarding) {
-    onboarding = await Onboarding.create({
+    onboarding = await (Onboarding as any).create({
       userId,
       currentStep: "welcome",
       completedSteps: [],
@@ -66,7 +66,7 @@ export async function updateOnboardingStep(
 ): Promise<IOnboarding> {
   await connectDB()
 
-  const onboarding = await Onboarding.findOne({ userId })
+  const onboarding = await (Onboarding as any).findOne({ userId })
   if (!onboarding) {
     throw new Error("Onboarding not found")
   }
@@ -92,7 +92,7 @@ export async function updateOnboardingStep(
 export async function isOnboardingComplete(userId: string): Promise<boolean> {
   await connectDB()
 
-  const onboarding = await Onboarding.findOne({ userId })
+  const onboarding = await (Onboarding as any).findOne({ userId })
   return onboarding?.completed || false
 }
 

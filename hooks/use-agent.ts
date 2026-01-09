@@ -34,8 +34,10 @@ export function useAgent() {
         throw new Error("Failed to get agent response")
       }
 
-      const data = await response.json()
-      setMessages(data.messages)
+      const data = (await response.json()) as { messages?: AgentMessage[]; state?: unknown }
+      if (data.messages && Array.isArray(data.messages)) {
+        setMessages(data.messages)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error")
     } finally {

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/billing/stripe"
 import { connectDB } from "@/lib/db/mongoose"
-import { Subscription } from "@/lib/models/billing"
 import { triggerWebhook } from "@/lib/webhooks/manager"
+import type { ISubscription } from "@/lib/models/billing"
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
@@ -25,18 +25,21 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object as any
-
-        await Subscription.findOneAndUpdate(
+        const { Subscription } = await import("@/lib/models/billing")
+        const updateData: Partial<ISubscription> = {
+          userId: subscription.metadata?.userId || "",
+          stripeCustomerId: subscription.customer as string,
+          stripePriceId: subscription.items.data[0]?.price.id as string,
+          status: subscription.status as ISubscription["status"],
+          currentPeriodStart: new Date(subscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end as boolean,
+          planId: getPlanIdFromPriceId(subscription.items.data[0]?.price.id as string),
+        }
+        
+        await (Subscription as any).findOneAndUpdate(
           { stripeSubscriptionId: subscription.id },
-          {
-            stripeCustomerId: subscription.customer,
-            stripePriceId: subscription.items.data[0]?.price.id,
-            status: subscription.status,
-            currentPeriodStart: new Date(subscription.current_period_start * 1000),
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-            cancelAtPeriodEnd: subscription.cancel_at_period_end,
-            planId: getPlanIdFromPriceId(subscription.items.data[0]?.price.id),
-          },
+          updateData,
           { upsert: true, new: true }
         )
 
@@ -50,8 +53,9 @@ export async function POST(req: NextRequest) {
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as any
-
-        await Subscription.findOneAndUpdate(
+        const { Subscription } = await import("@/lib/models/billing")
+        
+        await (Subscription as any).findOneAndUpdate(
           { stripeSubscriptionId: subscription.id },
           { status: "canceled" }
         )

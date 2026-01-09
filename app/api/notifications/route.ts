@@ -34,7 +34,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
+  const body = (await req.json()) as {
+    notificationId?: string
+    markAll?: boolean
+    organizationId?: string
+  }
   const { notificationId, markAll, organizationId } = body
 
   if (markAll) {

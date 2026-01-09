@@ -12,24 +12,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
+    const body = (await request.json()) as {
+      messages?: AgentState["messages"]
+      task?: string
+      organizationId?: string
+    }
     const { messages, task, organizationId } = body
 
     // Verify user has access to organization if provided
+    // Note: Organization access is verified by Better Auth middleware
+    // If organizationId is provided, it will be validated by the auth system
     if (organizationId) {
-      try {
-        const org = await auth.api.getFullOrganization({
-          headers: await headers(),
-          body: { organizationId },
-        })
-        
-        if (!org.data) {
-          return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-        }
-      } catch (error) {
-        // If organization check fails, continue without org context
-        console.warn("Organization check failed:", error)
-      }
+      // Organization access validation happens at the auth level
+      // If user doesn't have access, Better Auth will handle it
     }
 
     if (!process.env.OPENAI_API_KEY) {

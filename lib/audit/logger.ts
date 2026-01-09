@@ -63,7 +63,7 @@ export async function logAction(
 ): Promise<void> {
   await connectDB()
 
-  await AuditLog.create({
+  await (AuditLog as any).create({
     action,
     resource,
     userId: options.userId,
@@ -102,7 +102,7 @@ export async function getAuditLogs(
     if (filters.endDate) query.createdAt.$lte = filters.endDate
   }
 
-  return AuditLog.find(query)
+  return (AuditLog as any).find(query)
     .sort({ createdAt: -1 })
     .limit(filters.limit || 100)
     .lean()

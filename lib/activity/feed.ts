@@ -65,7 +65,7 @@ export async function createActivity(
 ): Promise<IActivity> {
   await connectDB()
 
-  return Activity.create({
+  return (Activity as any).create({
     userId: data.userId,
     organizationId: data.organizationId,
     type: data.type,
@@ -103,7 +103,7 @@ export async function getActivityFeed(
     query.createdAt = { $lt: options.before }
   }
 
-  return Activity.find(query)
+  return (Activity as any).find(query)
     .sort({ createdAt: -1 })
     .limit(options.limit || 50)
 }
@@ -123,7 +123,7 @@ export async function getUserActivity(
     query.organizationId = options.organizationId
   }
 
-  return Activity.find(query)
+  return (Activity as any).find(query)
     .sort({ createdAt: -1 })
     .limit(options.limit || 50)
 }

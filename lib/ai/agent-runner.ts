@@ -1,5 +1,5 @@
 import { OpenAI } from "openai"
-import type { AgentConfig, AgentState, AgentMessage, AgentTool } from "./types"
+import type { AgentConfig, AgentState, AgentMessage, AgentTool, ToolCall } from "./types"
 
 export class AgentRunner {
   private client: OpenAI
@@ -42,8 +42,8 @@ export class AgentRunner {
       toolCalls: assistantMessage.tool_calls?.map(tc => ({
         id: tc.id,
         name: tc.function.name,
-        arguments: JSON.parse(tc.function.arguments),
-      })),
+        arguments: JSON.parse(tc.function.arguments) as Record<string, unknown>,
+      })) as ToolCall[] | undefined,
       timestamp: new Date(),
     }
 
@@ -120,13 +120,16 @@ export class AgentRunner {
         }))
       }
 
-      if (msg.toolResults && msg.toolResults.length > 0) {
-        formattedMsg.tool_call_id = msg.toolResults[0].toolCallId
-        formattedMsg.content = JSON.stringify(msg.toolResults.map(tr => ({
-          toolCallId: tr.toolCallId,
-          result: tr.result,
-          error: tr.error,
-        })))
+      if (msg.toolResults && Array.isArray(msg.toolResults) && msg.toolResults.length > 0) {
+        const firstResult = msg.toolResults[0]
+        if (firstResult) {
+          formattedMsg.tool_call_id = firstResult.toolCallId
+          formattedMsg.content = JSON.stringify(msg.toolResults.map(tr => ({
+            toolCallId: tr.toolCallId,
+            result: tr.result,
+            error: tr.error,
+          })))
+        }
       }
 
       formatted.push(formattedMsg)

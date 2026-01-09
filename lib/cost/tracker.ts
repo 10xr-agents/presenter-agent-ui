@@ -1,7 +1,7 @@
 import { connectDB } from "@/lib/db/mongoose"
 import mongoose, { Schema } from "mongoose"
 
-export interface ICost extends mongoose.Document {
+export interface ICost extends Omit<mongoose.Document, "model"> {
   userId: string
   organizationId?: string
   provider: string // e.g., "openai", "anthropic"
@@ -92,7 +92,7 @@ export async function trackCost(
     data.outputTokens
   )
 
-  return Cost.create({
+  return (Cost as any).create({
     userId: data.userId,
     organizationId: data.organizationId,
     provider: data.provider,
@@ -141,10 +141,10 @@ export async function getCostSummary(
     if (filters.endDate) query.timestamp.$lte = filters.endDate
   }
 
-  const costs = await Cost.find(query)
+  const costs = await (Cost as any).find(query)
 
-  const totalCost = costs.reduce((sum, c) => sum + c.cost, 0)
-  const totalTokens = costs.reduce((sum, c) => sum + c.totalTokens, 0)
+  const totalCost = costs.reduce((sum: number, c: any) => sum + c.cost, 0)
+  const totalTokens = costs.reduce((sum: number, c: any) => sum + c.totalTokens, 0)
 
   // Breakdown by provider and model
   const breakdownMap = new Map<

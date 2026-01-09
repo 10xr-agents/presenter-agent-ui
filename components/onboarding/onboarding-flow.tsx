@@ -46,14 +46,14 @@ export function OnboardingFlow({
 
       if (!response.ok) throw new Error("Failed to update")
 
-      const data = await response.json()
+      const data = (await response.json()) as { nextStep?: string; progress?: unknown }
       const nextStep = data.nextStep
 
       if (nextStep === "complete") {
         router.push("/")
         router.refresh()
-      } else {
-        setCurrentStep(nextStep)
+      } else if (nextStep && ["welcome", "profile", "organization", "preferences", "complete"].includes(nextStep)) {
+        setCurrentStep(nextStep as typeof currentStep)
       }
     } catch (error) {
       console.error("Onboarding error:", error)

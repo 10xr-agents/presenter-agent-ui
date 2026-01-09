@@ -15,7 +15,7 @@ const authRoutes = ["/login", "/register"]
 // Admin routes (require platform_admin role)
 const adminRoutes = ["/admin"]
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Get the session token from cookies

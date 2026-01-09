@@ -233,8 +233,12 @@ pnpm prettier         # Check formatting
 pnpm prettier:fix     # Fix formatting
 
 # Database
-npx @better-auth/cli@latest generate  # Generate Better Auth schema
-npx prisma generate                   # Generate Prisma client
+# First, generate Prisma client with placeholder schema
+npx prisma generate
+# Then, generate Better Auth schema (will overwrite placeholder)
+npx @better-auth/cli@latest generate
+# Finally, regenerate Prisma client with Better Auth models
+npx prisma generate
 ```
 
 ---
@@ -248,10 +252,13 @@ This boilerplate uses a **hybrid database approach**:
 Prisma handles all authentication-related data. The schema is automatically generated:
 
 ```bash
-# Generate Better Auth schema
+# Step 1: Generate Prisma client with placeholder schema (required for Better Auth CLI)
+npx prisma generate
+
+# Step 2: Generate Better Auth schema (overwrites placeholder)
 npx @better-auth/cli@latest generate
 
-# Generate Prisma client
+# Step 3: Regenerate Prisma client with Better Auth models
 npx prisma generate
 ```
 

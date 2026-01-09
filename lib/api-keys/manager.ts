@@ -62,7 +62,7 @@ export async function verifyApiKey(
   await connectDB()
 
   const hashedKey = hashApiKey(key)
-  const apiKey = await ApiKey.findOne({ key: hashedKey, enabled: true })
+  const apiKey = await (ApiKey as any).findOne({ key: hashedKey, enabled: true })
 
   if (!apiKey) return null
 
@@ -95,7 +95,7 @@ export async function createApiKey(
   const hashedKey = hashApiKey(plainKey)
   const keyPrefix = plainKey.substring(0, 12) // "sk_live_ab"
 
-  const apiKey = await ApiKey.create({
+  const apiKey = await (ApiKey as any).create({
     userId,
     organizationId: options.organizationId,
     name,
@@ -122,7 +122,7 @@ export async function listApiKeys(
     query.organizationId = organizationId
   }
 
-  return ApiKey.find(query).sort({ createdAt: -1 })
+  return (ApiKey as any).find(query).sort({ createdAt: -1 })
 }
 
 // Revoke API key
@@ -132,7 +132,7 @@ export async function revokeApiKey(
 ): Promise<void> {
   await connectDB()
 
-  await ApiKey.findOneAndUpdate(
+  await (ApiKey as any).findOneAndUpdate(
     { _id: keyId, userId },
     { enabled: false }
   )

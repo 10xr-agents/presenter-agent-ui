@@ -54,7 +54,7 @@ export async function indexDocument(
 ): Promise<ISearchIndex> {
   await connectDB()
 
-  return SearchIndex.findOneAndUpdate(
+  return (SearchIndex as any).findOneAndUpdate(
     {
       resource: data.resource,
       resourceId: data.resourceId,
@@ -79,7 +79,7 @@ export async function removeFromIndex(
 ): Promise<void> {
   await connectDB()
 
-  await SearchIndex.deleteOne({ resource, resourceId })
+  await (SearchIndex as any).deleteOne({ resource, resourceId })
 }
 
 // Search
@@ -108,7 +108,7 @@ export async function search(
     searchQuery.tags = { $in: options.tags }
   }
 
-  return SearchIndex.find(searchQuery, { score: { $meta: "textScore" } })
+  return (SearchIndex as any).find(searchQuery, { score: { $meta: "textScore" } })
     .sort({ score: { $meta: "textScore" } })
     .limit(options.limit || 20)
 }
@@ -138,7 +138,7 @@ export async function simpleSearch(
     searchQuery.resource = options.resource
   }
 
-  return SearchIndex.find(searchQuery)
+  return (SearchIndex as any).find(searchQuery)
     .sort({ createdAt: -1 })
     .limit(options.limit || 20)
 }

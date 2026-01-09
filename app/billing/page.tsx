@@ -14,7 +14,7 @@ export default async function BillingPage() {
   await connectDB()
 
   // Get user's subscription
-  const subscription = await Subscription.findOne({
+  const subscription = await (Subscription as any).findOne({
     userId: session.user.id,
     status: "active",
   })
