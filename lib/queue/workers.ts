@@ -111,26 +111,29 @@ export function startWorkers(): void {
   console.log("Starting job workers...")
 
   // Email worker
+  // Use type assertion for connection to handle ioredis version compatibility
   const emailWorker = new Worker(QUEUE_NAMES.EMAIL, processEmailJob, {
-    connection: createRedisConnection(),
+    connection: createRedisConnection() as any,
     concurrency: 5,
   })
   workers.push(emailWorker)
 
   // Processing worker
+  // Use type assertion for connection to handle ioredis version compatibility
   const processingWorker = new Worker(
     QUEUE_NAMES.PROCESSING,
     processProcessingJob,
     {
-      connection: createRedisConnection(),
+      connection: createRedisConnection() as any,
       concurrency: 3, // Lower concurrency for heavy tasks
     }
   )
   workers.push(processingWorker)
 
   // Webhooks worker
+  // Use type assertion for connection to handle ioredis version compatibility
   const webhooksWorker = new Worker(QUEUE_NAMES.WEBHOOKS, processWebhookJob, {
-    connection: createRedisConnection(),
+    connection: createRedisConnection() as any,
     concurrency: 10,
   })
   workers.push(webhooksWorker)
