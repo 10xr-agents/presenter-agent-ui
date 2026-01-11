@@ -1,152 +1,179 @@
 "use client"
 
+import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import type { OnboardingStep } from "@/lib/onboarding/flow"
+import { DEFAULT_TOUR_STEPS, ProductTour } from "./product-tour"
+import { TeamInviteStep } from "./team-invite-step"
 
-const steps: { key: OnboardingStep; title: string; description: string }[] = [
-  { key: "welcome", title: "Welcome", description: "Get started with your account" },
-  { key: "profile", title: "Profile", description: "Complete your profile" },
-  { key: "organization", title: "Organization", description: "Create or join an organization" },
-  { key: "preferences", title: "Preferences", description: "Set your preferences" },
-]
+interface OnboardingFlowProps {
+  onComplete?: () => void
+  initialStep?: OnboardingStep
+  userId?: string
+}
 
-export function OnboardingFlow({
-  initialStep,
-  userId: _userId,
-}: {
-  initialStep: OnboardingStep
-  userId: string
-}) {
+export function OnboardingFlow({ onComplete, initialStep = "welcome", userId: _userId }: OnboardingFlowProps) {
   const router = useRouter()
-  const [currentStep, setCurrentStep] = useState(initialStep)
-  const [loading, setLoading] = useState(false)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(initialStep)
+  const [showTour, setShowTour] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const currentStepIndex = steps.findIndex((s) => s.key === currentStep)
+  const steps: OnboardingStep[] = ["welcome", "team-invite", "tour", "complete"]
+  const currentStepIndex = steps.indexOf(currentStep)
   const progress = ((currentStepIndex + 1) / steps.length) * 100
 
-  const handleNext = async () => {
-    setLoading(true)
+  const handleTeamInviteNext = () => {
+    setCurrentStep("tour")
+    setShowTour(true)
+  }
 
+  const handleTeamInviteSkip = () => {
+    setCurrentStep("tour")
+    setShowTour(true)
+  }
+
+  const handleTourComplete = async () => {
+    setIsLoading(true)
     try {
+      // Mark onboarding as complete
       const response = await fetch("/api/onboarding/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          step: currentStep,
-          data: formData,
+          step: "complete",
         }),
       })
 
-      if (!response.ok) throw new Error("Failed to update")
-
-      const data = (await response.json()) as { nextStep?: string; progress?: unknown }
-      const nextStep = data.nextStep
-
-      if (nextStep === "complete") {
-        router.push("/")
-        router.refresh()
-      } else if (nextStep && ["welcome", "profile", "organization", "preferences", "complete"].includes(nextStep)) {
-        setCurrentStep(nextStep as typeof currentStep)
+      if (!response.ok) {
+        throw new Error("Failed to complete onboarding")
       }
-    } catch (error) {
-      console.error("Onboarding error:", error)
+
+      setCurrentStep("complete")
+      onComplete?.()
+      
+      // Redirect to dashboard
+      router.push("/screen-agents")
+    } catch (error: unknown) {
+      console.error("Failed to complete onboarding:", error)
+      // Still redirect even if API call fails
+      router.push("/screen-agents")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleSkip = async () => {
-    await handleNext()
+  const handleTourSkip = async () => {
+    setIsLoading(true)
+    try {
+      // Mark onboarding as complete
+      const response = await fetch("/api/onboarding/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "complete",
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to complete onboarding")
+      }
+
+      setCurrentStep("complete")
+      onComplete?.()
+      
+      // Redirect to dashboard
+      router.push("/screen-agents")
+    } catch (error: unknown) {
+      console.error("Failed to complete onboarding:", error)
+      // Still redirect even if API call fails
+      router.push("/screen-agents")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isLoading || currentStep === "complete") {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Welcome! Let's get started</h1>
-        <p className="text-muted-foreground mt-2">
-          Complete these steps to set up your account
+    <div className="mx-auto max-w-3xl space-y-8 py-8">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold">Welcome! Let's Get Started</h1>
+        <p className="text-muted-foreground">
+          Follow these quick steps to set up your account. You can skip any step.
         </p>
       </div>
 
       <Progress value={progress} className="h-2" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{steps[currentStepIndex]?.title}</CardTitle>
-          <CardDescription>{steps[currentStepIndex]?.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {currentStep === "welcome" && (
-            <div className="space-y-4">
-              <p>Welcome to the platform! Let's set up your account.</p>
+      <div className="rounded-lg border bg-card p-6 shadow-sm">
+        {currentStep === "welcome" && (
+          <div className="space-y-4">
+            <p>Welcome to the Gemini Navigator Platform! Let's get started.</p>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setCurrentStep("team-invite")}
+              >
+                Get Started
+              </Button>
             </div>
-          )}
-
-          {currentStep === "profile" && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name || ""}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="John Doe"
-                />
-              </div>
-            </div>
-          )}
-
-          {currentStep === "organization" && (
-            <div className="space-y-4">
-              <p>Would you like to create an organization or join an existing one?</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setFormData({ ...formData, action: "create" })
-                    handleNext()
-                  }}
-                >
-                  Create Organization
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setFormData({ ...formData, action: "skip" })
-                    handleNext()
-                  }}
-                >
-                  Skip for Now
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {currentStep === "preferences" && (
-            <div className="space-y-4">
-              <p>Set your preferences to personalize your experience.</p>
-            </div>
-          )}
-
-          <div className="flex justify-between pt-4">
-            <Button variant="ghost" onClick={handleSkip} disabled={loading}>
-              Skip
-            </Button>
-            <Button onClick={handleNext} disabled={loading}>
-              {currentStepIndex === steps.length - 1 ? "Complete" : "Next"}
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {currentStep === "team-invite" && (
+          <TeamInviteStep onNext={handleTeamInviteNext} onSkip={handleTeamInviteSkip} />
+        )}
+
+        {currentStep === "tour" && (
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold">Product Tour</h2>
+              <p className="text-muted-foreground">
+                Take a quick tour of the platform to learn about key features. You can skip this
+                step if you prefer to explore on your own.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <ProductTour steps={DEFAULT_TOUR_STEPS} onComplete={handleTourComplete} onSkip={handleTourSkip} />
+              
+              <div className="rounded-lg border bg-muted p-4">
+                <p className="text-sm text-muted-foreground">
+                  Product tour integration coming soon. For now, you can skip this step to continue.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-4">
+              <button
+                type="button"
+                onClick={handleTourSkip}
+                className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+                disabled={isLoading}
+              >
+                Skip Tour
+              </button>
+              <button
+                type="button"
+                onClick={handleTourComplete}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                disabled={isLoading}
+              >
+                Complete Tour
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
-

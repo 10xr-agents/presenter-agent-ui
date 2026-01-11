@@ -60,6 +60,14 @@ export const AgentConversation =
   mongoose.models.AgentConversation ||
   mongoose.model<IAgentConversation>("AgentConversation", AgentConversationSchema)
 
-// Add more Mongoose models here as needed
-// Example: Projects, Documents, etc.
+// Export all Screen Agent Platform models
+export * from "./screen-agent"
+export * from "./presentation-session"
+export * from "./knowledge-document"
+export * from "./billing-account"
+export * from "./usage-event"
+export * from "./analytics-event"
+export * from "./team"
+export * from "./team-membership"
+export * from "./billing" // Existing subscription model
 

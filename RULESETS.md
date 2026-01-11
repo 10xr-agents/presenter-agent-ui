@@ -380,19 +380,51 @@ export function getRedis(): Redis {
 
 **Rule**: Use only one indexing method - either `index: true` OR `Schema.index()`, not both
 
-```typescript
-// ❌ WRONG - Duplicate index definition
-const Schema = new Schema({
-  tags: [{ type: String, index: true }], // Index defined here
-})
-Schema.index({ tags: 1 }) // And here - causes duplicate
+**IMPORTANT**: `unique: true` automatically creates an index! Do NOT add `Schema.index()` for fields with `unique: true`.
 
-// ✅ CORRECT - Use only one method
+**Prefer `Schema.index()` over `index: true`** for better readability and flexibility (especially for composite indexes).
+
+```typescript
+// ❌ WRONG - Duplicate index definition (index: true + Schema.index())
 const Schema = new Schema({
-  tags: [{ type: String }], // No index here
+  organizationId: { type: String, required: true, index: true }, // Index defined here
+  invoiceId: { type: String, index: true }, // Index defined here
 })
-Schema.index({ tags: 1 }) // Only here
+Schema.index({ organizationId: 1 }) // And here - causes duplicate warning
+Schema.index({ invoiceId: 1 }) // And here - causes duplicate warning
+
+// ❌ WRONG - unique: true creates index, Schema.index() creates duplicate
+const Schema = new Schema({
+  shareableToken: { type: String, required: true, unique: true }, // unique: true creates index automatically
+})
+Schema.index({ shareableToken: 1 }) // DUPLICATE! unique: true already created the index
+
+// ✅ CORRECT - Use only Schema.index() method
+const Schema = new Schema({
+  organizationId: { type: String, required: true }, // No index here
+  invoiceId: { type: String }, // No index here
+})
+Schema.index({ organizationId: 1 }) // Only here
+Schema.index({ invoiceId: 1 }) // Only here
+
+// ✅ CORRECT - unique: true (no Schema.index() needed)
+const Schema = new Schema({
+  shareableToken: { type: String, required: true, unique: true }, // unique: true creates index automatically
+  organizationId: { type: String, required: true, unique: true }, // unique: true creates index automatically
+})
+// No Schema.index() calls needed for unique fields
+
+// ✅ CORRECT - Composite indexes (must use Schema.index())
+const Schema = new Schema({
+  organizationId: { type: String, required: true }, // No index: true
+})
+Schema.index({ organizationId: 1, status: 1 }) // Composite index
+Schema.index({ organizationId: 1, createdAt: -1 }) // Another composite index starting with organizationId
 ```
+
+**Note**: 
+- `unique: true` automatically creates an index - do NOT add `Schema.index()` for the same field
+- Composite indexes (indexes on multiple fields) can efficiently serve queries on their prefix fields. For example, an index on `{ organizationId: 1, status: 1 }` can also be used for queries on just `organizationId`, so you don't need a separate single-field index.
 
 **When to apply**: Defining Mongoose schemas with indexes
 

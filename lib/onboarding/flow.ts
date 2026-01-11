@@ -3,9 +3,8 @@ import { connectDB } from "@/lib/db/mongoose"
 
 export type OnboardingStep =
   | "welcome"
-  | "profile"
-  | "organization"
-  | "preferences"
+  | "team-invite"
+  | "tour"
   | "complete"
 
 export interface IOnboarding extends mongoose.Document {
@@ -27,7 +26,7 @@ const OnboardingSchema = new Schema<IOnboarding>(
     organizationId: { type: String, index: true },
     currentStep: {
       type: String,
-      enum: ["welcome", "profile", "organization", "preferences", "complete"],
+      enum: ["welcome", "team-invite", "tour", "complete"],
       default: "welcome",
     },
     completedSteps: [{ type: String }],
@@ -111,7 +110,7 @@ export async function getOnboardingProgress(userId: string): Promise<{
   await connectDB()
 
   const onboarding = await getOnboarding(userId)
-  const totalSteps = 4 // welcome, profile, organization, preferences
+  const totalSteps = 3 // welcome, team-invite, tour (excluding 'complete' for progress calculation)
   const progress = (onboarding.completedSteps.length / totalSteps) * 100
 
   return {

@@ -90,6 +90,144 @@ export const quotaSchema = z.object({
   resource: z.string().optional(),
 })
 
+// Screen Agent schemas
+export const voiceConfigSchema = z.object({
+  provider: z.enum(["elevenlabs", "openai", "cartesia"]),
+  voiceId: z.string().min(1),
+  language: z.string().min(1),
+  speechRate: z.number().min(0.5).max(2.0).optional(),
+  pitch: z.number().min(-1.0).max(1.0).optional(),
+})
+
+export const conversationConfigSchema = z.object({
+  personalityPrompt: z.string().optional(),
+  welcomeMessage: z.string().optional(),
+  fallbackResponse: z.string().optional(),
+  guardrails: z.array(z.string()).optional(),
+})
+
+export const createScreenAgentSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  organizationId: z.string().min(1),
+  teamId: z.string().optional(),
+  visibility: z.enum(["private", "team", "organization", "public"]).default("private"),
+  targetWebsiteUrl: z.string().refine(
+    (val) => {
+      try {
+        new URL(val)
+        return true
+      } catch {
+        return false
+      }
+    },
+    { message: "Invalid URL format" }
+  ),
+  websiteCredentials: z
+    .object({
+      username: z.string(),
+      password: z.string(),
+    })
+    .optional(),
+  voiceConfig: voiceConfigSchema,
+  conversationConfig: conversationConfigSchema.optional(),
+  knowledgeDocumentIds: z.array(z.string()).default([]),
+  domainRestrictions: z.array(z.string()).optional(),
+  sessionTimeoutMinutes: z.number().int().min(1).max(480).optional(),
+  maxSessionDurationMinutes: z.number().int().min(1).max(480).optional(),
+  viewerAuthRequired: z.boolean().default(false),
+  dataCollectionConsent: z.boolean().default(false),
+  recordingEnabled: z.boolean().default(true),
+})
+
+export const updateScreenAgentSchema = createScreenAgentSchema.partial()
+
+// Presentation Session schemas
+export const viewerInfoSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().email().optional(),
+  company: z.string().optional(),
+  customFields: z.record(z.string(), z.any()).optional(),
+})
+
+export const createPresentationSessionSchema = z.object({
+  screenAgentId: z.string().min(1),
+  viewerInfo: viewerInfoSchema.optional(),
+})
+
+// Knowledge Document schemas
+export const createKnowledgeDocumentSchema = z.object({
+  screenAgentId: z.string().min(1),
+  documentType: z.enum(["pdf", "video", "audio", "text", "url"]),
+  originalFilename: z.string().min(1),
+  storageLocation: z.string().min(1),
+  fileSizeBytes: z.number().int().min(0),
+})
+
+// Billing Account schemas
+export const paymentMethodSchema = z.object({
+  type: z.enum(["card", "bank_transfer", "invoice"]),
+  lastFour: z.string().length(4).optional(),
+  expirationDate: z.coerce.date().optional(),
+  billingName: z.string().optional(),
+  cardBrand: z.enum(["visa", "mastercard", "amex", "discover", "other"]).optional(),
+  stripePaymentMethodId: z.string().optional(),
+})
+
+export const createBillingAccountSchema = z.object({
+  organizationId: z.string().min(1),
+  billingType: z.enum(["pay_as_you_go", "enterprise_contract"]),
+  currencyCode: z.string().length(3).default("USD"),
+  billingEmailAddresses: z.array(z.string().email()).min(1),
+  billingAddress: z
+    .object({
+      street: z.string(),
+      city: z.string(),
+      state: z.string(),
+      postalCode: z.string(),
+      country: z.string(),
+    })
+    .optional(),
+  autoReloadEnabled: z.boolean().default(false),
+  autoReloadThresholdCents: z.number().int().min(0).default(1000),
+  autoReloadAmountCents: z.number().int().min(0).default(10000),
+})
+
+// Usage Event schemas
+export const createUsageEventSchema = z.object({
+  organizationId: z.string().min(1),
+  screenAgentId: z.string().optional(),
+  presentationSessionId: z.string().optional(),
+  eventType: z.enum(["session_minutes", "knowledge_processing", "storage", "api_call"]),
+  quantity: z.number().min(0),
+  unitCostCents: z.number().int().min(0),
+  totalCostCents: z.number().int().min(0),
+  billingAccountId: z.string().min(1),
+})
+
+// Analytics Event schemas
+export const createAnalyticsEventSchema = z.object({
+  organizationId: z.string().min(1),
+  screenAgentId: z.string().min(1),
+  presentationSessionId: z.string().min(1),
+  eventType: z.enum(["viewer_question", "page_navigation", "agent_response", "session_milestone"]),
+  properties: z.record(z.string(), z.any()),
+})
+
+// Team schemas (Enterprise)
+export const createTeamSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  organizationId: z.string().min(1),
+  settings: z.record(z.string(), z.any()).optional(),
+})
+
+export const createTeamMembershipSchema = z.object({
+  userId: z.string().min(1),
+  teamId: z.string().min(1),
+  teamRole: z.enum(["team_admin", "team_member"]).default("team_member"),
+})
+
 // Helper function to validate request body
 export async function validateRequest<T>(
   schema: z.ZodSchema<T>,

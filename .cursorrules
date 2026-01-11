@@ -201,19 +201,51 @@ export interface ICost extends Omit<mongoose.Document, "model"> {
 ### 13. Mongoose Duplicate Index Warnings
 **MANDATORY**: Use only one indexing method - either `index: true` OR `Schema.index()`, not both
 
-```typescript
-// ❌ WRONG - Duplicate index definition
-const Schema = new Schema({
-  tags: [{ type: String, index: true }], // Index defined here
-})
-Schema.index({ tags: 1 }) // And here - causes duplicate
+**IMPORTANT**: `unique: true` automatically creates an index! Do NOT add `Schema.index()` for fields with `unique: true`.
 
-// ✅ CORRECT - Use only one method
+**Prefer `Schema.index()` over `index: true`** for better readability and flexibility (especially for composite indexes).
+
+```typescript
+// ❌ WRONG - Duplicate index definition (index: true + Schema.index())
 const Schema = new Schema({
-  tags: [{ type: String }], // No index here
+  organizationId: { type: String, required: true, index: true }, // Index defined here
+  invoiceId: { type: String, index: true }, // Index defined here
 })
-Schema.index({ tags: 1 }) // Only here
+Schema.index({ organizationId: 1 }) // And here - causes duplicate warning
+Schema.index({ invoiceId: 1 }) // And here - causes duplicate warning
+
+// ❌ WRONG - unique: true creates index, Schema.index() creates duplicate
+const Schema = new Schema({
+  shareableToken: { type: String, required: true, unique: true }, // unique: true creates index automatically
+})
+Schema.index({ shareableToken: 1 }) // DUPLICATE! unique: true already created the index
+
+// ✅ CORRECT - Use only Schema.index() method
+const Schema = new Schema({
+  organizationId: { type: String, required: true }, // No index here
+  invoiceId: { type: String }, // No index here
+})
+Schema.index({ organizationId: 1 }) // Only here
+Schema.index({ invoiceId: 1 }) // Only here
+
+// ✅ CORRECT - unique: true (no Schema.index() needed)
+const Schema = new Schema({
+  shareableToken: { type: String, required: true, unique: true }, // unique: true creates index automatically
+  organizationId: { type: String, required: true, unique: true }, // unique: true creates index automatically
+})
+// No Schema.index() calls needed for unique fields
+
+// ✅ CORRECT - Composite indexes (must use Schema.index())
+const Schema = new Schema({
+  organizationId: { type: String, required: true }, // No index: true
+})
+Schema.index({ organizationId: 1, status: 1 }) // Composite index
+Schema.index({ organizationId: 1, createdAt: -1 }) // Another composite index starting with organizationId
 ```
+
+**Note**: 
+- `unique: true` automatically creates an index - do NOT add `Schema.index()` for the same field
+- Composite indexes (indexes on multiple fields) can efficiently serve queries on their prefix fields. For example, an index on `{ organizationId: 1, status: 1 }` can also be used for queries on just `organizationId`, so you don't need a separate single-field index.
 
 ### 14. BullMQ Queue Types
 **MANDATORY**: Use type assertions for Queue constructors and Redis connections
@@ -259,3 +291,139 @@ Before generating code, verify:
 - [ ] BullMQ connections use type assertions
 
 **ALWAYS reference RULESETS.md for the complete, detailed rules before generating code.**
+
+These examples should be used as guidance when configuring Sentry functionality within a project.
+
+# Exception Catching
+
+Use `Sentry.captureException(error)` to capture an exception and log the error in Sentry.
+Use this in try catch blocks or areas where exceptions are expected
+
+# Tracing Examples
+
+Spans should be created for meaningful actions within an applications like button clicks, API calls, and function calls
+Use the `Sentry.startSpan` function to create a span
+Child spans can exist within a parent span
+
+## Custom Span instrumentation in component actions
+
+The `name` and `op` properties should be meaninful for the activities in the call.
+Attach attributes based on relevant information and metrics from the request
+
+```javascript
+function TestComponent() {
+  const handleTestButtonClick = () => {
+    // Create a transaction/span to measure performance
+    Sentry.startSpan(
+      {
+        op: "ui.click",
+        name: "Test Button Click",
+      },
+      (span) => {
+        const value = "some config";
+        const metric = "some metric";
+
+        // Metrics can be added to the span
+        span.setAttribute("config", value);
+        span.setAttribute("metric", metric);
+
+        doSomething();
+      },
+    );
+  };
+
+  return (
+    <button type="button" onClick={handleTestButtonClick}>
+      Test Sentry
+    </button>
+  );
+}
+```
+
+## Custom span instrumentation in API calls
+
+The `name` and `op` properties should be meaninful for the activities in the call.
+Attach attributes based on relevant information and metrics from the request
+
+```javascript
+async function fetchUserData(userId) {
+  return Sentry.startSpan(
+    {
+      op: "http.client",
+      name: `GET /api/users/${userId}`,
+    },
+    async () => {
+      const response = await fetch(`/api/users/${userId}`);
+      const data = await response.json();
+      return data;
+    },
+  );
+}
+```
+
+# Logs
+
+Where logs are used, ensure Sentry is imported using `import * as Sentry from "@sentry/nextjs"`
+Enable logging in Sentry using `Sentry.init({ enableLogs: true })`
+Reference the logger using `Sentry.logger` (not destructured)
+Sentry offers a consoleLoggingIntegration that can be used to log specific console error types automatically without instrumenting the individual logger calls
+
+## Configuration
+
+In NextJS with `@sentry/nextjs`, the standard setup uses:
+- `sentry.client.config.ts` for client-side initialization
+- `sentry.server.config.ts` for server-side initialization  
+- `sentry.edge.config.ts` for edge runtime initialization (optional)
+- `sentry.config.ts` is used by the Sentry webpack plugin for build-time configuration
+
+Initialization does not need to be repeated in other files, it only needs to happen in the config files mentioned above. You should use `import * as Sentry from "@sentry/nextjs"` to reference Sentry functionality
+
+### Baseline
+
+```javascript
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  enableLogs: true,
+});
+```
+
+### Logger Integration
+
+```javascript
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    // send console.log, console.warn, and console.error calls as logs to Sentry
+    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+  ],
+});
+```
+
+## Logger Examples
+
+`Sentry.logger.fmt` is a template literal function that should be used to bring variables into the structured logs.
+
+```javascript
+import * as Sentry from "@sentry/nextjs";
+
+// Always use Sentry.logger, not a destructured logger
+Sentry.logger.trace("Starting database connection", { database: "users" });
+Sentry.logger.debug(Sentry.logger.fmt`Cache miss for user: ${userId}`);
+Sentry.logger.info("Updated profile", { profileId: 345 });
+Sentry.logger.warn("Rate limit reached for endpoint", {
+  endpoint: "/api/results/",
+  isEnterprise: false,
+});
+Sentry.logger.error("Failed to process payment", {
+  orderId: "order_123",
+  amount: 99.99,
+});
+Sentry.logger.fatal("Database connection pool exhausted", {
+  database: "users",
+  activeConnections: 100,
+});
+```

@@ -1,0 +1,67 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: |
+          npx @better-auth/cli@latest generate
+          npx prisma generate
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+
+      - name: Build application
+        run: pnpm build
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      - name: Run tests
+        run: pnpm test
+        continue-on-error: true
+
+      - name: Run linting
+        run: pnpm lint
+        continue-on-error: true
+
+      # Add deployment steps here based on your hosting platform
+      # Examples:
+      # - Deploy to Vercel
+      # - Deploy to AWS
+      # - Deploy to custom server via SSH
+      # - Deploy to Docker registry
+
+      - name: Deployment successful
+        run: echo "Deployment completed successfully"

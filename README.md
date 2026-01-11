@@ -1,40 +1,68 @@
-# Modern Next.js Boilerplate
+# Screen Agent Platform
 
-Production-ready Next.js starter for building full-stack SaaS applications. Includes authentication, multi-tenancy, AI agents, billing, analytics, and more.
+Enterprise-grade, multi-tenant SaaS platform for creating, distributing, and analyzing interactive AI-powered screen presentations.
+
+## Overview
+
+**Screen Agent Platform** enables businesses to create intelligent, conversational screen presentations that respond to viewer questions in real-time while demonstrating live websites. Organizations use Screen Agents to deliver personalized, voice-guided walkthroughs for sales demos, customer onboarding, product training, and technical support.
+
+### Core Value Proposition
+
+- **Sales Teams:** Convert website visitors into qualified leads with on-demand product demos, 24/7
+- **Customer Success:** Scale onboarding and reduce time-to-value with interactive presentations
+- **Support Organizations:** Deflect support tickets with interactive troubleshooting guides
+- **Product Teams:** Gather deep analytics on feature usage and friction points
 
 ---
 
-## Features
+## Business Functions
 
-| Feature | Technology | Description |
-|---------|------------|-------------|
-| **Authentication** | Better Auth | Email/password + Google OAuth with session management |
-| **Multi-Tenancy** | Better Auth Organizations | Organization-based multi-tenancy with roles & permissions |
-| **AI Agents** | OpenAI + Custom Framework | Modern AI agent workflows with tool calling |
-| **Billing** | Stripe | Subscription management and payments |
-| **Analytics** | PostHog | User analytics and event tracking |
-| **Feature Flags** | Custom | A/B testing and gradual rollouts |
-| **Admin Dashboard** | Custom | Platform administration and monitoring |
-| **Audit Logging** | Custom | Compliance-ready activity logging |
-| **Webhooks** | Custom | Event delivery system |
-| **Onboarding** | Custom | Step-by-step user onboarding |
-| **Rate Limiting** | Custom | API protection and abuse prevention |
-| **Error Tracking** | Sentry | Production error monitoring |
-| **API Keys** | Custom | User API keys for integrations |
-| **Usage Tracking** | Custom | Track API calls and enforce quotas |
-| **Notifications** | Custom | In-app and email notifications |
-| **Activity Feed** | Custom | Real-time activity streams |
-| **Search** | MongoDB Text Index | Full-text search across platform |
-| **Cost Tracking** | Custom | Track AI API costs per user/org |
-| **Templates** | Custom | Shareable prompts and workflows |
-| **Database** | MongoDB | Hybrid: Prisma (auth) + Mongoose (app) |
-| **Job Queues** | BullMQ + Redis | Reliable background job processing |
-| **UI Components** | shadcn/ui | Pre-built accessible components |
-| **Styling** | Tailwind CSS v4 | Utility-first CSS with CVA variants |
-| **File Uploads** | Uploadthing | Easy file upload handling |
-| **Email** | Resend | Transactional email service |
-| **Testing** | Vitest + Playwright | Unit, integration, and E2E testing |
-| **Containerization** | Docker | Development environment with Redis |
+### 🎯 Screen Agent Management
+
+- **Creation Wizard:** Multi-step wizard for creating Screen Agents with voice configuration, website authentication, knowledge base integration, and personality settings
+- **Management Interface:** Dashboard for managing Screen Agents with status controls (Draft, Active, Paused, Archived)
+- **Sharing & Embedding:** Shareable links, embed codes, QR codes, and custom branding options
+- **Knowledge Base:** Upload PDFs, videos, audio files, and URLs that provide context to Screen Agents
+
+### 🎥 Interactive Presentations
+
+- **LiveKit Integration:** Real-time video conferencing with screen sharing
+- **Voice-Guided Demos:** AI-powered voice narration with configurable voices (ElevenLabs, OpenAI, Cartesia)
+- **Viewer Interaction:** Real-time Q&A where viewers can ask questions via voice or text
+- **Session Recording:** Automatic recording and transcription of presentation sessions
+- **Public Access:** No-auth public access via shareable links
+
+### 📊 Analytics & Insights
+
+- **Session Analytics:** Track viewer engagement, questions asked, pages visited, and completion rates
+- **Post-Session Analysis:** AI-powered question clustering, topic extraction, and insights generation
+- **Dashboard Views:** Organization-level and Screen Agent-level analytics with time period filtering
+- **Exportable Reports:** CSV and PDF export for all analytics data
+- **Real-Time Metrics:** Live tracking of active sessions and viewer engagement
+
+### 💳 Billing & Usage
+
+- **Free Tier:** 20 minutes/month + 1 Screen Agent (no credit card required)
+- **Pay-as-You-Go:** Usage-based billing with real-time balance tracking and auto-reload
+- **Enterprise Contracts:** Custom billing contracts with committed usage and overage rates
+- **Usage Metering:** Per-minute billing with transparent cost tracking
+- **Invoice Management:** Automated invoice generation and payment processing
+
+### 🏢 Multi-Tenancy
+
+- **Organization Management:** Organization-based data isolation with role-based access control
+- **Team Management (Enterprise):** Team hierarchy with team-level permissions and Screen Agent ownership
+- **RBAC:** Owner, Admin, Member roles at organization level; Team Admin, Team Member at team level
+- **Custom Permissions (Enterprise):** Granular permission assignment for enterprise customers
+- **Organization Upgrades:** Seamless upgrade from Basic to Enterprise tier
+
+### 🔧 Platform Administration
+
+- **Organization Management:** View and manage all organizations, members, and billing
+- **Contract Management:** Create and manage enterprise contracts with custom terms
+- **Usage Monitoring:** System-wide usage monitoring and cost attribution
+- **Feature Flags:** Enable/disable features globally or per organization
+- **Support Tools:** User impersonation, detailed logs, and manual billing adjustments
 
 ---
 
@@ -55,7 +83,7 @@ corepack enable
 
 # 2. Clone and install dependencies
 git clone <your-repo-url>
-cd nextjs_fullstack_boilerplate
+cd presenter-agent-ui
 pnpm install
 
 # 3. Configure environment
@@ -85,127 +113,22 @@ docker compose up
 
 ---
 
-## Environment Variables
+## Key Features
 
-Create `.env.local` with these variables:
-
-> **Note**: Most features are optional. Only configure what you need.
-
-### Required
-
-```bash
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database?retryWrites=true&w=majority
-BETTER_AUTH_SECRET=your-32-character-secret-here
-BETTER_AUTH_URL=http://localhost:3000
-```
-
-### Optional Features
-
-```bash
-# Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Email (Resend)
-RESEND_API_KEY=re_xxxxx
-EMAIL_FROM=noreply@yourdomain.com
-
-# AI Agents
-OPENAI_API_KEY=sk-xxxxx
-
-# Organization Settings
-ORGANIZATION_LIMIT=5
-MEMBERSHIP_LIMIT=100
-
-# File Uploads
-UPLOADTHING_TOKEN=sk_live_xxxxx
-
-# Redis (defaults to localhost:6379)
-REDIS_URL=redis://localhost:6379
-
-# Stripe Billing
-STRIPE_SECRET_KEY=sk_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_ID_FREE=price_...
-STRIPE_PRICE_ID_PRO=price_...
-STRIPE_PRICE_ID_ENTERPRISE=price_...
-
-# PostHog Analytics
-NEXT_PUBLIC_POSTHOG_KEY=ph_...
-NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
-
-# Sentry Error Tracking
-SENTRY_DSN=https://...
-
-# Public
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
----
-
-## Project Structure
-
-```
-├── app/                    # Next.js App Router
-│   ├── (admin)/admin/      # Admin dashboard (protected)
-│   ├── (auth)/             # Auth pages (login, register, verify-email)
-│   ├── api/                # API routes
-│   │   ├── admin/          # Admin API
-│   │   ├── ai/             # AI agent endpoints
-│   │   ├── api-keys/        # API keys management
-│   │   ├── auth/           # Better Auth endpoints
-│   │   ├── billing/        # Billing API
-│   │   ├── notifications/   # Notifications API
-│   │   ├── activity/        # Activity feed API
-│   │   ├── search/          # Search API
-│   │   ├── usage/           # Usage tracking API
-│   │   ├── cost/            # Cost tracking API
-│   │   ├── templates/       # Templates API
-│   │   ├── onboarding/     # Onboarding API
-│   │   └── webhooks/       # Webhook handlers
-│   ├── billing/            # Billing page
-│   ├── onboarding/         # Onboarding page
-│   └── page.tsx            # Home page
-├── components/
-│   ├── ai/                 # AI agent components
-│   ├── auth/               # Auth components
-│   ├── billing/            # Billing components
-│   ├── onboarding/         # Onboarding components
-│   ├── organizations/      # Organization components
-│   ├── providers/          # React providers
-│   └── ui/                 # shadcn/ui components
-├── config/
-│   └── roles.yaml          # Role configuration (YAML)
-├── lib/
-│   ├── ai/                 # AI agent framework
-│   ├── analytics/          # PostHog analytics
-│   ├── audit/              # Audit logging
-│   ├── auth/               # Better Auth configuration
-│   ├── billing/            # Stripe billing
-│   ├── config/             # Configuration (roles)
-│   ├── db/                 # Database connections
-│   │   ├── prisma.ts       # Prisma client (Better Auth)
-│   │   └── mongoose.ts     # Mongoose connection (App)
-│   ├── features/           # Feature flags
-│   ├── models/             # Mongoose models
-│   ├── onboarding/         # Onboarding flow
-│   ├── queue/              # BullMQ job queues
-│   ├── rate-limit/         # Rate limiting
-│   ├── webhooks/           # Webhook system
-│   ├── api-keys/           # API keys management
-│   ├── usage/              # Usage tracking
-│   ├── notifications/      # Notifications system
-│   ├── activity/           # Activity feed
-│   ├── search/             # Search engine
-│   ├── cost/               # Cost tracking
-│   ├── templates/          # Templates library
-│   └── utils/              # Utilities
-├── prisma/
-│   └── schema.prisma       # Prisma schema (auto-generated by Better Auth)
-├── hooks/                  # React hooks
-└── scripts/
-    └── worker.ts           # Background worker
-```
+| Feature | Technology | Description |
+|---------|------------|-------------|
+| **Authentication** | Better Auth | Email/password + Google OAuth with session management |
+| **Multi-Tenancy** | Better Auth Organizations | Organization-based multi-tenancy with roles & permissions |
+| **Billing** | Stripe | Pay-as-you-go and enterprise contract billing |
+| **Video Conferencing** | LiveKit | Real-time video streaming for presentations |
+| **File Uploads** | Uploadthing | Knowledge document uploads (PDFs, videos, audio) |
+| **Background Jobs** | BullMQ + Redis | Reliable background job processing |
+| **Database** | MongoDB | Hybrid: Prisma (auth) + Mongoose (app) |
+| **UI Components** | shadcn/ui | Pre-built accessible components |
+| **Styling** | Tailwind CSS v4 | Utility-first CSS with CVA variants |
+| **Email** | Resend | Transactional email service |
+| **Testing** | Vitest + Playwright | Unit, integration, and E2E testing |
+| **Containerization** | Docker | Development environment with Redis |
 
 ---
 
@@ -220,11 +143,9 @@ pnpm worker           # Start background job workers
 
 # Testing
 pnpm test             # Run unit tests
-pnpm test:watch       # Watch mode
-pnpm test:coverage    # Run with coverage
+pnpm test:watch       # Run tests in watch mode
+pnpm test:coverage    # Run tests with coverage
 pnpm e2e:headless     # Run E2E tests
-pnpm e2e:ui           # Run E2E tests with UI
-pnpm storybook        # Start Storybook
 
 # Code Quality
 pnpm lint             # Run ESLint
@@ -232,360 +153,207 @@ pnpm lint:fix         # Auto-fix linting
 pnpm prettier         # Check formatting
 pnpm prettier:fix     # Fix formatting
 
-# Database
-# First, generate Prisma client with placeholder schema
-npx prisma generate
-# Then, generate Better Auth schema (will overwrite placeholder)
-npx @better-auth/cli@latest generate
-# Finally, regenerate Prisma client with Better Auth models
-npx prisma generate
+# Docker
+docker compose up     # Start all services (app + worker + redis)
+docker compose up -d  # Start in detached mode
 ```
 
 ---
 
-## Database Setup
+## Environment Variables
 
-This boilerplate uses a **hybrid database approach**:
-
-### Prisma (Better Auth)
-
-Prisma handles all authentication-related data. The schema is automatically generated:
+### Required
 
 ```bash
-# Step 1: Generate Prisma client with placeholder schema (required for Better Auth CLI)
-npx prisma generate
-
-# Step 2: Generate Better Auth schema (overwrites placeholder)
-npx @better-auth/cli@latest generate
-
-# Step 3: Regenerate Prisma client with Better Auth models
-npx prisma generate
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database?retryWrites=true&w=majority
+BETTER_AUTH_SECRET=your-32-character-secret-here
+BETTER_AUTH_URL=http://localhost:3000
 ```
 
-**Usage**: Prisma is used automatically by Better Auth. You don't need to interact with it directly.
-
-### Mongoose (Application Features)
-
-Mongoose handles all application data (AI agents, custom features, etc.):
-
-```typescript
-// In API routes or server components
-import { connectDB } from "@/lib/db/mongoose"
-import { AgentConversation } from "@/lib/models"
-
-export async function POST() {
-  await connectDB() // Always connect first
-  
-  const conversation = await AgentConversation.create({
-    userId: "user-123",
-    messages: [{ role: "user", content: "Hello" }],
-  })
-  
-  return Response.json(conversation)
-}
-```
-
-**Creating Models**:
-
-```typescript
-// lib/models/example.ts
-import mongoose, { Schema } from "mongoose"
-
-export interface IExample extends mongoose.Document {
-  name: string
-  organizationId?: string
-  createdAt: Date
-  updatedAt: Date
-}
-
-const ExampleSchema = new Schema<IExample>(
-  {
-    name: { type: String, required: true },
-    organizationId: { type: String, index: true },
-  },
-  { timestamps: true }
-)
-
-export const Example =
-  mongoose.models.Example ||
-  mongoose.model<IExample>("Example", ExampleSchema)
-```
-
----
-
-## Authentication
-
-Better Auth is pre-configured with:
-- Email/password authentication
-- Google OAuth (optional)
-- Email verification
-- Session management
-
-### Using Auth
-
-**Server Component**:
-```typescript
-import { auth } from "@/lib/auth"
-import { headers } from "next/headers"
-
-export default async function Page() {
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session) redirect("/login")
-  
-  return <div>Hello {session.user.name}</div>
-}
-```
-
-**Client Component**:
-```typescript
-"use client"
-import { authClient } from "@/lib/auth/client"
-
-export function Component() {
-  const { data: session } = authClient.useSession()
-  
-  if (!session) return <div>Not logged in</div>
-  return <div>Hello {session.user.name}</div>
-}
-```
-
-### Protecting Routes
-
-Edit `middleware.ts`:
-
-```typescript
-const protectedRoutes = [
-  "/dashboard",
-  "/settings",
-  "/billing",
-  "/admin",
-]
-```
-
----
-
-## Multi-Tenancy (Organizations)
-
-Organizations are already configured. See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed usage.
-
-**Quick Example**:
-
-```typescript
-// Create organization
-const org = await authClient.organization.create({
-  name: "My Company",
-  slug: "my-company",
-})
-
-// Get active organization
-const { data: activeOrg } = authClient.useActiveOrganization()
-
-// Invite member
-await authClient.organization.invite({
-  email: "user@example.com",
-  role: "member",
-})
-```
-
----
-
-## Billing & Subscriptions
-
-Stripe integration is ready to use:
-
-```typescript
-// Create checkout session
-const response = await fetch("/api/billing/checkout", {
-  method: "POST",
-  body: JSON.stringify({ planId: "pro" }),
-})
-const { url } = await response.json()
-window.location.href = url
-
-// Open billing portal
-const response = await fetch("/api/billing/portal", {
-  method: "POST",
-})
-const { url } = await response.json()
-window.location.href = url
-```
-
-**Setup**:
-1. Create Stripe account
-2. Create products and prices
-3. Add price IDs to `.env.local`
-4. Set up webhook: `https://yourdomain.com/api/webhooks/stripe`
-
----
-
-## Analytics (PostHog)
-
-PostHog is integrated and tracks events automatically:
-
-```typescript
-// Server-side
-import { trackEvent } from "@/lib/analytics/posthog"
-await trackEvent(userId, "feature_used", { feature: "ai_agent" })
-
-// Client-side
-import { trackEvent } from "@/lib/analytics/client"
-trackEvent("button_clicked", { button: "subscribe" })
-```
-
-**Setup**: Add `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST` to `.env.local`
-
----
-
-## Feature Flags
-
-Check if a feature is enabled:
-
-```typescript
-import { isFeatureEnabled } from "@/lib/features/flags"
-
-const enabled = await isFeatureEnabled("new_dashboard", userId, organizationId)
-if (enabled) {
-  // Show new feature
-}
-```
-
-**Management**: Create flags via API or directly in MongoDB.
-
----
-
-## Role Configuration
-
-Roles are configured in `config/roles.yaml`:
-
-```yaml
-roles:
-  admin:
-    name: "Admin"
-    permissions:
-      project: ["create", "read", "update", "delete"]
-```
-
-Check permissions:
-
-```typescript
-import { hasPermission } from "@/lib/config/roles"
-
-const canDelete = hasPermission("admin", "project", "delete")
-```
-
----
-
-## Background Job Processing
-
-BullMQ + Redis for reliable background tasks:
-
-```typescript
-import { queueEmail, queueProcessing, queueWebhook } from "@/lib/queue"
-
-// Queue an email
-await queueEmail({
-  to: "user@example.com",
-  subject: "Welcome!",
-  body: "<p>Thanks for signing up</p>",
-})
-
-// Queue a processing task
-await queueProcessing({
-  userId: "user-123",
-  taskId: "task-456",
-  payload: { data: "your-data" },
-})
-
-// Queue a webhook
-await queueWebhook({
-  url: "https://api.example.com/webhook",
-  method: "POST",
-  body: { event: "user.created" },
-})
-```
-
-**Running Workers**:
+### Optional
 
 ```bash
-# Local development (separate terminal)
-pnpm worker
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 
-# With Docker (automatically included)
-docker compose up
+# Email (Resend)
+RESEND_API_KEY=re_xxxxx
+EMAIL_FROM=noreply@yourdomain.com
+
+# Stripe Billing
+STRIPE_SECRET_KEY=sk_...
+STRIPE_PUBLISHABLE_KEY=pk_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
+
+# LiveKit (for presentations)
+LIVEKIT_URL=https://your-livekit-instance.com
+LIVEKIT_API_KEY=your-api-key
+LIVEKIT_API_SECRET=your-api-secret
+
+# Uploadthing (for file uploads)
+UPLOADTHING_SECRET=sk_live_xxxxx
+UPLOADTHING_APP_ID=xxxxx
+
+# Redis (defaults to localhost:6379)
+REDIS_URL=redis://localhost:6379
+
+# Analytics (PostHog)
+NEXT_PUBLIC_POSTHOG_KEY=ph_...
+NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
+
+# Error Tracking (Sentry)
+SENTRY_DSN=https://...
+
+# Public
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 ---
 
-## Docker Services
+## Project Structure
 
-The `docker-compose.yml` includes:
+```
+app/                    # Next.js App Router
+├── (admin)/            # Admin routes (protected)
+│   └── platform/       # Platform admin interface
+├── (auth)/             # Auth routes
+├── api/                # API routes
+│   ├── admin/          # Platform admin API
+│   ├── analytics/      # Analytics API
+│   ├── auth/           # Better Auth endpoints
+│   ├── billing/        # Billing API
+│   ├── knowledge/      # Knowledge documents API
+│   ├── presentations/  # Presentation sessions API
+│   ├── screen-agents/  # Screen Agents API
+│   └── usage/          # Usage tracking API
+├── analytics/          # Analytics pages
+├── billing/            # Billing pages
+├── dashboard/          # Dashboard
+├── screen-agents/      # Screen Agents pages
+└── present/            # Public presentation viewer
 
-| Service | Port | Description |
-|---------|------|-------------|
-| `app` | 3000 | Next.js dev server |
-| `worker` | - | Background job processor |
-| `redis` | 6379 | Redis for job queues |
+components/
+├── admin/              # Platform admin components
+├── analytics/          # Analytics components
+├── auth/               # Auth components
+├── billing/            # Billing components
+├── presentations/      # Presentation components
+├── screen-agents/      # Screen Agent components
+└── ui/                 # shadcn/ui components
+
+lib/
+├── analytics/          # Analytics logic
+├── auth/               # Better Auth configuration
+├── billing/            # Billing logic
+├── db/                 # Database connections
+├── models/             # Mongoose models
+├── presentations/      # Presentation session management
+├── queue/              # BullMQ queues and workers
+├── screen-agents/      # Screen Agent business logic
+└── usage/              # Usage tracking and limits
+```
+
+---
+
+## Documentation
+
+📖 **[Complete Documentation](docs/COMPLETE_GUIDE.md)** - Comprehensive guide covering:
+- Product specification and business functions
+- Architecture and system design
+- Implementation plan
+- Deployment guide
+- Development guide
+
+🧪 **[Testing Documentation](docs/TESTING.md)** - Complete testing tracker covering:
+- Manual and automated test cases for all features
+- Integration and E2E testing requirements
+- Performance and security testing
+- Sign-off checklist for release
+
+**Additional Documentation:**
+- [AGENTS.md](AGENTS.md) - Cursor AI guidance
+- [CLAUDE.md](CLAUDE.md) - Claude Code guidance
+- [GEMINI.md](GEMINI.md) - Gemini/Antigravity guidance
+- [RULESETS.md](RULESETS.md) - Code generation rules and patterns
+
+---
+
+## Technology Stack
+
+- **Framework:** Next.js 16 (App Router), React 19
+- **Language:** TypeScript (strict mode)
+- **Styling:** Tailwind CSS v4, shadcn/ui, Radix UI
+- **Authentication:** Better Auth with MongoDB adapter
+- **Database:** MongoDB (Prisma for auth, Mongoose for app)
+- **Job Queue:** BullMQ with Redis
+- **Billing:** Stripe
+- **Video:** LiveKit
+- **File Uploads:** Uploadthing
+- **Email:** Resend
+- **Testing:** Vitest, Playwright, Storybook
+- **Package Manager:** pnpm (via Corepack)
+
+---
+
+## Getting Started
+
+1. **Set up environment variables** (see [Environment Variables](#environment-variables))
+2. **Generate Prisma schema:** `npx @better-auth/cli@latest generate && npx prisma generate`
+3. **Start development server:** `pnpm dev`
+4. **Start background workers:** `pnpm worker` (in separate terminal)
+5. **Read the documentation:** See [docs/COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md)
+
+---
+
+## Development
+
+### Code Quality
+
+⚠️ **IMPORTANT:** Follow [RULESETS.md](RULESETS.md) for code generation rules to prevent build and lint errors.
+
+**Key Rules:**
+- Always type catch block errors as `unknown`
+- Use `(Model as any).method()` for Mongoose operations
+- Use Zod `.refine()` for URL/email validation
+- Type assert `await request.json()` and `await response.json()`
+- Use `.tsx` extension for files containing JSX
+- Use `proxy.ts` not `middleware.ts` (Next.js 16)
+
+### Testing
 
 ```bash
-# Start all services
-docker compose up
-
-# Start in background
-docker compose up -d
-
-# View logs
-docker compose logs -f worker
-
-# Stop services
-docker compose down
+pnpm test             # Run unit tests
+pnpm test:watch       # Run tests in watch mode
+pnpm e2e:headless     # Run E2E tests
 ```
 
----
-
-## Troubleshooting
-
-### Prisma Client Not Generated
+### Building
 
 ```bash
-npx prisma generate
+pnpm build            # Production build
+pnpm lint             # Run linter
+pnpm lint:fix         # Auto-fix linting issues
 ```
-
-### Mongoose Connection Errors
-
-1. Check `MONGODB_URI` is set correctly
-2. Verify MongoDB is accessible
-3. Check network/firewall settings
-
-### Better Auth Schema Not Generated
-
-```bash
-npx @better-auth/cli@latest generate
-```
-
-### Type Errors
-
-1. Regenerate Prisma client: `npx prisma generate`
-2. Restart TypeScript server in your IDE
-3. Check that imports are correct
 
 ---
 
-## Next Steps
+## Deployment
 
-1. ✅ Set up environment variables
-2. ✅ Generate Prisma schema
-3. 📖 Read [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture
-4. 🚀 Start building your features!
+See [docs/COMPLETE_GUIDE.md#deployment-guide](docs/COMPLETE_GUIDE.md#deployment-guide) for complete deployment instructions.
+
+**Quick Deploy Options:**
+- **Vercel:** Connect GitHub repo, configure environment variables, deploy
+- **Docker:** `docker compose -f docker-compose.prod.yml up -d`
+- **Self-Hosted:** PM2 or systemd (see deployment guide)
 
 ---
 
-## Resources
+## Support
 
-- [Better Auth Docs](https://better-auth.com/docs)
-- [Prisma MongoDB Docs](https://www.prisma.io/docs/concepts/database-connectors/mongodb)
-- [Mongoose Docs](https://mongoosejs.com/docs/)
-- [Next.js Docs](https://nextjs.org/docs)
-- [Tailwind CSS v4](https://tailwindcss.com/docs)
+- 📖 Read the [Complete Documentation](docs/COMPLETE_GUIDE.md)
+- 🐛 Check [RULESETS.md](RULESETS.md) for common code patterns
+- 💬 Review code examples in the codebase
 
 ---
 
@@ -595,4 +363,4 @@ MIT
 
 ---
 
-**Modern Next.js Boilerplate** - Built for rapid development.
+**Screen Agent Platform** - Enterprise-grade AI-powered screen presentations.

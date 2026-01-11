@@ -1,6 +1,7 @@
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { aggregateUsageMetrics, type UsageEventType } from "@/lib/usage/metering"
 import { checkQuota, getUsageStats, type UsageType } from "@/lib/usage/tracker"
 
 export async function GET(req: NextRequest) {

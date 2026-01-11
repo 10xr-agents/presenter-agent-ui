@@ -13,7 +13,7 @@ const protectedRoutes: string[] = [
 const authRoutes = ["/login", "/register"]
 
 // Admin routes (require platform_admin role)
-const adminRoutes = ["/admin"]
+const adminRoutes = ["/admin", "/platform"]
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

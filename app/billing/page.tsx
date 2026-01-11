@@ -1,7 +1,10 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { AutoReloadSettings } from "@/components/billing/auto-reload-settings"
+import { BalanceCard } from "@/components/billing/balance-card"
 import { SubscriptionCard } from "@/components/billing/subscription-card"
 import { auth } from "@/lib/auth"
+import { getOrCreateBillingAccount } from "@/lib/billing/pay-as-you-go"
 import { connectDB } from "@/lib/db/mongoose"
 import { Subscription } from "@/lib/models/billing"
 
@@ -20,6 +23,11 @@ export default async function BillingPage() {
     status: "active",
   })
 
+  // Get or create billing account for organization
+  // TODO: Get organization ID from Better Auth active organization context
+  const organizationId = "default-org" // TODO: Get from Better Auth active organization
+  const billingAccount = await getOrCreateBillingAccount(organizationId)
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
@@ -27,34 +35,31 @@ export default async function BillingPage() {
         <p className="text-muted-foreground">Manage your subscription and billing</p>
       </div>
 
-      <SubscriptionCard currentPlan={subscription?.planId} />
+      <div className="grid gap-6 md:grid-cols-2">
+        <BalanceCard
+          organizationId={organizationId}
+          balanceCents={billingAccount.balanceCents || 0}
+          currencyCode={billingAccount.currencyCode || "USD"}
+          primaryPaymentMethod={billingAccount.primaryPaymentMethod}
+          autoReloadEnabled={billingAccount.autoReloadEnabled || false}
+          autoReloadThresholdCents={billingAccount.autoReloadThresholdCents || 1000}
+          autoReloadAmountCents={billingAccount.autoReloadAmountCents || 10000}
+        />
+
+        <AutoReloadSettings
+          organizationId={organizationId}
+          enabled={billingAccount.autoReloadEnabled || false}
+          thresholdCents={billingAccount.autoReloadThresholdCents || 1000}
+          amountCents={billingAccount.autoReloadAmountCents || 10000}
+        />
+      </div>
 
       {subscription && (
         <div className="mt-6">
           <h2 className="text-xl font-semibold mb-4">Current Subscription</h2>
-          <div className="space-y-2">
-            <p>
-              <strong>Plan:</strong> {subscription.planId}
-            </p>
-            <p>
-              <strong>Status:</strong> {subscription.status}
-            </p>
-            <p>
-              <strong>Renews:</strong>{" "}
-              {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-            </p>
-            <form action="/api/billing/portal" method="POST">
-              <button
-                type="submit"
-                className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded"
-              >
-                Manage Subscription
-              </button>
-            </form>
-          </div>
+          <SubscriptionCard currentPlan={subscription.planId} />
         </div>
       )}
     </div>
   )
 }
-

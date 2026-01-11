@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { getOnboardingProgress, updateOnboardingStep } from "@/lib/onboarding/flow"
 import type { OnboardingStep } from "@/lib/onboarding/flow"
 
-const stepOrder: OnboardingStep[] = ["welcome", "profile", "organization", "preferences", "complete"]
+const stepOrder: OnboardingStep[] = ["welcome", "team-invite", "tour", "complete"]
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() })
