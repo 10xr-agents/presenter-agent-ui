@@ -26,7 +26,7 @@ export function withAuth(handler: ApiHandler) {
         session,
         userId: session.user.id,
       })
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("API handler error", error)
       return handleError(error)
     }
@@ -42,7 +42,7 @@ export function withOptionalAuth(handler: ApiHandler) {
         session: session || null as any,
         userId: session?.user.id || "",
       })
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("API handler error", error)
       return handleError(error)
     }

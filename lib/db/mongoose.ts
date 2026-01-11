@@ -44,7 +44,7 @@ async function connectDB() {
 
   try {
     cached!.conn = await cached!.promise
-  } catch (e) {
+  } catch (e: unknown) {
     cached!.promise = null
     throw e
   }

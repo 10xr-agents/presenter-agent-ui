@@ -23,7 +23,7 @@ export async function POST(_req: NextRequest) {
     return NextResponse.json({
       url: portalSession.url,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Portal error:", error)
     return NextResponse.json(
       { error: "Failed to create portal session" },

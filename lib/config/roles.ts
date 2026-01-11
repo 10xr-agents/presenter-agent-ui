@@ -30,7 +30,7 @@ export function loadRoleConfig(): RoleConfig {
     const config = yaml.load(fileContents) as RoleConfig
     cachedConfig = config
     return config
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Failed to load role config:", error)
     // Return default config
     return {

@@ -31,7 +31,7 @@ export async function GET() {
       },
       "Service is healthy"
     )
-  } catch (error) {
+  } catch (error: unknown) {
     return NextResponse.json(
       {
         success: false,

@@ -30,7 +30,7 @@ export const databaseTool: AgentTool = {
       const coll = mongoose.connection.collection(collection)
       const results = await coll.find(queryObj).limit(limit).toArray()
       return { success: true, results, count: results.length }
-    } catch (error) {
+    } catch (error: unknown) {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -77,7 +77,7 @@ export const emailTool: AgentTool = {
       })
       
       return { success: true, messageId: result.data?.id }
-    } catch (error) {
+    } catch (error: unknown) {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -125,7 +125,7 @@ export const webSearchTool: AgentTool = {
         message: "Web search not configured. Please set up a search API (Tavily, Serper, etc.)",
         results: [],
       }
-    } catch (error) {
+    } catch (error: unknown) {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",

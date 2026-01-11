@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       nextStep,
       progress,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Onboarding update error:", error)
     return NextResponse.json(
       { error: "Failed to update onboarding" },

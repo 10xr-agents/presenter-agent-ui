@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       url: checkoutSession.url,
       sessionId: checkoutSession.id,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Checkout error:", error)
     return NextResponse.json(
       { error: "Failed to create checkout session" },

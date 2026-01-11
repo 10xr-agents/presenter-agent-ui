@@ -112,12 +112,12 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                   </table>
                 </body>
               </html>
-            `,
-          })
-        } catch (error) {
-          console.error("Failed to send invitation email:", error)
-          throw error
-        }
+          `,
+        })
+      } catch (error: unknown) {
+        console.error("Failed to send invitation email:", error)
+        throw error
+      }
       },
     }),
   ],
@@ -213,7 +213,7 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
             </html>
           `,
         })
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Failed to send verification email:", error)
         throw error
       }

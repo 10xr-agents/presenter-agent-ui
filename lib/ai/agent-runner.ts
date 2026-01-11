@@ -66,7 +66,7 @@ export class AgentRunner {
               toolCallId: toolCall.id,
               result,
             }
-          } catch (error) {
+          } catch (error: unknown) {
             return {
               toolCallId: toolCall.id,
               result: null,

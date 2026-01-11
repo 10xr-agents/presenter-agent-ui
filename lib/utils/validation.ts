@@ -98,7 +98,7 @@ export async function validateRequest<T>(
   try {
     const validated = await schema.parseAsync(data)
     return { success: true, data: validated }
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return { success: false, error }
     }

@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       messages: result.messages,
       state: result,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Agent error:", error)
     return NextResponse.json(
       { error: "Agent execution failed", details: error instanceof Error ? error.message : "Unknown error" },

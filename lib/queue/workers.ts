@@ -31,7 +31,7 @@ async function processEmailJob(job: Job<EmailJobData>): Promise<JobResult> {
 
     console.log(`Email sent successfully to ${to}`)
     return { success: true, message: `Email sent to ${to}` }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`Failed to send email to ${to}:`, error)
     throw error // This will trigger retry
   }
@@ -65,7 +65,7 @@ async function processProcessingJob(
 
     console.log(`Task ${taskId} completed successfully`)
     return { success: true, message: `Task ${taskId} completed`, data: payload }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`Task ${taskId} failed:`, error)
     throw error
   }
@@ -97,7 +97,7 @@ async function processWebhookJob(job: Job<WebhookJobData>): Promise<JobResult> {
     const responseData = await response.json().catch(() => null)
     console.log(`Webhook to ${url} succeeded`)
     return { success: true, data: responseData }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`Webhook to ${url} failed:`, error)
     throw error
   }
