@@ -162,52 +162,75 @@ docker compose up -d  # Start in detached mode
 
 ## Environment Variables
 
+All environment variables are defined in `env.mjs` with validation. Copy `.env.example` to `.env.local` and fill in the values:
+
+```bash
+cp .env.example .env.local
+```
+
 ### Required
 
 ```bash
+# Database (MongoDB)
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database?retryWrites=true&w=majority
-BETTER_AUTH_SECRET=your-32-character-secret-here
+
+# Better Auth Configuration
+BETTER_AUTH_SECRET=your-32-character-secret-here-minimum-32-chars
 BETTER_AUTH_URL=http://localhost:3000
 ```
 
 ### Optional
 
 ```bash
+# Build Configuration
+ANALYZE=false
+
+# Redis (for job queues - defaults to localhost:6379)
+REDIS_URL=redis://localhost:6379
+
 # Google OAuth
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
-# Email (Resend)
+# Email (Resend) - for email verification and notifications
 RESEND_API_KEY=re_xxxxx
 EMAIL_FROM=noreply@yourdomain.com
 
+# Uploadthing (file uploads)
+UPLOADTHING_TOKEN=sk_live_xxxxx
+
+# AI Agent Configuration
+OPENAI_API_KEY=sk-xxxxx
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+TAVILY_API_KEY=tvly-xxxxx
+
+# Organization Settings
+ORGANIZATION_LIMIT=5
+MEMBERSHIP_LIMIT=100
+
 # Stripe Billing
-STRIPE_SECRET_KEY=sk_...
-STRIPE_PUBLISHABLE_KEY=pk_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
+STRIPE_SECRET_KEY=sk_test_xxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxx
+STRIPE_PRICE_ID_FREE=price_xxxxx
+STRIPE_PRICE_ID_PRO=price_xxxxx
+STRIPE_PRICE_ID_ENTERPRISE=price_xxxxx
 
-# LiveKit (for presentations)
-LIVEKIT_URL=https://your-livekit-instance.com
-LIVEKIT_API_KEY=your-api-key
-LIVEKIT_API_SECRET=your-api-secret
-
-# Uploadthing (for file uploads)
-UPLOADTHING_SECRET=sk_live_xxxxx
-UPLOADTHING_APP_ID=xxxxx
-
-# Redis (defaults to localhost:6379)
-REDIS_URL=redis://localhost:6379
-
-# Analytics (PostHog)
-NEXT_PUBLIC_POSTHOG_KEY=ph_...
+# PostHog Analytics (client-side)
+NEXT_PUBLIC_POSTHOG_KEY=ph_xxxxx
 NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
 
-# Error Tracking (Sentry)
-SENTRY_DSN=https://...
+# Sentry Error Tracking
+SENTRY_DSN=https://xxxxx@xxxxx.ingest.sentry.io/xxxxx
+SENTRY_AUTH_TOKEN=xxxxx
 
-# Public
+# Feature Flags
+FEATURE_FLAGS_ENABLED=false
+
+# Public Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
+
+**Note**: See `.env.example` for the complete template with all variables and descriptions.
 
 ---
 
