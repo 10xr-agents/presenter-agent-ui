@@ -4,6 +4,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/lib/utils/toast"
@@ -69,122 +70,135 @@ export function PasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="currentPassword">Current Password</Label>
-          <div className="relative">
-            <Input
-              id="currentPassword"
-              type={showCurrentPassword ? "text" : "password"}
-              value={formData.currentPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, currentPassword: e.target.value })
-              }
-              placeholder="Enter your current password"
-              required
-              disabled={loading}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 h-full"
-              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-            >
-              {showCurrentPassword ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="newPassword">New Password</Label>
-          <div className="relative">
-            <Input
-              id="newPassword"
-              type={showNewPassword ? "text" : "password"}
-              value={formData.newPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, newPassword: e.target.value })
-              }
-              placeholder="Enter your new password"
-              required
-              disabled={loading}
-              minLength={8}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 h-full"
-              onClick={() => setShowNewPassword(!showNewPassword)}
-            >
-              {showNewPassword ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Password must be at least 8 characters long
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="confirmPassword">Confirm New Password</Label>
-          <div className="relative">
-            <Input
-              id="confirmPassword"
-              type={showConfirmPassword ? "text" : "password"}
-              value={formData.confirmPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, confirmPassword: e.target.value })
-              }
-              placeholder="Confirm your new password"
-              required
-              disabled={loading}
-              minLength={8}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 h-full"
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            >
-              {showConfirmPassword ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <Button type="submit" disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Updating...
-            </>
-          ) : (
-            "Update Password"
+    <Card className="bg-muted/30">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive" className="py-2">
+              <AlertDescription className="text-sm">{error}</AlertDescription>
+            </Alert>
           )}
-        </Button>
-      </div>
-    </form>
+
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword" className="text-xs text-muted-foreground">
+                Current Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="currentPassword"
+                  type={showCurrentPassword ? "text" : "password"}
+                  value={formData.currentPassword}
+                  onChange={(e) =>
+                    setFormData({ ...formData, currentPassword: e.target.value })
+                  }
+                  placeholder="Enter your current password"
+                  required
+                  disabled={loading}
+                  className="h-9 pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-9 w-9"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                >
+                  {showCurrentPassword ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="newPassword" className="text-xs text-muted-foreground">
+                New Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showNewPassword ? "text" : "password"}
+                  value={formData.newPassword}
+                  onChange={(e) =>
+                    setFormData({ ...formData, newPassword: e.target.value })
+                  }
+                  placeholder="Enter your new password"
+                  required
+                  disabled={loading}
+                  minLength={8}
+                  className="h-9 pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-9 w-9"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                >
+                  {showNewPassword ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Password must be at least 8 characters long
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-xs text-muted-foreground">
+                Confirm New Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={formData.confirmPassword}
+                  onChange={(e) =>
+                    setFormData({ ...formData, confirmPassword: e.target.value })
+                  }
+                  placeholder="Confirm your new password"
+                  required
+                  disabled={loading}
+                  minLength={8}
+                  className="h-9 pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-9 w-9"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={loading} size="sm">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update password"
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

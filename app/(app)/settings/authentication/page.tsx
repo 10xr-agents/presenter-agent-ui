@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { PasswordForm } from "@/components/settings/authentication/password-form"
 import { auth } from "@/lib/auth"
@@ -17,15 +16,12 @@ export default async function AuthenticationSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Authentication Settings"
-        description="Manage your password and security settings"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Authentication" },
-        ]}
-      />
+      <div>
+        <h1 className="text-lg font-semibold">Authentication</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Link your account to third-party authentication providers
+        </p>
+      </div>
       <SettingsLayout tenantState={tenantState}>
         <PasswordForm />
       </SettingsLayout>

@@ -292,6 +292,329 @@ Before generating code, verify:
 
 **ALWAYS reference RULESETS.md for the complete, detailed rules before generating code.**
 
+---
+
+# Design System & UX Rules (Enterprise SaaS Standard)
+
+**⚠️ CRITICAL: All UI/UX work must follow these design system rules. These rules enforce enterprise-grade visual quality comparable to Resend, Stripe, Linear, Notion, and Atlassian.**
+
+**Target Quality Bar:** Mature enterprise SaaS. No "demo-like", "marketing-heavy", or "experimental" UI inside the application.
+
+---
+
+## Typography & Visual Hierarchy
+
+### Page Titles & Headers
+- **MANDATORY**: Page titles must use `text-lg font-semibold` (never larger)
+- **MANDATORY**: Page descriptions must use `text-sm text-muted-foreground` with `mt-0.5` spacing
+- **MANDATORY**: Section headers within pages must use `text-sm font-semibold`
+- **MANDATORY**: Card titles must use `text-sm font-semibold` (never `text-base` or larger)
+- **MANDATORY**: Helper text and descriptions must use `text-xs text-muted-foreground`
+- **FORBIDDEN**: Never use `text-xl`, `text-2xl`, or larger for page titles
+- **FORBIDDEN**: Never use `text-base` for descriptions or helper text
+- **FORBIDDEN**: Never use marketing-style oversized typography inside the app
+
+```typescript
+// ❌ WRONG
+<h1 className="text-2xl font-bold">Settings</h1>
+<p className="text-base text-muted-foreground">Manage your settings</p>
+
+// ✅ CORRECT
+<h1 className="text-lg font-semibold">Settings</h1>
+<p className="mt-0.5 text-sm text-muted-foreground">Manage your tenant settings and configuration</p>
+```
+
+### Content Typography
+- **MANDATORY**: Body text must use `text-sm` (default) or `text-xs` (secondary)
+- **MANDATORY**: Value displays (numbers, amounts) must use `text-2xl font-semibold` maximum
+- **MANDATORY**: Labels must use `text-xs text-muted-foreground`
+- **FORBIDDEN**: Never use `text-base` or larger for body text in cards or forms
+
+---
+
+## Spacing & Density
+
+### Page-Level Spacing
+- **MANDATORY**: Page containers must use `space-y-6` for vertical spacing between major sections
+- **MANDATORY**: Page padding must use `py-6` (never `py-8` or larger)
+- **MANDATORY**: Card spacing within pages must use `space-y-4` or `space-y-3` (never `space-y-6`)
+
+### Component Spacing
+- **MANDATORY**: Form fields must use `space-y-2` between label and input
+- **MANDATORY**: Button groups must use `gap-2` or `gap-1` (never `gap-4` or larger)
+- **MANDATORY**: Navigation items must use `gap-0.5` or `gap-2.5` (tight, professional)
+- **MANDATORY**: Card content padding must use `pt-6` (never `p-6` or `p-8`)
+
+### Layout Density
+- **MANDATORY**: All pages must prioritize information density over whitespace
+- **MANDATORY**: Cards must feel compact and scannable, not spacious
+- **FORBIDDEN**: Never use excessive padding that creates "floating" content
+- **FORBIDDEN**: Never center content arbitrarily (only when explicitly required)
+
+---
+
+## Cards & Containers
+
+### Card Styling
+- **MANDATORY**: All cards must use `bg-muted/30` background (subtle, not white)
+- **MANDATORY**: Cards must use `CardContent` with `pt-6` (never full padding)
+- **MANDATORY**: Card headers (if used) must be compact with `text-sm font-semibold`
+- **FORBIDDEN**: Never use `CardHeader`, `CardTitle`, `CardDescription` unless absolutely necessary
+- **FORBIDDEN**: Never use white backgrounds for cards (`bg-background` is forbidden)
+- **FORBIDDEN**: Never use heavy borders or shadows on cards
+
+```typescript
+// ❌ WRONG
+<Card>
+  <CardHeader>
+    <CardTitle>Account Balance</CardTitle>
+    <CardDescription>Your current balance</CardDescription>
+  </CardHeader>
+  <CardContent>...</CardContent>
+</Card>
+
+// ✅ CORRECT
+<Card className="bg-muted/30">
+  <CardContent className="pt-6">
+    <h3 className="text-sm font-semibold mb-0.5">Account Balance</h3>
+    <p className="text-xs text-muted-foreground">Your current balance</p>
+    ...
+  </CardContent>
+</Card>
+```
+
+### Container Structure
+- **MANDATORY**: Page-level containers must use `space-y-6` for section separation
+- **MANDATORY**: Grid layouts must use `gap-4` (never `gap-6` or larger)
+- **MANDATORY**: Nested containers must reduce spacing proportionally
+
+---
+
+## Navigation & Shell
+
+### Header
+- **MANDATORY**: Header height must be `h-12` (never `h-14` or larger)
+- **MANDATORY**: Header padding must be `px-6` (never `px-4` or `px-8`)
+- **MANDATORY**: Logo size must be `h-5 w-5` (never larger)
+- **MANDATORY**: Header text must be `text-sm font-medium` (never `font-semibold` or larger)
+- **FORBIDDEN**: Never use backdrop blur on header
+- **FORBIDDEN**: Never use large logos or branding elements
+
+### Sidebar
+- **MANDATORY**: Sidebar width must be `w-56` (never `w-64` or larger)
+- **MANDATORY**: Navigation items must use `px-2.5 py-2` (compact padding)
+- **MANDATORY**: Navigation spacing must use `gap-0.5` (tight, professional)
+- **MANDATORY**: Sidebar padding must be `p-3` (never `p-4` or larger)
+- **MANDATORY**: Navigation icons must be `h-4 w-4` (never larger)
+- **MANDATORY**: User info at bottom must use `h-7 w-7` avatar (never larger)
+
+### Navigation Items
+- **MANDATORY**: Active navigation state must use `bg-accent text-accent-foreground`
+- **MANDATORY**: Inactive state must use `text-muted-foreground hover:bg-accent`
+- **MANDATORY**: Navigation text must be `text-sm font-medium`
+
+---
+
+## Buttons & Interactive Elements
+
+### Button Sizing
+- **MANDATORY**: Primary action buttons must use `size="sm"` (never default size)
+- **MANDATORY**: Secondary buttons must use `size="sm"` with `variant="outline"`
+- **MANDATORY**: Icon-only buttons must use `h-8 w-8` (never `h-10 w-10`)
+- **FORBIDDEN**: Never use `size="lg"` inside the application (only for marketing pages)
+
+### Button Hierarchy
+- **MANDATORY**: Primary actions must be visually obvious but not dominant
+- **MANDATORY**: Secondary actions must recede visually
+- **MANDATORY**: Destructive actions must use `variant="destructive"` explicitly
+
+### Icons
+- **MANDATORY**: Icons in buttons must be `h-3.5 w-3.5` or `h-4 w-4` (never larger)
+- **MANDATORY**: Icons in navigation must be `h-4 w-4`
+- **MANDATORY**: Icons in cards must be `h-3.5 w-3.5` or smaller
+
+---
+
+## Forms & Inputs
+
+### Input Styling
+- **MANDATORY**: All inputs must use `h-9` height (never `h-10` or default)
+- **MANDATORY**: Labels must use `text-xs text-muted-foreground`
+- **MANDATORY**: Helper text must use `text-xs text-muted-foreground`
+- **MANDATORY**: Form sections must use `space-y-2` or `space-y-3` (never `space-y-4`)
+
+### Form Layout
+- **MANDATORY**: Forms must be wrapped in `Card` with `bg-muted/30`
+- **MANDATORY**: Form submit buttons must use `size="sm"` and be right-aligned
+- **MANDATORY**: Form spacing must be compact (`space-y-4` maximum)
+
+---
+
+## Settings Architecture
+
+### Settings vs Profile Separation
+- **MANDATORY**: Profile (`/profile`) is user-scoped only (email, auth, MFA, preferences)
+- **MANDATORY**: Settings (`/settings`) is tenant-scoped only (members, general, billing, usage)
+- **FORBIDDEN**: Never mix user-scoped and tenant-scoped settings on the same page
+- **FORBIDDEN**: Never duplicate profile functionality in Settings
+
+### Settings Navigation
+- **MANDATORY**: Settings must use horizontal tabs (Resend style)
+- **MANDATORY**: Tab spacing must use `space-x-6` (never larger)
+- **MANDATORY**: Active tab must use `border-foreground text-foreground`
+- **MANDATORY**: Inactive tabs must use `text-muted-foreground hover:border-muted-foreground`
+
+### Settings Content
+- **MANDATORY**: All settings pages must use `SettingsLayout` component
+- **MANDATORY**: Settings content must be card-based with `bg-muted/30`
+- **MANDATORY**: Settings sections must be clearly separated with `space-y-6`
+
+---
+
+## Dashboard vs Analytics Separation
+
+### Dashboard (High-Level)
+- **MANDATORY**: Dashboard must show summary metrics only (no deep analytics)
+- **MANDATORY**: Dashboard must prioritize primary CTAs and quick actions
+- **MANDATORY**: Dashboard cards must be compact with `bg-muted/30`
+- **FORBIDDEN**: Never show dense charts or historical drill-downs on dashboard
+- **FORBIDDEN**: Never reuse analytics components on dashboard
+
+### Analytics (Deep Insights)
+- **MANDATORY**: Analytics must be a separate, dedicated area
+- **MANDATORY**: Analytics must show detailed metrics, trends, and patterns
+- **MANDATORY**: Analytics must use distinct visual patterns from dashboard
+- **FORBIDDEN**: Never show dashboard-style summary widgets in analytics
+
+---
+
+## Normal Mode vs Organization Mode
+
+### Feature Gating
+- **MANDATORY**: Teams features must be completely hidden in Normal mode
+- **MANDATORY**: Team-related UI, messaging, and navigation must not appear in Normal mode
+- **MANDATORY**: Delete Account messaging must be conditional (no team references in Normal mode)
+- **FORBIDDEN**: Never show "teams" or "organization" terminology in Normal mode UI
+- **FORBIDDEN**: Never reference team concepts in Normal mode error messages or empty states
+
+### Mode-Aware UI
+- **MANDATORY**: All pages must check `tenantState` and adapt UI accordingly
+- **MANDATORY**: Navigation must conditionally show organization-only items
+- **MANDATORY**: Settings must show appropriate sections based on mode
+
+---
+
+## Empty States & Loading States
+
+### Empty States
+- **MANDATORY**: Empty states must be calm and instructional (never loud or marketing-heavy)
+- **MANDATORY**: Empty state titles must use `text-2xl font-semibold` maximum
+- **MANDATORY**: Empty state descriptions must use `text-sm text-muted-foreground`
+- **MANDATORY**: Empty state CTAs must use `size="lg"` (only exception to button sizing rule)
+- **FORBIDDEN**: Never use oversized illustrations or marketing-style graphics
+
+### Loading States
+- **MANDATORY**: Loading skeletons must match final content size and layout
+- **MANDATORY**: Loading states must use `Skeleton` component with appropriate sizing
+- **MANDATORY**: Loading indicators must be subtle (`text-muted-foreground`)
+
+---
+
+## Copy & Naming
+
+### UI Copy Rules
+- **MANDATORY**: All labels must be minimal and clear (no verbosity)
+- **MANDATORY**: Helper text must be concise and actionable
+- **MANDATORY**: Error messages must be specific and helpful
+- **FORBIDDEN**: Never use marketing language inside the application
+- **FORBIDDEN**: Never over-explain UI elements
+- **FORBIDDEN**: Never use casual or informal language
+
+### Naming Conventions
+- **MANDATORY**: Page titles must be singular nouns ("Settings", "Profile", not "Settings Page")
+- **MANDATORY**: Section headers must be descriptive but brief
+- **MANDATORY**: Button labels must be action verbs ("Save", "Create", not "Save Changes")
+
+---
+
+## Component Usage Patterns
+
+### Card Components
+- **MANDATORY**: Prefer `Card` with `CardContent` over `CardHeader` + `CardContent`
+- **MANDATORY**: Use inline headers with `text-sm font-semibold` instead of `CardTitle`
+- **MANDATORY**: Use inline descriptions with `text-xs text-muted-foreground` instead of `CardDescription`
+
+### Badge Components
+- **MANDATORY**: Badges must use `text-xs` (never default size)
+- **MANDATORY**: Status badges must be subtle and informative
+
+### Alert Components
+- **MANDATORY**: Alerts must use `py-2` padding (compact)
+- **MANDATORY**: Alert descriptions must use `text-sm` or `text-xs`
+- **MANDATORY**: Alert icons must be `h-3.5 w-3.5` or `h-4 w-4`
+
+---
+
+## Page-Level Validation Checklist
+
+**Before finalizing any page, validate:**
+
+- [ ] Page title uses `text-lg font-semibold` (not larger)
+- [ ] Page description uses `text-sm text-muted-foreground` with `mt-0.5`
+- [ ] All cards use `bg-muted/30` background
+- [ ] All buttons use `size="sm"` (except empty state CTAs)
+- [ ] All inputs use `h-9` height
+- [ ] All labels use `text-xs text-muted-foreground`
+- [ ] Spacing is compact (`space-y-6` page-level, `space-y-4` section-level)
+- [ ] Typography is restrained (no oversized fonts)
+- [ ] No visual clutter or excessive emphasis
+- [ ] Matches Resend/Stripe/Linear aesthetic (calm, professional, dense)
+- [ ] Tenant mode is properly handled (Normal vs Organization)
+- [ ] Settings vs Profile separation is maintained
+
+---
+
+## Anti-Patterns (Forbidden)
+
+### Visual Anti-Patterns
+- ❌ **FORBIDDEN**: Oversized typography (`text-xl`, `text-2xl` for titles)
+- ❌ **FORBIDDEN**: Excessive whitespace or padding
+- ❌ **FORBIDDEN**: Marketing-style UI inside the application
+- ❌ **FORBIDDEN**: White card backgrounds (`bg-background`)
+- ❌ **FORBIDDEN**: Heavy borders, shadows, or visual noise
+- ❌ **FORBIDDEN**: Centered content without clear purpose
+- ❌ **FORBIDDEN**: Large buttons (`size="lg"`) except empty states
+
+### Structural Anti-Patterns
+- ❌ **FORBIDDEN**: Mixing user-scoped and tenant-scoped settings
+- ❌ **FORBIDDEN**: Duplicating navigation (Profile in multiple places)
+- ❌ **FORBIDDEN**: Showing team concepts in Normal mode
+- ❌ **FORBIDDEN**: Reusing dashboard components in analytics
+- ❌ **FORBIDDEN**: Using `CardHeader` when inline headers suffice
+
+### Interaction Anti-Patterns
+- ❌ **FORBIDDEN**: Inconsistent button hierarchies
+- ❌ **FORBIDDEN**: Missing loading or error states
+- ❌ **FORBIDDEN**: Unclear primary actions
+- ❌ **FORBIDDEN**: Dead ends or unclear navigation paths
+
+---
+
+## Quality Bar Enforcement
+
+**Every UI/UX decision must answer:**
+
+1. **Does this match the visual density of Resend/Stripe?** (Compact, scannable)
+2. **Is the typography restrained and professional?** (No oversized fonts)
+3. **Is the spacing intentional and controlled?** (No excessive whitespace)
+4. **Does this feel enterprise-ready?** (Not demo-like or experimental)
+5. **Is the information hierarchy clear?** (Primary actions obvious, secondary recede)
+6. **Would this pass a senior designer's review?** (Deliberate, not accidental)
+
+**If any answer is "no", iterate until it meets the standard.**
+
+---
+
 These examples should be used as guidance when configuring Sentry functionality within a project.
 
 # Exception Catching

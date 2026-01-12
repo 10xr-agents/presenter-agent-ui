@@ -11,8 +11,13 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import type { TenantState } from "@/lib/utils/tenant-state"
+import { authClient } from "@/lib/auth/client"
 import { cn } from "@/lib/utils"
+
+const { useSession } = authClient
 
 interface AppSidebarProps {
   tenantState?: TenantState
@@ -56,6 +61,12 @@ const organizationNavigation = [
 
 export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Combine navigation based on tenant state
   const navigation = [
@@ -63,9 +74,19 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
     ...(tenantState === "organization" ? organizationNavigation : []),
   ]
 
+  const user = mounted && session?.user ? session.user : null
+  const userInitials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : user?.email?.[0]?.toUpperCase() || "U"
+
   return (
-    <aside className="hidden w-64 border-r bg-card lg:block">
-      <nav className="flex flex-col gap-1 p-4">
+    <aside className="hidden w-56 border-r bg-background lg:flex lg:flex-col">
+      <nav className="flex flex-1 flex-col gap-0.5 p-3">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           const Icon = item.icon
@@ -75,18 +96,34 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
               key={item.name}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
             >
-              <Icon className="h-4 w-4" />
-              {item.name}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{item.name}</span>
             </Link>
           )
         })}
       </nav>
+
+      {/* User info at bottom - Resend style */}
+      {mounted && user && (
+        <div className="border-t p-3">
+          <div className="flex items-center gap-2.5">
+            <Avatar className="h-7 w-7">
+              <AvatarImage src={user.image || undefined} alt={user.name || user.email || "User"} />
+              <AvatarFallback className="text-xs">{userInitials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium">{user.name || "User"}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

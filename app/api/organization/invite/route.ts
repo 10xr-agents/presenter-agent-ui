@@ -1,6 +1,7 @@
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { checkUserPermission } from "@/lib/utils/user-role"
 
 /**
  * POST /api/organization/invite - Invite a member to an organization
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
     organizationId: string
     email: string
-    role?: "owner" | "admin" | "member"
+    role?: "owner" | "admin" | "member" | "viewer"
   }
 
   const { organizationId, email, role = "member" } = body
@@ -27,6 +28,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Check permission using refined role system
+    const canManageMembers = await checkUserPermission(
+      organizationId,
+      "organization",
+      "manage_members"
+    )
+
+    if (!canManageMembers) {
+      return NextResponse.json(
+        { error: "You don't have permission to invite members" },
+        { status: 403 }
+      )
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const authApi = auth.api as any
 
@@ -41,17 +56,6 @@ export async function POST(req: NextRequest) {
     if (orgResult.error || !orgResult.data) {
       return NextResponse.json(
         { error: "You don't have access to this organization" },
-        { status: 403 }
-      )
-    }
-
-    // Check if user is owner or admin
-    const currentMember = orgResult.data.members?.find(
-      (m: { userId: string }) => m.userId === session.user.id
-    )
-    if (!currentMember || (currentMember.role !== "owner" && currentMember.role !== "admin")) {
-      return NextResponse.json(
-        { error: "You don't have permission to invite members" },
         { status: 403 }
       )
     }

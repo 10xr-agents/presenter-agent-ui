@@ -37,6 +37,7 @@ export interface IScreenAgent extends mongoose.Document {
   // Configuration
   targetWebsiteUrl: string
   websiteCredentials?: IWebsiteCredentials // Encrypted
+  loginNotes?: string // Optional notes about the login flow
   voiceConfig: IVoiceConfig
   conversationConfig?: IConversationConfig
   knowledgeDocumentIds: string[]
@@ -117,6 +118,7 @@ const ScreenAgentSchema = new Schema<IScreenAgent>(
       password: String, // Will be encrypted in application layer
       sessionTokens: Schema.Types.Mixed,
     },
+    loginNotes: { type: String, required: false }, // Optional notes about the login flow
     voiceConfig: {
       provider: {
         type: String,

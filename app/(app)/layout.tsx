@@ -33,8 +33,8 @@ export default async function AppLayout({
       <AppHeader tenantState={tenantState} />
       <div className="flex flex-1 overflow-hidden">
         <AppSidebar tenantState={tenantState} />
-        <main className="flex-1 overflow-y-auto">
-          <div className={spacing.pageContainer + " py-8"}>
+        <main className="flex-1 overflow-y-auto bg-background">
+          <div className="mx-auto max-w-7xl px-6 py-6">
             <ErrorBoundary>{children}</ErrorBoundary>
           </div>
         </main>

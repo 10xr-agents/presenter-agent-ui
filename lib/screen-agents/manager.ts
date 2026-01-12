@@ -1,20 +1,22 @@
 import { randomBytes } from "crypto"
 import { connectDB } from "@/lib/db/mongoose"
 import { IScreenAgent, ScreenAgent } from "@/lib/models/screen-agent"
+import { getImplicitVisibility } from "@/lib/screen-agents/visibility"
 
 export interface CreateScreenAgentData {
   name: string
-  description?: string
+  description: string
   ownerId: string
   organizationId: string
   teamId?: string
-  visibility?: "private" | "team" | "organization" | "public"
+  // Visibility is implicit and determined by tenant mode - do not expose in API
   targetWebsiteUrl: string
   websiteCredentials?: {
     username: string
     password: string
   }
-  voiceConfig: {
+  loginNotes?: string
+  voiceConfig?: {
     provider: "elevenlabs" | "openai" | "cartesia"
     voiceId: string
     language: string
@@ -42,6 +44,7 @@ export interface UpdateScreenAgentData {
     username: string
     password: string
   }
+  loginNotes?: string
   voiceConfig?: {
     provider?: "elevenlabs" | "openai" | "cartesia"
     voiceId?: string
@@ -74,6 +77,10 @@ export async function createScreenAgent(
 
   const shareableToken = generateShareableToken()
 
+  // Determine implicit visibility based on tenant mode
+  // Visibility is inferred, not configured
+  const implicitVisibility = await getImplicitVisibility(data.ownerId, data.teamId)
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const agent = await (ScreenAgent as any).create({
     name: data.name,
@@ -81,7 +88,7 @@ export async function createScreenAgent(
     ownerId: data.ownerId,
     organizationId: data.organizationId,
     teamId: data.teamId,
-    visibility: data.visibility || "private",
+    visibility: implicitVisibility,
     status: "draft",
     targetWebsiteUrl: data.targetWebsiteUrl,
     websiteCredentials: data.websiteCredentials
@@ -90,7 +97,14 @@ export async function createScreenAgent(
           password: data.websiteCredentials.password, // Will be encrypted in application layer
         }
       : undefined,
-    voiceConfig: data.voiceConfig,
+    loginNotes: data.loginNotes,
+    voiceConfig: data.voiceConfig ?? {
+      provider: "openai",
+      voiceId: "alloy",
+      language: "en",
+      speechRate: 1.0,
+      pitch: 0,
+    },
     conversationConfig: data.conversationConfig,
     knowledgeDocumentIds: data.knowledgeDocumentIds || [],
     domainRestrictions: data.domainRestrictions,
@@ -182,11 +196,15 @@ export async function updateScreenAgent(
 ): Promise<IScreenAgent | null> {
   await connectDB()
 
+  // Remove visibility from update data - it's implicit and not configurable
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { visibility, ...updateData } = data as UpdateScreenAgentData & { visibility?: string }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const agent = await (ScreenAgent as any).findByIdAndUpdate(
     id,
     {
-      $set: data,
+      $set: updateData,
     },
     { new: true }
   )

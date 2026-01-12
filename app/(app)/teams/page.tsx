@@ -3,11 +3,7 @@ import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/app-shell"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
-import { getTenantState, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
-
-// Type assertion for Better Auth API methods that may not be fully typed
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const authApi = auth.api as any
+import { getTenantState, hasOrganizationFeatures, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 
 interface TeamsPageProps {
   searchParams: Promise<{ organizationId?: string }>
@@ -34,11 +30,9 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
   // Get active organization from Better Auth if not provided
   if (!organizationId) {
     try {
-      const activeOrgResult = await authApi.getActiveOrganization({
-        headers: headersList,
-      })
-      if (activeOrgResult.data) {
-        organizationId = activeOrgResult.data.id
+      const activeOrgId = await getActiveOrganizationId()
+      if (activeOrgId) {
+        organizationId = activeOrgId
       }
     } catch {
       // Use fallback

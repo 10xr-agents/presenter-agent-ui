@@ -42,7 +42,7 @@ export function ReviewStep({
         name: data.name,
         description: data.description,
         organizationId,
-        visibility: data.visibility || "private",
+        // Visibility is implicit and determined server-side
         targetWebsiteUrl: data.targetWebsiteUrl,
         websiteCredentials: data.websiteCredentials,
         voiceConfig: data.voiceConfig,
@@ -126,10 +126,7 @@ export function ReviewStep({
               <Label className="text-xs text-muted-foreground">Target Website</Label>
               <p className="text-sm font-mono">{data.targetWebsiteUrl || "Not set"}</p>
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Visibility</Label>
-              <p className="text-sm capitalize">{data.visibility || "private"}</p>
-            </div>
+            {/* Visibility is implicit and not shown */}
           </CardContent>
         </Card>
 

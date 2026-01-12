@@ -108,10 +108,10 @@ export const conversationConfigSchema = z.object({
 
 export const createScreenAgentSchema = z.object({
   name: z.string().min(1).max(200),
-  description: z.string().max(1000).optional(),
+  description: z.string().min(20).max(500),
   organizationId: z.string().min(1),
   teamId: z.string().optional(),
-  visibility: z.enum(["private", "team", "organization", "public"]).default("private"),
+  // Visibility is implicit and determined server-side - do not accept from client
   targetWebsiteUrl: z.string().refine(
     (val) => {
       try {
@@ -129,7 +129,8 @@ export const createScreenAgentSchema = z.object({
       password: z.string(),
     })
     .optional(),
-  voiceConfig: voiceConfigSchema,
+  loginNotes: z.string().max(1000).optional(),
+  voiceConfig: voiceConfigSchema.optional(),
   conversationConfig: conversationConfigSchema.optional(),
   knowledgeDocumentIds: z.array(z.string()).default([]),
   domainRestrictions: z.array(z.string()).optional(),

@@ -6,7 +6,7 @@ import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -67,20 +67,13 @@ export function BalanceCard({
         return
       }
 
-      // TODO: Integrate with Stripe Payment Element or Checkout
-      // For now, this is a placeholder
-      // In production, you would:
-      // 1. Create a Setup Intent or Payment Intent
-      // 2. Use Stripe Elements to collect payment method
-      // 3. Confirm payment and add balance
-
       const response = await fetch("/api/billing/add-balance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organizationId,
           amountCents,
-          paymentMethodId: "pm_placeholder", // TODO: Get from Stripe Elements
+          paymentMethodId: "pm_placeholder",
         }),
       })
 
@@ -89,7 +82,6 @@ export function BalanceCard({
         throw new Error(errorData.error || "Failed to add balance")
       }
 
-      // Refresh page to show new balance
       router.refresh()
       setDialogOpen(false)
     } catch (error: unknown) {
@@ -103,122 +95,139 @@ export function BalanceCard({
   const isLowBalance = balanceCents < autoReloadThresholdCents * 2
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Account Balance</span>
-          <Badge variant={isLowBalance ? "destructive" : "default"}>
-            {isLowBalance ? "Low Balance" : "Active"}
-          </Badge>
-        </CardTitle>
-        <CardDescription>Pay-as-you-go billing account</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <div className="text-3xl font-bold">{formatCurrency(balanceCents)}</div>
-          <p className="text-sm text-muted-foreground mt-1">Current balance</p>
-        </div>
-
-        {isLowBalance && (
-          <Alert variant={balanceCents < autoReloadThresholdCents ? "destructive" : "default"}>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              {balanceCents < autoReloadThresholdCents
-                ? "Your balance is below the auto-reload threshold. Please add funds."
-                : "Your balance is low. Consider adding funds to avoid service interruption."}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {primaryPaymentMethod && (
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              {primaryPaymentMethod.cardBrand?.toUpperCase()} •••• {primaryPaymentMethod.lastFour}
-            </span>
+    <Card className="bg-muted/30">
+      <CardContent className="pt-6">
+        <div className="space-y-4">
+          {/* Header - Resend style: compact */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold mb-0.5">Account Balance</h3>
+              <p className="text-xs text-muted-foreground">Pay-as-you-go billing account</p>
+            </div>
+            <Badge variant={isLowBalance ? "destructive" : "default"} className="text-xs">
+              {isLowBalance ? "Low" : "Active"}
+            </Badge>
           </div>
-        )}
 
-        {autoReloadEnabled && (
-          <div className="pt-2 border-t">
-            <p className="text-sm font-medium mb-1">Auto-Reload</p>
-            <p className="text-xs text-muted-foreground">
-              Enabled: Reload ${(autoReloadAmountCents / 100).toFixed(2)} when balance drops
-              below ${(autoReloadThresholdCents / 100).toFixed(2)}
-            </p>
+          {/* Balance - Resend style: smaller, restrained */}
+          <div>
+            <div className="text-2xl font-semibold">{formatCurrency(balanceCents)}</div>
+            <p className="text-xs text-muted-foreground mt-0.5">Current balance</p>
           </div>
-        )}
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full" variant={isLowBalance ? "default" : "outline"}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Balance
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Balance</DialogTitle>
-              <DialogDescription>
-                Add funds to your pay-as-you-go account. Minimum amount is $100.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+          {/* Low Balance Alert - Resend style: compact */}
+          {isLowBalance && (
+            <Alert
+              variant={balanceCents < autoReloadThresholdCents ? "destructive" : "default"}
+              className="py-2"
+            >
+              <AlertCircle className="h-3.5 w-3.5" />
+              <AlertDescription className="text-xs">
+                {balanceCents < autoReloadThresholdCents
+                  ? "Balance below threshold. Please add funds."
+                  : "Balance is low. Consider adding funds."}
+              </AlertDescription>
+            </Alert>
+          )}
 
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount (USD)</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  min="100"
-                  step="1"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="100"
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Minimum: $100. Recommended: $100, $250, $500, $1000
-                </p>
-              </div>
+          {/* Payment Method - Resend style: subtle */}
+          {primaryPaymentMethod && (
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">
+                {primaryPaymentMethod.cardBrand?.toUpperCase()} •••• {primaryPaymentMethod.lastFour}
+              </span>
+            </div>
+          )}
 
-              <div className="space-y-2">
-                <Label>Payment Method</Label>
-                <div className="p-4 border rounded-lg bg-muted">
-                  <p className="text-sm text-muted-foreground">
-                    Payment method integration will be completed in a future phase.
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This requires Stripe Payment Elements integration.
-                  </p>
-                </div>
-              </div>
+          {/* Auto-Reload Status - Resend style: subtle */}
+          {autoReloadEnabled && (
+            <div className="pt-2 border-t">
+              <p className="text-xs font-medium mb-0.5">Auto-Reload</p>
+              <p className="text-xs text-muted-foreground">
+                Reload ${(autoReloadAmountCents / 100).toFixed(2)} when balance drops below $
+                {(autoReloadThresholdCents / 100).toFixed(2)}
+              </p>
+            </div>
+          )}
 
+          {/* Add Balance Button - Resend style: compact */}
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
               <Button
-                onClick={handleAddBalance}
-                disabled={isLoading || !amount || parseFloat(amount) < 100}
+                variant={isLowBalance ? "default" : "outline"}
+                size="sm"
                 className="w-full"
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Add ${amount || "0"}
-                  </>
-                )}
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Add Balance
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="text-base">Add Balance</DialogTitle>
+                <DialogDescription className="text-sm">
+                  Add funds to your pay-as-you-go account. Minimum amount is $100.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {error && (
+                  <Alert variant="destructive" className="py-2">
+                    <AlertDescription className="text-sm">{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="amount" className="text-xs text-muted-foreground">
+                    Amount (USD)
+                  </Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    min="100"
+                    step="1"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="100"
+                    disabled={isLoading}
+                    className="h-9"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum: $100. Recommended: $100, $250, $500, $1000
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Payment Method</Label>
+                  <div className="p-3 border rounded-md bg-muted/30">
+                    <p className="text-xs text-muted-foreground">
+                      Payment method integration will be completed in a future phase.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleAddBalance}
+                  disabled={isLoading || !amount || parseFloat(amount) < 100}
+                  size="sm"
+                  className="w-full"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-3.5 w-3.5" />
+                      Add ${amount || "0"}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </CardContent>
     </Card>
   )

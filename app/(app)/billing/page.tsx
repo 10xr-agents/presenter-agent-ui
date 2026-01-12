@@ -13,7 +13,7 @@ import { auth } from "@/lib/auth"
 import { getOrCreateBillingAccount } from "@/lib/billing/pay-as-you-go"
 import { connectDB } from "@/lib/db/mongoose"
 import { Subscription } from "@/lib/models/billing"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 import { spacing } from "@/lib/utils/design-system"
 
 // Type assertion for Better Auth API methods that may not be fully typed
@@ -74,11 +74,9 @@ export default async function BillingPage() {
   // Get active organization from Better Auth
   let organizationId = "default-org" // Fallback
   try {
-    const activeOrgResult = await authApi.getActiveOrganization({
-      headers: headersList,
-    })
-    if (activeOrgResult.data) {
-      organizationId = activeOrgResult.data.id
+    const activeOrgId = await getActiveOrganizationId()
+    if (activeOrgId) {
+      organizationId = activeOrgId
     }
   } catch {
     // Use fallback

@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 
 interface CostChartProps {
   data: Array<{
@@ -9,41 +9,20 @@ interface CostChartProps {
   }>
 }
 
-/**
- * Cost Chart Component
- * 
- * TODO: Implement actual chart using a charting library (e.g., Recharts, Chart.js)
- * 
- * For now, this is a placeholder component.
- * To implement:
- * 1. Install charting library: pnpm add recharts (or chart.js)
- * 2. Replace placeholder with actual chart component
- */
 export function CostChart({ data }: CostChartProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Costs Over Time</CardTitle>
-        <CardDescription>Spending over the selected period</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {/* TODO: Implement actual chart */}
-        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-          Chart visualization placeholder
-          <br />
-          Install recharts or chart.js to display cost data
+    <Card className="bg-muted/30">
+      <CardContent className="pt-6">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold">Costs Over Time</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Spending over the selected period
+          </p>
         </div>
-        {/* Example with Recharts:
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Area type="monotone" dataKey="cost" stroke="#8884d8" fill="#8884d8" />
-          </AreaChart>
-        </ResponsiveContainer>
-        */}
+        {/* TODO: Implement actual chart */}
+        <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground">
+          Chart visualization placeholder
+        </div>
       </CardContent>
     </Card>
   )

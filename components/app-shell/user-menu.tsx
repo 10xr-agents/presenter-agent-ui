@@ -3,6 +3,7 @@
 import { LogOut, Settings, User } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -19,6 +20,12 @@ const { signOut, useSession } = authClient
 export function UserMenu() {
   const router = useRouter()
   const { data: session, isPending } = useSession()
+  const [mounted, setMounted] = useState(false)
+
+  // Ensure component only renders client-side content after mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleSignOut = async () => {
     await signOut()
@@ -26,9 +33,10 @@ export function UserMenu() {
     router.refresh()
   }
 
-  if (isPending || !session?.user) {
+  // Always render the same structure during SSR and initial client render
+  if (!mounted || isPending || !session?.user) {
     return (
-      <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+      <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
     )
   }
 
@@ -49,7 +57,7 @@ export function UserMenu() {
           type="button"
           className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
-          <Avatar className="h-8 w-8">
+          <Avatar className="h-7 w-7">
             <AvatarImage src={user.image || undefined} alt={user.name || user.email || "User"} />
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
@@ -64,7 +72,7 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings" className="flex items-center">
+          <Link href="/profile" className="flex items-center">
             <User className="mr-2 h-4 w-4" />
             Profile
           </Link>

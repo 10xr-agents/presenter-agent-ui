@@ -107,16 +107,26 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Apply default voice config if not provided
+    const defaultVoiceConfig = {
+      provider: "openai" as const,
+      voiceId: "alloy",
+      language: "en",
+      speechRate: 1.0,
+      pitch: 0,
+    }
+
     const agentData: CreateScreenAgentData = {
       name: validation.data.name,
       description: validation.data.description,
       ownerId: session.user.id,
       organizationId: validation.data.organizationId,
       teamId: validation.data.teamId,
-      visibility: validation.data.visibility,
+      // Visibility is implicit and determined by tenant mode - not from client
       targetWebsiteUrl: validation.data.targetWebsiteUrl,
       websiteCredentials: validation.data.websiteCredentials,
-      voiceConfig: validation.data.voiceConfig,
+      loginNotes: validation.data.loginNotes,
+      voiceConfig: validation.data.voiceConfig ?? defaultVoiceConfig,
       conversationConfig: validation.data.conversationConfig,
       knowledgeDocumentIds: validation.data.knowledgeDocumentIds,
       domainRestrictions: validation.data.domainRestrictions,

@@ -1,55 +1,9 @@
 "use client"
 
-import { Activity, Clock, DollarSign, Target, TrendingUp, Users } from "lucide-react"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
-
-interface MetricCardProps {
-  title: string
-  value: string | number
-  description?: string
-  icon?: React.ReactNode
-  trend?: {
-    value: number
-    isPositive: boolean
-  }
-}
-
-export function MetricCard({
-  title,
-  value,
-  description,
-  icon,
-  trend,
-}: MetricCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon && <div className="h-4 w-4 text-muted-foreground">{icon}</div>}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
-        )}
-        {trend && (
-          <div
-            className={`text-xs mt-1 ${trend.isPositive ? "text-green-600" : "text-red-600"}`}
-          >
-            {trend.isPositive ? "+" : ""}
-            {trend.value}% from last period
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 interface DashboardMetricsProps {
   totalAgents: number
@@ -72,48 +26,68 @@ export function DashboardMetrics({
 }: DashboardMetricsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <MetricCard
-        title="Total Agents"
-        value={totalAgents}
-        description="Active screen agents"
-        icon={<Activity className="h-4 w-4" />}
-      />
-      <MetricCard
-        title="Total Costs"
-        value={`$${totalCosts.toFixed(2)}`}
-        description="Total spending"
-        icon={<DollarSign className="h-4 w-4" />}
-      />
-      <MetricCard
-        title="Total Minutes"
-        value={totalMinutes}
-        description="Presentation minutes consumed"
-        icon={<Clock className="h-4 w-4" />}
-      />
-      <MetricCard
-        title="Total Viewers"
-        value={totalViewers}
-        description="Unique presentation sessions"
-        icon={<Users className="h-4 w-4" />}
-      />
-      <MetricCard
-        title="Avg Session Duration"
-        value={`${averageSessionDuration.toFixed(1)} min`}
-        description="Average presentation length"
-        icon={<Clock className="h-4 w-4" />}
-      />
-      <MetricCard
-        title="Completion Rate"
-        value={`${(completionRate * 100).toFixed(1)}%`}
-        description="Sessions completed"
-        icon={<Target className="h-4 w-4" />}
-      />
-      <MetricCard
-        title="Engagement Score"
-        value={averageEngagementScore.toFixed(1)}
-        description="Average viewer engagement (0-100)"
-        icon={<TrendingUp className="h-4 w-4" />}
-      />
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Total Agents</p>
+            <p className="text-2xl font-semibold">{totalAgents}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Total Costs</p>
+            <p className="text-2xl font-semibold">${totalCosts.toFixed(2)}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Total Minutes</p>
+            <p className="text-2xl font-semibold">{totalMinutes}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Total Viewers</p>
+            <p className="text-2xl font-semibold">{totalViewers}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Avg Session Duration</p>
+            <p className="text-2xl font-semibold">{averageSessionDuration.toFixed(1)} min</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Completion Rate</p>
+            <p className="text-2xl font-semibold">{(completionRate * 100).toFixed(1)}%</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Engagement Score</p>
+            <p className="text-2xl font-semibold">{averageEngagementScore.toFixed(1)}</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -16,7 +16,7 @@ export default async function NewScreenAgentPage() {
   const organizationId = "default-org" // TODO: Get from Better Auth active organization
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
       <CreationWizard organizationId={organizationId} />
     </div>
   )

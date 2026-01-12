@@ -43,9 +43,7 @@ export function EditForm({ agent }: EditFormProps) {
   const [name, setName] = useState(agent.name)
   const [description, setDescription] = useState(agent.description || "")
   const [targetWebsiteUrl, setTargetWebsiteUrl] = useState(agent.targetWebsiteUrl)
-  const [visibility, setVisibility] = useState<"private" | "team" | "organization" | "public">(
-    agent.visibility
-  )
+  // Visibility is implicit and not configurable - removed from UI
   const [provider, setProvider] = useState<"elevenlabs" | "openai" | "cartesia">(
     agent.voiceConfig.provider
   )
@@ -64,7 +62,7 @@ export function EditForm({ agent }: EditFormProps) {
         name,
         description: description || undefined,
         targetWebsiteUrl,
-        visibility,
+        // Visibility is implicit and not configurable
         voiceConfig: {
           provider,
           voiceId,
@@ -163,26 +161,7 @@ export function EditForm({ agent }: EditFormProps) {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="visibility">Visibility</Label>
-          <Select
-            value={visibility}
-            onValueChange={(value) =>
-              setVisibility(value as "private" | "team" | "organization" | "public")
-            }
-            disabled={isLoading}
-          >
-            <SelectTrigger id="visibility">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="private">Private (Only me)</SelectItem>
-              <SelectItem value="team">Team (Enterprise only)</SelectItem>
-              <SelectItem value="organization">Organization</SelectItem>
-              <SelectItem value="public">Public (Shareable link)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Visibility is implicit and not configurable - removed from UI */}
       </div>
 
       <div className="space-y-4 border-t pt-4">

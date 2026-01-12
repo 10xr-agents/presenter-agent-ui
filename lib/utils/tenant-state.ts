@@ -107,17 +107,46 @@ export async function getActiveOrganizationId(): Promise<string | null> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const authApi = auth.api as any
     
-    const activeOrgResult = await authApi.getActiveOrganization({
-      headers: await headers(),
-    })
+    // Try to get active organization using organization.getActive method
+    // If that doesn't work, try getActiveOrganization as fallback
+    let activeOrgResult
+    if (authApi.organization?.getActive) {
+      activeOrgResult = await authApi.organization.getActive({
+        headers: await headers(),
+      })
+    } else if (authApi.getActiveOrganization) {
+      activeOrgResult = await authApi.getActiveOrganization({
+        headers: await headers(),
+      })
+    } else {
+      // Fallback: get from session's activeOrganizationId
+      const session = await auth.api.getSession({ headers: await headers() })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((session as any)?.activeOrganizationId) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (session as any).activeOrganizationId
+      }
+      return null
+    }
 
-    if (activeOrgResult.data && activeOrgResult.data.id) {
+    if (activeOrgResult?.data && activeOrgResult.data.id) {
       return activeOrgResult.data.id
     }
 
     return null
   } catch (error: unknown) {
     console.error("Error getting active organization ID:", error)
+    // Fallback: try to get from session
+    try {
+      const session = await auth.api.getSession({ headers: await headers() })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((session as any)?.activeOrganizationId) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (session as any).activeOrganizationId
+      }
+    } catch {
+      // Ignore fallback errors
+    }
     return null
   }
 }

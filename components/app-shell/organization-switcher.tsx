@@ -35,8 +35,8 @@ export function OrganizationSwitcher() {
 
   if (isPending) {
     return (
-      <Button variant="outline" className="w-[200px] justify-start" disabled>
-        <Building2 className="mr-2 h-4 w-4" />
+      <Button variant="outline" className="h-8 justify-start px-2.5 text-sm" disabled>
+        <Building2 className="mr-2 h-3.5 w-3.5" />
         <span className="truncate">Loading...</span>
       </Button>
     )
@@ -45,16 +45,16 @@ export function OrganizationSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="w-[200px] justify-between">
+        <Button variant="outline" className="h-8 justify-between px-2.5 text-sm">
           <div className="flex items-center">
-            <Building2 className="mr-2 h-4 w-4" />
+            <Building2 className="mr-2 h-3.5 w-3.5" />
             <span className="truncate">{currentOrgName}</span>
           </div>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[200px]">
-        <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel className="text-xs font-medium">Organizations</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>
           <span className="text-sm text-muted-foreground">Organization switching coming soon</span>

@@ -1,10 +1,10 @@
 "use client"
 
-import { BarChart3, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { EmptyState } from "@/components/ui/empty-state"
+import { Card, CardContent } from "@/components/ui/card"
 import { DashboardSkeleton } from "@/components/ui/skeleton-loaders"
 import { ActivityFeed } from "./activity-feed"
 import { CostChart } from "./charts/cost-chart"
@@ -93,9 +93,10 @@ export function Dashboard({ organizationId }: DashboardProps) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive bg-destructive/10 p-4 text-destructive">
-        <p>Error: {error}</p>
-        <Button onClick={fetchData} className="mt-2" variant="outline">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+        <p className="text-sm font-medium text-destructive">Unable to load analytics</p>
+        <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        <Button onClick={fetchData} className="mt-3" variant="outline" size="sm">
           Retry
         </Button>
       </div>
@@ -103,7 +104,9 @@ export function Dashboard({ organizationId }: DashboardProps) {
   }
 
   if (!data) {
-    return <div>No data available</div>
+    return (
+      <div className="text-sm text-muted-foreground">No data available</div>
+    )
   }
 
   // Generate chart data (placeholder - would need actual time-series data from API)
@@ -121,20 +124,22 @@ export function Dashboard({ organizationId }: DashboardProps) {
 
   return (
     <div className="space-y-6">
+      {/* Time Selector - Resend style: compact */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
+        <TimeSelector selectedDays={selectedDays} onDaysChange={setSelectedDays} />
         <ExportButton data={data} format="json" />
       </div>
 
-      <TimeSelector selectedDays={selectedDays} onDaysChange={setSelectedDays} />
-
+      {/* Metrics - Resend style: subtle cards */}
       <DashboardMetrics {...data.metrics} />
 
+      {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
         <UsageChart data={usageChartData} />
         <CostChart data={costChartData} />
       </div>
 
+      {/* Tables */}
       <div className="grid gap-4 md:grid-cols-2">
         <TopAgentsTable agents={data.topAgents} />
         <ActivityFeed activities={data.recentActivity} />

@@ -1,35 +1,33 @@
 import { headers } from "next/headers"
-import { PageHeader } from "@/components/app-shell"
 import { Dashboard } from "@/components/analytics/dashboard"
 import { auth } from "@/lib/auth"
-import { spacing } from "@/lib/utils/design-system"
-
-// Type assertion for Better Auth API methods that may not be fully typed
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const authApi = auth.api as any
+import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 
 export default async function AnalyticsPage() {
-  // Session check is handled by layout
-  const headersList = await headers()
+  const session = await auth.api.getSession({ headers: await headers() })
+  
+  if (!session) {
+    return null
+  }
 
-  // Get active organization
-  const activeOrgResult = await authApi.getActiveOrganization({
-    headers: headersList,
-  })
+  const tenantState = await getTenantState(session.user.id)
 
-  const organizationId = activeOrgResult.data?.id || "default-org"
+  let organizationId: string | null = null
+  if (tenantState === "organization") {
+    organizationId = await getActiveOrganizationId()
+  }
+
+  const analyticsOrgId = organizationId || session.user.id
 
   return (
-    <div className={spacing.section}>
-      <PageHeader
-        title="Analytics"
-        description="Detailed analytics and insights for your Screen Agents"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Analytics" },
-        ]}
-      />
-      <Dashboard organizationId={organizationId} />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-lg font-semibold">Analytics</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Detailed analytics and insights for your Screen Agents
+        </p>
+      </div>
+      <Dashboard organizationId={analyticsOrgId} />
     </div>
   )
 }

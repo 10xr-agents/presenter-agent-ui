@@ -3,16 +3,26 @@
 import { useCallback, useState } from "react"
 import type { CreateScreenAgentData } from "@/lib/screen-agents/manager"
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6
+export type WizardStep = 1 | 2 | 3 | 4
 
 export interface WizardData {
-  // Step 1: Basic Information
+  // Step 1: Basic Agent Identity
   name?: string
   description?: string
-  targetWebsiteUrl?: string
-  visibility?: "private" | "team" | "organization" | "public"
   
-  // Step 2: Voice Configuration
+  // Step 2: Website Capture Setup
+  targetWebsiteUrl?: string
+  websiteCredentials?: {
+    username: string
+    password: string
+  }
+  loginNotes?: string
+  
+  // Step 3: Knowledge Sources (optional)
+  knowledgeDocumentIds?: string[]
+  domainRestrictions?: string[]
+  
+  // Step 4: Advanced Voice Configuration (optional)
   voiceConfig?: {
     provider: "elevenlabs" | "openai" | "cartesia"
     voiceId: string
@@ -21,27 +31,24 @@ export interface WizardData {
     pitch?: number
   }
   
-  // Step 3: Website Authentication
-  websiteCredentials?: {
-    username: string
-    password: string
-  }
-  
-  // Step 4: Knowledge Upload
-  knowledgeDocumentIds?: string[]
-  domainRestrictions?: string[]
-  
-  // Step 5: Agent Personality (optional)
+  // Optional advanced settings
   conversationConfig?: {
     personalityPrompt?: string
     welcomeMessage?: string
     fallbackResponse?: string
     guardrails?: string[]
   }
-  
-  // Step 6: Review & Publish
   sessionTimeoutMinutes?: number
   maxSessionDurationMinutes?: number
+}
+
+// Default voice configuration (applied automatically)
+const DEFAULT_VOICE_CONFIG = {
+  provider: "openai" as const,
+  voiceId: "alloy",
+  language: "en",
+  speechRate: 1.0,
+  pitch: 0,
 }
 
 export function useScreenAgentWizard() {
@@ -61,7 +68,7 @@ export function useScreenAgentWizard() {
   }, [])
 
   const nextStep = useCallback(() => {
-    if (currentStep < 6) {
+    if (currentStep < 4) {
       setCurrentStep((prev) => (prev + 1) as WizardStep)
       setError(null)
     }
@@ -74,24 +81,34 @@ export function useScreenAgentWizard() {
     }
   }, [currentStep])
 
-  const saveDraft = useCallback(async (organizationId: string) => {
+  const createAgent = useCallback(async (organizationId: string): Promise<string | null> => {
     setIsLoading(true)
     setError(null)
 
     try {
-      if (!data.name || !data.targetWebsiteUrl || !data.voiceConfig) {
-        throw new Error("Required fields are missing")
+      // Validate required fields
+      if (!data.name || !data.description || !data.targetWebsiteUrl) {
+        throw new Error("Name, description, and website URL are required")
       }
+      if (data.name.trim().length < 3) {
+        throw new Error("Name must be at least 3 characters")
+      }
+      if (data.description.trim().length < 20) {
+        throw new Error("Description must be at least 20 characters")
+      }
+
+      // Use provided voice config or defaults
+      const voiceConfig = data.voiceConfig || DEFAULT_VOICE_CONFIG
 
       const agentData: CreateScreenAgentData = {
         name: data.name,
         description: data.description,
         ownerId: "", // Will be set by API
         organizationId,
-        visibility: data.visibility || "private",
+        // Visibility is implicit and determined server-side
         targetWebsiteUrl: data.targetWebsiteUrl,
         websiteCredentials: data.websiteCredentials,
-        voiceConfig: data.voiceConfig,
+        voiceConfig,
         conversationConfig: data.conversationConfig,
         knowledgeDocumentIds: data.knowledgeDocumentIds || [],
         domainRestrictions: data.domainRestrictions,
@@ -107,44 +124,53 @@ export function useScreenAgentWizard() {
 
       if (!response.ok) {
         const errorData = (await response.json()) as { error?: string }
-        throw new Error(errorData.error || "Failed to save draft")
+        throw new Error(errorData.error || "Failed to create agent")
       }
 
       const result = (await response.json()) as { data?: { id?: string } }
       if (result.data?.id) {
         setAgentId(result.data.id)
+        return result.data.id
       }
+
+      throw new Error("Agent created but no ID returned")
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to save draft"
+      const message = error instanceof Error ? error.message : "Failed to create agent"
       setError(message)
-      throw error
+      return null
     } finally {
       setIsLoading(false)
     }
   }, [data])
 
+  const canCreate = useCallback((): boolean => {
+    // Can create after Step 2 (name, description, and URL are required)
+    return !!(
+      data.name &&
+      data.name.trim().length >= 3 &&
+      data.description &&
+      data.description.trim().length >= 20 &&
+      data.targetWebsiteUrl
+    )
+  }, [data])
+
   const isStepValid = useCallback((step: WizardStep): boolean => {
     switch (step) {
       case 1:
-        return !!(data.name && data.targetWebsiteUrl)
-      case 2:
         return !!(
-          data.voiceConfig?.provider &&
-          data.voiceConfig?.voiceId &&
-          data.voiceConfig?.language
+          data.name &&
+          data.name.trim().length >= 3 &&
+          data.description &&
+          data.description.trim().length >= 20
         )
+      case 2:
+        return !!(data.name && data.targetWebsiteUrl && data.description)
       case 3:
         // Optional step - always valid
         return true
       case 4:
         // Optional step - always valid
         return true
-      case 5:
-        // Optional step - always valid
-        return true
-      case 6:
-        // Review step - check all required fields
-        return !!(data.name && data.targetWebsiteUrl && data.voiceConfig)
       default:
         return false
     }
@@ -160,7 +186,8 @@ export function useScreenAgentWizard() {
     goToStep,
     nextStep,
     previousStep,
-    saveDraft,
+    createAgent,
+    canCreate,
     isStepValid,
   }
 }

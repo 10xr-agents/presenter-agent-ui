@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -66,7 +66,6 @@ export function AutoReloadSettings({
         throw new Error(errorData.error || "Failed to update auto-reload settings")
       }
 
-      // Refresh page to show updated settings
       router.refresh()
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to update settings"
@@ -77,99 +76,108 @@ export function AutoReloadSettings({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Auto-Reload Settings</CardTitle>
-        <CardDescription>
-          Automatically reload your account when balance drops below threshold
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="auto-reload-enabled">Enable Auto-Reload</Label>
+    <Card className="bg-muted/30">
+      <CardContent className="pt-6">
+        <div className="space-y-4">
+          {/* Header - Resend style: compact */}
+          <div>
+            <h3 className="text-sm font-semibold mb-0.5">Auto-Reload Settings</h3>
             <p className="text-xs text-muted-foreground">
-              Automatically charge your payment method when balance is low
+              Automatically reload your account when balance drops below threshold
             </p>
           </div>
-          <Switch
-            id="auto-reload-enabled"
-            checked={enabled}
-            onCheckedChange={setEnabled}
-            disabled={isLoading}
-          />
-        </div>
 
-        {enabled && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="threshold">
-                Threshold (USD) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="threshold"
-                type="number"
-                min="1"
-                step="0.01"
-                value={threshold}
-                onChange={(e) => setThreshold(e.target.value)}
-                placeholder="10.00"
-                disabled={isLoading}
-              />
-              <p className="text-xs text-muted-foreground">
-                Balance threshold to trigger auto-reload (default: $10)
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="amount">
-                Reload Amount (USD) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="amount"
-                type="number"
-                min="100"
-                step="1"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="100"
-                disabled={isLoading}
-              />
-              <p className="text-xs text-muted-foreground">
-                Amount to reload when threshold is reached (minimum: $100)
-              </p>
-            </div>
-
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Auto-reload requires a valid payment method. Make sure you have a payment method
-                configured before enabling this feature.
-              </AlertDescription>
+          {error && (
+            <Alert variant="destructive" className="py-2">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <AlertDescription className="text-xs">{error}</AlertDescription>
             </Alert>
-          </>
-        )}
+          )}
 
-        <Button onClick={handleSave} disabled={isLoading} className="w-full">
-          {isLoading ? (
+          {/* Enable Toggle - Resend style: compact */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="auto-reload-enabled" className="text-xs text-muted-foreground">
+                Enable Auto-Reload
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Automatically charge your payment method when balance is low
+              </p>
+            </div>
+            <Switch
+              id="auto-reload-enabled"
+              checked={enabled}
+              onCheckedChange={setEnabled}
+              disabled={isLoading}
+            />
+          </div>
+
+          {enabled && (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Save Settings
+              <div className="space-y-2">
+                <Label htmlFor="threshold" className="text-xs text-muted-foreground">
+                  Threshold (USD) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="threshold"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  placeholder="10.00"
+                  disabled={isLoading}
+                  className="h-9"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Balance threshold to trigger auto-reload (default: $10)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="amount" className="text-xs text-muted-foreground">
+                  Reload Amount (USD) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  min="100"
+                  step="1"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="100"
+                  disabled={isLoading}
+                  className="h-9"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Amount to reload when threshold is reached (minimum: $100)
+                </p>
+              </div>
+
+              <Alert className="py-2">
+                <AlertCircle className="h-3.5 w-3.5" />
+                <AlertDescription className="text-xs">
+                  Auto-reload requires a valid payment method. Make sure you have a payment method
+                  configured before enabling this feature.
+                </AlertDescription>
+              </Alert>
             </>
           )}
-        </Button>
+
+          <Button onClick={handleSave} disabled={isLoading} size="sm" className="w-full">
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-3.5 w-3.5" />
+                Save Settings
+              </>
+            )}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -30,7 +31,6 @@ export function PreferencesForm() {
   })
 
   useEffect(() => {
-    // Load preferences from API
     const loadPreferences = async () => {
       try {
         const response = await fetch("/api/user/preferences")
@@ -48,7 +48,6 @@ export function PreferencesForm() {
           }
         }
       } catch (err: unknown) {
-        // Silently fail - use defaults
         console.error("Error loading preferences:", err)
       }
     }
@@ -73,7 +72,6 @@ export function PreferencesForm() {
         throw new Error(data.error || "Failed to update preferences")
       }
 
-      // Update theme immediately
       setTheme(preferences.theme)
 
       toast.success("Preferences updated successfully")
@@ -88,110 +86,122 @@ export function PreferencesForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="theme">Theme</Label>
-          <Select
-            value={preferences.theme}
-            onValueChange={(value) =>
-              setPreferences({ ...preferences, theme: value })
-            }
-            disabled={loading}
-          >
-            <SelectTrigger id="theme">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="light">Light</SelectItem>
-              <SelectItem value="dark">Dark</SelectItem>
-              <SelectItem value="system">System</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Choose your preferred color theme
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="language">Language</Label>
-          <Select
-            value={preferences.language}
-            onValueChange={(value) =>
-              setPreferences({ ...preferences, language: value })
-            }
-            disabled={loading}
-          >
-            <SelectTrigger id="language">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="es">Spanish</SelectItem>
-              <SelectItem value="fr">French</SelectItem>
-              <SelectItem value="de">German</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Select your preferred language
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="emailNotifications">Email Notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Receive email notifications for important updates
-              </p>
-            </div>
-            <Switch
-              id="emailNotifications"
-              checked={preferences.emailNotifications}
-              onCheckedChange={(checked) =>
-                setPreferences({ ...preferences, emailNotifications: checked })
-              }
-              disabled={loading}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="inAppNotifications">In-App Notifications</Label>
-              <p className="text-sm text-muted-foreground">
-                Show notifications within the application
-              </p>
-            </div>
-            <Switch
-              id="inAppNotifications"
-              checked={preferences.inAppNotifications}
-              onCheckedChange={(checked) =>
-                setPreferences({ ...preferences, inAppNotifications: checked })
-              }
-              disabled={loading}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <Button type="submit" disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            "Save Preferences"
+    <Card className="bg-muted/30">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive" className="py-2">
+              <AlertDescription className="text-sm">{error}</AlertDescription>
+            </Alert>
           )}
-        </Button>
-      </div>
-    </form>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="theme" className="text-xs text-muted-foreground">
+                Theme
+              </Label>
+              <Select
+                value={preferences.theme}
+                onValueChange={(value) =>
+                  setPreferences({ ...preferences, theme: value })
+                }
+                disabled={loading}
+              >
+                <SelectTrigger id="theme" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose your preferred color theme
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="language" className="text-xs text-muted-foreground">
+                Language
+              </Label>
+              <Select
+                value={preferences.language}
+                onValueChange={(value) =>
+                  setPreferences({ ...preferences, language: value })
+                }
+                disabled={loading}
+              >
+                <SelectTrigger id="language" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="es">Spanish</SelectItem>
+                  <SelectItem value="fr">French</SelectItem>
+                  <SelectItem value="de">German</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select your preferred language
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="emailNotifications" className="text-xs text-muted-foreground">
+                    Email Notifications
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Receive email notifications for important updates
+                  </p>
+                </div>
+                <Switch
+                  id="emailNotifications"
+                  checked={preferences.emailNotifications}
+                  onCheckedChange={(checked) =>
+                    setPreferences({ ...preferences, emailNotifications: checked })
+                  }
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="inAppNotifications" className="text-xs text-muted-foreground">
+                    In-App Notifications
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Show notifications within the application
+                  </p>
+                </div>
+                <Switch
+                  id="inAppNotifications"
+                  checked={preferences.inAppNotifications}
+                  onCheckedChange={(checked) =>
+                    setPreferences({ ...preferences, inAppNotifications: checked })
+                  }
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={loading} size="sm">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save preferences"
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

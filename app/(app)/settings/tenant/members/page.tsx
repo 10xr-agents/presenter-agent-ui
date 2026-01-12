@@ -6,9 +6,6 @@ import { OrganizationMembersList } from "@/components/settings/organization/memb
 import { auth } from "@/lib/auth"
 import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 
-// Type assertion for Better Auth API methods that may not be fully typed
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const authApi = auth.api as any
 
 export default async function TenantMembersPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -38,15 +35,15 @@ export default async function TenantMembersPage() {
 
   if (tenantState === "organization") {
     try {
-      const activeOrgResult = await authApi.getActiveOrganization({
-        headers: headersList,
-      })
-      if (activeOrgResult.data) {
-        organizationId = activeOrgResult.data.id
+      const activeOrgId = await getActiveOrganizationId()
+      if (activeOrgId) {
+        organizationId = activeOrgId
 
         // Get full organization with members
-        const fullOrgResult = await authApi.getFullOrganization({
-          organizationId: activeOrgResult.data.id,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const authApi = auth.api as any
+        const fullOrgResult = await authApi.organization.getFullOrganization({
+          organizationId: activeOrgId,
           headers: headersList,
         })
         if (fullOrgResult.data?.members) {

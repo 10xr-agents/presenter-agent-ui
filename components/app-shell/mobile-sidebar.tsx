@@ -77,11 +77,11 @@ export function MobileSidebar({ tenantState = "normal" }: MobileSidebarProps) {
           <span className="sr-only">Toggle menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-64 p-0">
-        <SheetHeader className="border-b p-4">
-          <SheetTitle>Navigation</SheetTitle>
+      <SheetContent side="left" className="w-56 p-0">
+        <SheetHeader className="border-b p-3">
+          <SheetTitle className="text-sm font-semibold">Navigation</SheetTitle>
         </SheetHeader>
-        <nav className="flex flex-col gap-1 p-4">
+        <nav className="flex flex-col gap-0.5 p-3">
           {navigation.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const Icon = item.icon
@@ -92,10 +92,10 @@ export function MobileSidebar({ tenantState = "normal" }: MobileSidebarProps) {
                 href={item.href}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 )}
               >
                 <Icon className="h-4 w-4" />

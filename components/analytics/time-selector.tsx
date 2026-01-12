@@ -1,7 +1,6 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface TimeSelectorProps {
   selectedDays: number
@@ -17,23 +16,18 @@ export function TimeSelector({ selectedDays, onDaysChange }: TimeSelectorProps) 
   ]
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Time Period</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex gap-2">
-          {periods.map((period) => (
-            <Button
-              key={period.days}
-              variant={selectedDays === period.days ? "default" : "outline"}
-              onClick={() => onDaysChange(period.days)}
-            >
-              {period.label}
-            </Button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center gap-2">
+      {periods.map((period) => (
+        <Button
+          key={period.days}
+          variant={selectedDays === period.days ? "default" : "outline"}
+          size="sm"
+          onClick={() => onDaysChange(period.days)}
+          className="h-8"
+        >
+          {period.label}
+        </Button>
+      ))}
+    </div>
   )
 }

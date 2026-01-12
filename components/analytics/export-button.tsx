@@ -19,7 +19,6 @@ export function ExportButton({ data, format = "json" }: ExportButtonProps) {
     try {
       if (format === "csv") {
         // TODO: Implement CSV export
-        // For now, convert to JSON
         const jsonString = JSON.stringify(data, null, 2)
         const blob = new Blob([jsonString], { type: "application/json" })
         const url = URL.createObjectURL(blob)
@@ -32,7 +31,6 @@ export function ExportButton({ data, format = "json" }: ExportButtonProps) {
         URL.revokeObjectURL(url)
         toast.success("Data exported successfully")
       } else {
-        // JSON export
         const jsonString = JSON.stringify(data, null, 2)
         const blob = new Blob([jsonString], { type: "application/json" })
         const url = URL.createObjectURL(blob)
@@ -52,8 +50,8 @@ export function ExportButton({ data, format = "json" }: ExportButtonProps) {
   }
 
   return (
-    <Button onClick={handleExport} variant="outline">
-      <Download className="mr-2 h-4 w-4" />
+    <Button onClick={handleExport} variant="outline" size="sm">
+      <Download className="mr-2 h-3.5 w-3.5" />
       Export {format.toUpperCase()}
     </Button>
   )

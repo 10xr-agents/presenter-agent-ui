@@ -13,25 +13,25 @@ interface AppHeaderProps {
 
 export function AppHeader({ tenantState = "normal" }: AppHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-14 items-center justify-between px-4">
+    <header className="sticky top-0 z-50 w-full border-b bg-background">
+      <div className="flex h-12 items-center justify-between px-6">
         {/* Left side - Mobile menu and Logo */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <MobileSidebar tenantState={tenantState} />
           <Link href="/dashboard" className="flex items-center gap-2">
             <Image
               src="/logos/logo_7.svg"
               alt="Screen Agent Platform"
-              width={24}
-              height={24}
-              className="h-6 w-6"
+              width={20}
+              height={20}
+              className="h-5 w-5"
             />
-            <span className="hidden font-semibold sm:inline-block">Screen Agent</span>
+            <span className="hidden text-sm font-medium sm:inline-block">Screen Agent</span>
           </Link>
         </div>
 
         {/* Right side - Organization Switcher and User Menu */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Only show organization switcher in organization mode */}
           {tenantState === "organization" && (
             <div className="hidden md:block">

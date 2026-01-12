@@ -1,27 +1,22 @@
 "use client"
 
-import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { useScreenAgentWizard } from "@/hooks/use-screen-agent-wizard"
-import { BasicInfoStep } from "./steps/basic-info-step"
-import { KnowledgeUploadStep } from "./steps/knowledge-upload-step"
-import { PersonalityStep } from "./steps/personality-step"
-import { ReviewStep } from "./steps/review-step"
-import { VoiceConfigStep } from "./steps/voice-config-step"
-import { WebsiteAuthStep } from "./steps/website-auth-step"
+import { BasicIdentityStep } from "./steps/basic-identity-step"
+import { WebsiteCaptureStep } from "./steps/website-capture-step"
+import { KnowledgeSourcesStep } from "./steps/knowledge-sources-step"
+import { AdvancedVoiceStep } from "./steps/advanced-voice-step"
 
 interface CreationWizardProps {
   organizationId: string
 }
 
 const STEPS = [
-  { number: 1, title: "Basic Information", description: "Name and target website" },
-  { number: 2, title: "Voice Configuration", description: "Select voice and language" },
-  { number: 3, title: "Website Authentication", description: "Credentials (optional)" },
-  { number: 4, title: "Knowledge Upload", description: "Add context files (optional)" },
-  { number: 5, title: "Agent Personality", description: "Customize behavior (optional)" },
-  { number: 6, title: "Review & Create", description: "Review and publish" },
+  { number: 1, title: "Identity", description: "Name and description" },
+  { number: 2, title: "Website", description: "URL and credentials" },
+  { number: 3, title: "Knowledge", description: "Add context (optional)" },
+  { number: 4, title: "Voice", description: "Advanced (optional)" },
 ]
 
 export function CreationWizard({ organizationId }: CreationWizardProps) {
@@ -33,88 +28,83 @@ export function CreationWizard({ organizationId }: CreationWizardProps) {
     updateData,
     nextStep,
     previousStep,
-    saveDraft,
-    isStepValid,
+    createAgent,
+    canCreate,
   } = useScreenAgentWizard()
 
-  const progress = (currentStep / 6) * 100
+  const progress = (currentStep / STEPS.length) * 100
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-4">
       <div>
-        <h1 className="text-3xl font-bold">Create Screen Agent</h1>
-        <p className="text-muted-foreground mt-2">
-          Follow these steps to create your interactive screen presentation agent
+        <h1 className="text-2xl font-semibold tracking-tight">Create Screen Agent</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Create an AI agent that presents your website interactively.
         </p>
       </div>
 
-      <Progress value={progress} className="h-2" />
+      <Progress value={progress} className="h-1" />
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
         {STEPS.map((step) => (
           <div
             key={step.number}
-            className={`flex-1 min-w-[120px] text-center p-2 rounded ${
+            className={`flex-1 min-w-[100px] text-center px-2 py-1.5 rounded-md transition-colors text-xs ${
               step.number === currentStep
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground font-medium"
                 : step.number < currentStep
-                  ? "bg-muted"
-                  : "bg-background border"
+                  ? "bg-muted/50 text-muted-foreground"
+                  : "bg-background border text-muted-foreground"
             }`}
           >
-            <div className="font-semibold text-sm">{step.number}</div>
-            <div className="text-xs mt-1">{step.title}</div>
+            <div className="font-medium">{step.number}</div>
+            <div className="text-[10px] mt-0.5 leading-tight">{step.title}</div>
           </div>
         ))}
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{STEPS[currentStep - 1]?.title}</CardTitle>
-          <CardDescription>{STEPS[currentStep - 1]?.description}</CardDescription>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg font-semibold">{STEPS[currentStep - 1]?.title}</CardTitle>
+          <CardDescription className="text-xs">{STEPS[currentStep - 1]?.description}</CardDescription>
         </CardHeader>
         <CardContent>
           {currentStep === 1 && (
-            <BasicInfoStep data={data} onUpdate={updateData} onNext={nextStep} />
+            <BasicIdentityStep data={data} onUpdate={updateData} onNext={nextStep} />
           )}
           {currentStep === 2 && (
-            <VoiceConfigStep
+            <WebsiteCaptureStep
               data={data}
               onUpdate={updateData}
               onNext={nextStep}
               onPrevious={previousStep}
+              onCreate={createAgent}
+              organizationId={organizationId}
+              isLoading={isLoading}
+              error={error}
             />
           )}
           {currentStep === 3 && (
-            <WebsiteAuthStep
+            <KnowledgeSourcesStep
               data={data}
               onUpdate={updateData}
               onNext={nextStep}
               onPrevious={previousStep}
+              onCreate={createAgent}
+              organizationId={organizationId}
+              isLoading={isLoading}
+              error={error}
             />
           )}
           {currentStep === 4 && (
-            <KnowledgeUploadStep
+            <AdvancedVoiceStep
               data={data}
               onUpdate={updateData}
-              onNext={nextStep}
               onPrevious={previousStep}
-            />
-          )}
-          {currentStep === 5 && (
-            <PersonalityStep
-              data={data}
-              onUpdate={updateData}
-              onNext={nextStep}
-              onPrevious={previousStep}
-            />
-          )}
-          {currentStep === 6 && (
-            <ReviewStep
-              data={data}
+              onCreate={createAgent}
               organizationId={organizationId}
-              onPrevious={previousStep}
-              onSaveDraft={saveDraft}
+              isLoading={isLoading}
+              error={error}
             />
           )}
         </CardContent>

@@ -1,12 +1,11 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
-import { ApiKeysList } from "@/components/settings/api-keys/api-keys-list"
+import { TenantGeneralForm } from "@/components/settings/tenant/tenant-general-form"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
-export default async function ApiKeysSettingsPage() {
+export default async function SettingsGeneralPage() {
   const session = await auth.api.getSession({ headers: await headers() })
 
   if (!session) {
@@ -17,17 +16,14 @@ export default async function ApiKeysSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="API Keys"
-        description="Manage your API keys for programmatic access"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "API Keys" },
-        ]}
-      />
+      <div>
+        <h1 className="text-lg font-semibold">Settings</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Manage your tenant settings and configuration
+        </p>
+      </div>
       <SettingsLayout tenantState={tenantState}>
-        <ApiKeysList />
+        <TenantGeneralForm />
       </SettingsLayout>
     </div>
   )

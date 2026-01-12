@@ -1,8 +1,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
-import { ProfileForm } from "@/components/settings/profile/profile-form"
+import { UsageSettings } from "@/components/settings/usage-settings"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
@@ -17,16 +16,14 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Settings"
-        description="Manage your account settings and preferences"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings" },
-        ]}
-      />
+      <div>
+        <h1 className="text-lg font-semibold">Settings</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Manage your tenant settings and configuration
+        </p>
+      </div>
       <SettingsLayout tenantState={tenantState}>
-        <ProfileForm />
+        <UsageSettings tenantState={tenantState} />
       </SettingsLayout>
     </div>
   )
