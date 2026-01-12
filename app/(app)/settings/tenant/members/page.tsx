@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { OrganizationMembersList } from "@/components/settings/organization/member-list"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
@@ -72,16 +71,7 @@ export default async function TenantMembersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Members"
-        description="Manage tenant members and their roles"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Members" },
-        ]}
-      />
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
         <OrganizationMembersList organizationId={organizationId} initialMembers={initialMembers} />
       </SettingsLayout>

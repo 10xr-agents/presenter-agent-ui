@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { TenantGeneralForm } from "@/components/settings/tenant/tenant-general-form"
 import { auth } from "@/lib/auth"
@@ -16,16 +15,13 @@ export default async function TenantGeneralPage() {
   const tenantState = await getTenantState(session.user.id)
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="General Settings"
-        description="Manage tenant information and settings"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "General" },
-        ]}
-      />
+    <div className="py-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold">General Settings</h1>
+        <p className="mt-0.5 text-sm text-foreground">
+          Manage tenant information and settings
+        </p>
+      </div>
       <SettingsLayout tenantState={tenantState}>
         <TenantGeneralForm />
       </SettingsLayout>

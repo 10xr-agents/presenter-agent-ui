@@ -2,12 +2,11 @@ import { Plus } from "lucide-react"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { ScreenAgentList } from "@/components/screen-agents/screen-agent-list"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
 import { listScreenAgents } from "@/lib/screen-agents/manager"
-import { spacing } from "@/lib/utils/design-system"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function ScreenAgentsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -16,13 +15,19 @@ export default async function ScreenAgentsPage() {
     redirect("/login")
   }
 
-  // Get initial agents (limit to 50 for now)
-  // In production, this would come from Better Auth active organization context
-  const organizationId = "default-org" // TODO: Get from Better Auth active organization
+  // Get tenant state and organization ID
+  const tenantState = await getTenantState(session.user.id)
+  let organizationId: string | null = null
+  if (tenantState === "organization") {
+    organizationId = await getActiveOrganizationId()
+  }
+
+  // In normal mode, use user ID; in organization mode, use organization ID
+  const agentsOrgId = tenantState === "normal" ? session.user.id : (organizationId || session.user.id)
 
   const agents = await listScreenAgents({
-    organizationId,
-    ownerId: organizationId ? undefined : session.user.id,
+    organizationId: agentsOrgId,
+    ownerId: tenantState === "normal" ? session.user.id : undefined,
     limit: 50,
     offset: 0,
   })
@@ -43,24 +48,22 @@ export default async function ScreenAgentsPage() {
   }))
 
   return (
-    <div className={spacing.section}>
-      <PageHeader
-        title="Screen Agents"
-        description="Manage your interactive screen presentation agents"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Screen Agents" },
-        ]}
-        actions={
-          <Button asChild>
-            <Link href="/screen-agents/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Agent
-            </Link>
-          </Button>
-        }
-      />
-      <ScreenAgentList initialAgents={initialAgents} organizationId={organizationId} />
+    <div className="py-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold">Screen Agents</h1>
+          <p className="mt-0.5 text-sm text-foreground">
+            Manage your interactive screen presentation agents
+          </p>
+        </div>
+        <Button asChild size="sm">
+          <Link href="/screen-agents/new">
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            Create Agent
+          </Link>
+        </Button>
+      </div>
+      <ScreenAgentList initialAgents={initialAgents} organizationId={agentsOrgId} />
     </div>
   )
 }

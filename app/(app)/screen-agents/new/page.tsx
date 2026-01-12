@@ -2,6 +2,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { CreationWizard } from "@/components/screen-agents/creation-wizard"
 import { auth } from "@/lib/auth"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function NewScreenAgentPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -10,14 +11,19 @@ export default async function NewScreenAgentPage() {
     redirect("/login")
   }
 
-  // Get organization ID from session or query parameter
-  // In production, this would come from Better Auth active organization context
-  // For now, we'll require it as a query parameter or use a default
-  const organizationId = "default-org" // TODO: Get from Better Auth active organization
+  // Get tenant state and organization ID
+  const tenantState = await getTenantState(session.user.id)
+  let organizationId: string | null = null
+  if (tenantState === "organization") {
+    organizationId = await getActiveOrganizationId()
+  }
+
+  // In normal mode, use user ID; in organization mode, use organization ID
+  const agentsOrgId = tenantState === "normal" ? session.user.id : (organizationId || session.user.id)
 
   return (
-    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
-      <CreationWizard organizationId={organizationId} />
+    <div className="py-6">
+      <CreationWizard organizationId={agentsOrgId} />
     </div>
   )
 }

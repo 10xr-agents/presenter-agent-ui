@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
 import { signUp } from "@/lib/auth/client"
 
 export function RegisterForm() {
@@ -141,10 +142,9 @@ export function RegisterForm() {
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground z-10" />
+          <PasswordInput
             id="password"
-            type="password"
             placeholder="Create a password (min. 8 characters)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -159,10 +159,9 @@ export function RegisterForm() {
       <div className="space-y-2">
         <Label htmlFor="confirmPassword">Confirm Password</Label>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground z-10" />
+          <PasswordInput
             id="confirmPassword"
-            type="password"
             placeholder="Confirm your password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}

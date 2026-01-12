@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { OrgGeneralForm } from "@/components/settings/organization/org-general-form"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
@@ -21,16 +20,13 @@ export default async function OrganizationSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Organization Features"
-        description="Manage organization-specific features and settings"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Organization" },
-        ]}
-      />
+    <div className="py-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold">Organization Features</h1>
+        <p className="mt-0.5 text-sm text-foreground">
+          Manage organization-specific features and settings
+        </p>
+      </div>
       <SettingsLayout tenantState={tenantState}>
         <OrgGeneralForm />
       </SettingsLayout>

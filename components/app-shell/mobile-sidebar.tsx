@@ -98,14 +98,14 @@ export function MobileSidebar({ tenantState = "normal" }: MobileSidebarProps) {
                 href={item.href}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                  "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                   isActive
                     ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    : "text-foreground hover:bg-accent hover:text-foreground"
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {item.name}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="leading-snug">{item.name}</span>
               </Link>
             )
           })}

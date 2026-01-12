@@ -2,10 +2,8 @@ import { ArrowRight } from "lucide-react"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
@@ -24,35 +22,21 @@ export default async function OrganizationBillingPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Billing Settings"
-        description="Manage payment methods, invoices, and billing preferences"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Organization", href: "/settings/organization" },
-          { label: "Billing" },
-        ]}
-      />
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Billing Management</CardTitle>
-            <CardDescription>
-              Manage your organization's billing, payment methods, and invoices in the billing
-              section.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link href="/billing">
-                Go to Billing
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="border rounded-lg p-4">
+          <h3 className="text-sm font-semibold mb-0.5">Billing Management</h3>
+          <p className="text-xs text-foreground mb-3">
+            Manage your organization's billing, payment methods, and invoices in the billing
+            section.
+          </p>
+          <Button asChild size="sm">
+            <Link href="/billing">
+              Go to Billing
+              <ArrowRight className="ml-2 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
       </SettingsLayout>
     </div>
   )

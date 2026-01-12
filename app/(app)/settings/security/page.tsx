@@ -3,7 +3,6 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent } from "@/components/ui/card"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
@@ -21,70 +20,46 @@ export default async function SettingsSecurityPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Manage your tenant settings and configuration
-        </p>
-      </div>
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Alert className="py-2">
-            <Shield className="h-4 w-4" />
-            <AlertDescription className="text-sm">
+            <Shield className="h-3.5 w-3.5" />
+            <AlertDescription className="text-xs">
               Security settings are available for Enterprise organizations. Upgrade to Enterprise to
               access SSO, domain allowlisting, and advanced security features.
             </AlertDescription>
           </Alert>
 
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold mb-1">Domain Allowlist</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Restrict access to your organization to specific email domains (Enterprise only)
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  This feature is available for Enterprise organizations. Contact support to upgrade.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-0.5">Domain Allowlist</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Restrict access to your organization to specific email domains (Enterprise only)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This feature is available for Enterprise organizations. Contact support to upgrade.
+            </p>
+          </div>
 
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold mb-1">Single Sign-On (SSO)</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Configure SSO authentication for your organization (Enterprise only)
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  This feature is available for Enterprise organizations. Contact support to upgrade.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-0.5">Single Sign-On (SSO)</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Configure SSO authentication for your organization (Enterprise only)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This feature is available for Enterprise organizations. Contact support to upgrade.
+            </p>
+          </div>
 
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold mb-1">Audit Logs</h3>
-                  <p className="text-xs text-muted-foreground">
-                    View audit logs for organization-level actions and changes
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Audit logs are available for Enterprise organizations. Contact support to upgrade.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-0.5">Audit Logs</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              View audit logs for organization-level actions and changes
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Audit logs are available for Enterprise organizations. Contact support to upgrade.
+            </p>
+          </div>
         </div>
       </SettingsLayout>
     </div>

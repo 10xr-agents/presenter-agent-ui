@@ -1,10 +1,8 @@
 import { Shield } from "lucide-react"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
@@ -23,68 +21,46 @@ export default async function OrganizationSecurityPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Security Settings"
-        description="Manage security and access settings for your organization"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Organization", href: "/settings/organization" },
-          { label: "Security" },
-        ]}
-      />
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
-        <div className="space-y-6">
-          <Alert>
-            <Shield className="h-4 w-4" />
-            <AlertDescription>
+        <div className="space-y-4">
+          <Alert className="py-2">
+            <Shield className="h-3.5 w-3.5" />
+            <AlertDescription className="text-xs">
               Security settings are available for Enterprise organizations. Upgrade to Enterprise to
               access SSO, domain allowlisting, and advanced security features.
             </AlertDescription>
           </Alert>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Domain Allowlist</CardTitle>
-              <CardDescription>
-                Restrict access to your organization to specific email domains (Enterprise only)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This feature is available for Enterprise organizations. Contact support to upgrade.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-0.5">Domain Allowlist</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Restrict access to your organization to specific email domains (Enterprise only)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This feature is available for Enterprise organizations. Contact support to upgrade.
+            </p>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Single Sign-On (SSO)</CardTitle>
-              <CardDescription>
-                Configure SSO authentication for your organization (Enterprise only)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                This feature is available for Enterprise organizations. Contact support to upgrade.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-0.5">Single Sign-On (SSO)</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Configure SSO authentication for your organization (Enterprise only)
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This feature is available for Enterprise organizations. Contact support to upgrade.
+            </p>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Audit Logs</CardTitle>
-              <CardDescription>
-                View audit logs for organization-level actions and changes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Audit logs are available for Enterprise organizations. Contact support to upgrade.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="border rounded-lg p-4">
+            <h3 className="text-sm font-semibold mb-0.5">Audit Logs</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              View audit logs for organization-level actions and changes
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Audit logs are available for Enterprise organizations. Contact support to upgrade.
+            </p>
+          </div>
         </div>
       </SettingsLayout>
     </div>

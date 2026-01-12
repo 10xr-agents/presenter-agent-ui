@@ -49,7 +49,7 @@ export default async function ScreenAgentDetailPage({
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="py-6">
       <ScreenAgentDetail agent={agentData} />
     </div>
   )

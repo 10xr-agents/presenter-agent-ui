@@ -1,12 +1,11 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, ExternalLink, Globe, Loader2, RefreshCw, Trash2 } from "lucide-react"
+import { AlertCircle, ExternalLink, Globe, Loader2, RefreshCw, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +17,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
+import { KnowledgeSyncActivity } from "@/components/knowledge/knowledge-sync-activity"
+import { KnowledgeConfiguration } from "@/components/knowledge/knowledge-configuration"
 import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
 import { cn } from "@/lib/utils"
 
@@ -49,6 +59,16 @@ interface WebsiteKnowledge {
   lastReferencedAt?: string
   startedAt?: string
   completedAt?: string
+  syncHistory?: Array<{
+    jobId: string
+    status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+    triggerType: "initial" | "resync"
+    startedAt: string | Date
+    completedAt?: string | Date
+    pagesProcessed?: number
+    linksProcessed?: number
+    errorCount?: number
+  }>
   createdAt: string
   updatedAt: string
 }
@@ -98,40 +118,43 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
   const [isDeleting, setIsDeleting] = useState(false)
   const [isResyncing, setIsResyncing] = useState(false)
 
-  const fetchResults = async () => {
-    if (!knowledge.explorationJobId || knowledge.status !== "completed") {
-      return
-    }
+  const handleRefresh = useCallback(() => {
+    router.refresh()
+  }, [router])
 
-    setIsLoadingResults(true)
-    setError(null)
-    try {
-      const response = await fetch(`/api/website-knowledge/${knowledge.id}/results`)
-      if (!response.ok) {
-        throw new Error("Failed to fetch results")
-      }
-
-      const data = (await response.json()) as { data?: ExplorationResults }
-      if (data.data) {
-        setResults(data.data)
-        // Update knowledge with website metadata if available
-        if (data.data.website_metadata) {
-          // Metadata is already in results, no need to update knowledge object
-        }
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load results"
-      setError(errorMessage)
-    } finally {
-      setIsLoadingResults(false)
-    }
-  }
+  const handleConfigUpdate = useCallback(() => {
+    router.refresh()
+  }, [router])
 
   useEffect(() => {
-    if (knowledge.status === "completed") {
+    // Only fetch results if status is completed and we have a job ID
+    if (knowledge.status === "completed" && knowledge.explorationJobId) {
+      const fetchResults = async () => {
+        setIsLoadingResults(true)
+        setError(null)
+        try {
+          const response = await fetch(`/api/website-knowledge/${knowledge.id}/results`)
+          if (!response.ok) {
+            throw new Error("Failed to fetch results")
+          }
+
+          const data = (await response.json()) as { data?: ExplorationResults }
+          if (data.data) {
+            setResults(data.data)
+          }
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : "Failed to load results"
+          setError(errorMessage)
+        } finally {
+          setIsLoadingResults(false)
+        }
+      }
+
       fetchResults()
     }
-  }, [knowledge.id, knowledge.status])
+    // Only depend on the actual values we care about, not the entire knowledge object
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [knowledge.id, knowledge.status, knowledge.explorationJobId])
 
   const handleDelete = async () => {
     setIsDeleting(true)
@@ -155,18 +178,9 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
   const handleResync = async () => {
     setIsResyncing(true)
     try {
-      const response = await fetch("/api/website-knowledge", {
+      const response = await fetch(`/api/website-knowledge/${knowledge.id}/resync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          websiteUrl: knowledge.websiteUrl,
-          organizationId,
-          maxPages: knowledge.maxPages || 50,
-          maxDepth: knowledge.maxDepth || 3,
-          strategy: knowledge.strategy || "BFS",
-          includePaths: knowledge.includePaths && knowledge.includePaths.length > 0 ? knowledge.includePaths : undefined,
-          excludePaths: knowledge.excludePaths && knowledge.excludePaths.length > 0 ? knowledge.excludePaths : undefined,
-        }),
       })
 
       if (!response.ok) {
@@ -174,11 +188,8 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
         throw new Error(errorData.error || "Failed to re-sync knowledge")
       }
 
-      const result = (await response.json()) as { data?: { id: string } }
-      if (result.data?.id) {
-        router.push(`/knowledge/${result.data.id}`)
-        router.refresh()
-      }
+      // Refresh the page to show updated status and sync history
+      router.refresh()
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to re-sync knowledge"
       setError(errorMessage)
@@ -187,340 +198,396 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
     }
   }
 
-  const getStatusBadge = () => {
-    switch (knowledge.status) {
-      case "completed":
-        return (
-          <Badge variant="outline" className="border-green-600 text-green-600">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            Completed
-          </Badge>
-        )
-      case "exploring":
-      case "pending":
-        return (
-          <Badge variant="outline" className="border-primary text-primary">
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-            {knowledge.status === "exploring" ? "Exploring" : "Queued"}
-          </Badge>
-        )
-      case "failed":
-        return (
-          <Badge variant="outline" className="border-destructive text-destructive">
-            <AlertCircle className="mr-1 h-3 w-3" />
-            Failed
-          </Badge>
-        )
-      default:
-        return null
-    }
-  }
 
   return (
     <div className="space-y-6">
-      {/* Status Card */}
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  <a
-                    href={knowledge.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1"
-                  >
-                    {knowledge.websiteUrl}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-                {results?.website_metadata?.title && (
-                  <p className="text-xs font-medium">{results.website_metadata.title}</p>
-                )}
-                {results?.website_metadata?.description && (
-                  <p className="text-xs text-muted-foreground">{results.website_metadata.description}</p>
-                )}
-                {knowledge.description && !results?.website_metadata?.description && (
-                  <p className="text-xs text-muted-foreground">{knowledge.description}</p>
-                )}
-              </div>
-              {getStatusBadge()}
-            </div>
+      {/* Primary Actions Header */}
+      <div className="flex items-center justify-end gap-2 pb-4 border-b">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleResync}
+          disabled={isResyncing || ["pending", "exploring"].includes(knowledge.status)}
+          className="h-8 text-xs"
+        >
+          {isResyncing ? (
+            <>
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              Syncing...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Re-sync
+            </>
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setDeleteDialogOpen(true)}
+          className="h-8 text-xs text-destructive hover:text-destructive"
+        >
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          Delete
+        </Button>
+      </div>
 
-            {/* Progress for in-progress items */}
-            {["pending", "exploring"].includes(knowledge.status) && knowledge.explorationJobId && (
+      {/* Main Content Tabs */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="h-9 bg-transparent p-0 border-b">
+          <TabsTrigger 
+            value="overview" 
+            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger 
+            value="configuration" 
+            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            Configuration
+          </TabsTrigger>
+          <TabsTrigger 
+            value="contents" 
+            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            Contents
+          </TabsTrigger>
+          <TabsTrigger 
+            value="history" 
+            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            Activity
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6 mt-6">
+          {/* Source Information */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Globe className="h-3.5 w-3.5 text-foreground opacity-60 shrink-0" />
+              <a
+                href={knowledge.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1.5 flex-1 min-w-0"
+              >
+                <span className="truncate">{knowledge.websiteUrl}</span>
+                <ExternalLink className="h-3 w-3 shrink-0" />
+              </a>
+            </div>
+            {results?.website_metadata?.title && (
+              <p className="text-sm font-medium">{results.website_metadata.title}</p>
+            )}
+            {results?.website_metadata?.description && (
+              <p className="text-xs text-foreground opacity-85">{results.website_metadata.description}</p>
+            )}
+            {knowledge.description && !results?.website_metadata?.description && (
+              <p className="text-xs text-foreground opacity-85">{knowledge.description}</p>
+            )}
+          </div>
+
+          {/* Progress for in-progress items */}
+          {["pending", "exploring"].includes(knowledge.status) && knowledge.explorationJobId && (
+            <div className="pt-4 border-t">
               <WebsiteKnowledgeProgress
                 knowledgeId={knowledge.id}
-                onComplete={() => {
-                  router.refresh()
-                }}
+                onComplete={handleRefresh}
               />
-            )}
-
-            {/* Stats for completed items */}
-            {knowledge.status === "completed" && (
-              <div className="grid grid-cols-3 gap-4 pt-2 border-t">
-                <div>
-                  <div className="text-2xl font-semibold">{knowledge.pagesStored || 0}</div>
-                  <div className="text-xs text-muted-foreground">Pages</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-semibold">{knowledge.linksStored || 0}</div>
-                  <div className="text-xs text-muted-foreground">Links</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-semibold">{knowledge.externalLinksDetected || 0}</div>
-                  <div className="text-xs text-muted-foreground">External Links</div>
-                </div>
-              </div>
-            )}
-
-            {/* Metadata */}
-            <div className="space-y-2 pt-2 border-t">
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span>
-                  Strategy: <span className="font-medium">{knowledge.strategy || "BFS"}</span>
-                </span>
-                {knowledge.maxPages && (
-                  <span>
-                    Max Pages: <span className="font-medium">{knowledge.maxPages}</span>
-                  </span>
-                )}
-                {knowledge.maxDepth && (
-                  <span>
-                    Max Depth: <span className="font-medium">{knowledge.maxDepth}</span>
-                  </span>
-                )}
-              </div>
-              {(knowledge.includePaths && knowledge.includePaths.length > 0) ||
-              (knowledge.excludePaths && knowledge.excludePaths.length > 0) ? (
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  {knowledge.includePaths && knowledge.includePaths.length > 0 && (
-                    <div>
-                      <span className="font-medium">Include:</span> {knowledge.includePaths.join(", ")}
-                    </div>
-                  )}
-                  {knowledge.excludePaths && knowledge.excludePaths.length > 0 && (
-                    <div>
-                      <span className="font-medium">Exclude:</span> {knowledge.excludePaths.join(", ")}
-                    </div>
-                  )}
-                </div>
-              ) : null}
             </div>
+          )}
 
-            {/* Timestamps */}
-            <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-              {knowledge.completedAt && (
-                <span>
-                  Completed: {new Date(knowledge.completedAt).toLocaleString()}
-                </span>
-              )}
-              {knowledge.startedAt && (
-                <span>
-                  Started: {new Date(knowledge.startedAt).toLocaleString()}
-                </span>
-              )}
-              <span>
-                Created: {new Date(knowledge.createdAt).toLocaleString()}
-              </span>
+          {/* Stats for completed items */}
+          {knowledge.status === "completed" && (
+            <div className="grid grid-cols-3 gap-6 pt-4 border-t">
+              <div>
+                <div className="text-2xl font-semibold">{knowledge.pagesStored || 0}</div>
+                <div className="text-xs text-foreground opacity-85 mt-0.5">Pages</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold">{knowledge.linksStored || 0}</div>
+                <div className="text-xs text-foreground opacity-85 mt-0.5">Links</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold">{knowledge.externalLinksDetected || 0}</div>
+                <div className="text-xs text-foreground opacity-85 mt-0.5">External Links</div>
+              </div>
             </div>
+          )}
 
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-2 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResync}
-                disabled={isResyncing || ["pending", "exploring"].includes(knowledge.status)}
-                className="h-8 text-xs"
+          {/* Quick Info */}
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-foreground opacity-60">Configuration</span>
+              <a
+                href="#configuration"
+                onClick={(e) => {
+                  e.preventDefault()
+                  const configTab = document.querySelector('[value="configuration"]') as HTMLElement
+                  configTab?.click()
+                }}
+                className="text-primary hover:underline font-medium"
               >
-                {isResyncing ? (
-                  <>
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-1 h-3 w-3" />
-                    Re-sync
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteDialogOpen(true)}
-                className="h-8 text-xs text-destructive hover:text-destructive"
-              >
-                <Trash2 className="mr-1 h-3 w-3" />
-                Delete
-              </Button>
+                View full configuration →
+              </a>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {/* Exploration Results */}
-      {knowledge.status === "completed" && (
-        <Tabs defaultValue="pages" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="pages">Pages ({knowledge.pagesStored || 0})</TabsTrigger>
-            <TabsTrigger value="links">Links ({knowledge.linksStored || 0})</TabsTrigger>
-            {knowledge.explorationErrors && knowledge.explorationErrors.length > 0 && (
-              <TabsTrigger value="errors">
-                Errors ({knowledge.explorationErrors.length})
-              </TabsTrigger>
-            )}
-          </TabsList>
+        {/* Configuration Tab */}
+        <TabsContent value="configuration" className="space-y-6 mt-6">
+          <KnowledgeConfiguration
+            knowledge={{
+              ...knowledge,
+              organizationId,
+            }}
+            onUpdate={handleConfigUpdate}
+          />
+        </TabsContent>
 
-          <TabsContent value="pages" className="space-y-4">
+        {/* Contents Tab */}
+        <TabsContent value="contents" className="space-y-6 mt-6">
+          {knowledge.status === "completed" ? (
+            <div className="space-y-4">
+              {/* Contents Summary */}
+              <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                <div className="text-xs font-semibold">Summary</div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-foreground opacity-60">Pages indexed:</span>{" "}
+                    <span className="font-medium">{knowledge.pagesStored || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-foreground opacity-60">Links discovered:</span>{" "}
+                    <span className="font-medium">{knowledge.linksStored || 0}</span>
+                  </div>
+                  {knowledge.externalLinksDetected !== undefined && (
+                    <div>
+                      <span className="text-foreground opacity-60">External links:</span>{" "}
+                      <span className="font-medium">{knowledge.externalLinksDetected}</span>
+                    </div>
+                  )}
+                  {knowledge.completedAt && (
+                    <div>
+                      <span className="text-foreground opacity-60">Last updated:</span>{" "}
+                      <span className="font-medium">
+                        {new Date(knowledge.completedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="pt-2 border-t">
+                  <div className="text-xs text-foreground opacity-85">
+                    This Knowledge is indexed and searchable by your agents.
+                  </div>
+                </div>
+              </div>
+
+              <Tabs defaultValue="pages" className="space-y-3">
+              <TabsList className="h-9">
+                <TabsTrigger value="pages" className="text-xs">Pages</TabsTrigger>
+                <TabsTrigger value="links" className="text-xs">Links</TabsTrigger>
+                {knowledge.explorationErrors && knowledge.explorationErrors.length > 0 && (
+                  <TabsTrigger value="errors" className="text-xs">
+                    Errors ({knowledge.explorationErrors.length})
+                  </TabsTrigger>
+                )}
+              </TabsList>
+
+              <TabsContent value="pages" className="space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-foreground opacity-60">
+                {knowledge.pagesStored || 0} {knowledge.pagesStored === 1 ? "page" : "pages"} indexed
+              </span>
+            </div>
             {isLoadingResults ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
-                  <Card key={i} className="bg-muted/30">
-                    <CardContent className="pt-6">
-                      <Skeleton className="h-4 w-3/4 mb-2" />
-                      <Skeleton className="h-3 w-full" />
-                    </CardContent>
-                  </Card>
+                  <div key={i} className="border rounded-lg p-3">
+                    <Skeleton className="h-4 w-3/4 mb-2" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
                 ))}
               </div>
             ) : results?.pages && results.pages.length > 0 ? (
-              <div className="space-y-2">
-                {results.pages.map((page, index) => (
-                  <Card key={index} className="bg-muted/30">
-                    <CardContent className="pt-6">
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-9 text-xs font-semibold">Page</TableHead>
+                      <TableHead className="h-9 text-xs font-semibold">URL</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {results.pages.map((page, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="py-2">
                           <a
                             href={page.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1 flex-1 min-w-0"
+                            className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1"
                           >
-                            <span className="truncate">{page.title || page.url}</span>
+                            <span>{page.title || page.url}</span>
                             <ExternalLink className="h-3 w-3 shrink-0" />
                           </a>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">{page.url}</p>
-                        {page.content && (
-                          <p className="text-xs text-muted-foreground line-clamp-3">
-                            {page.content.substring(0, 200)}...
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <p className="text-xs text-foreground opacity-85 truncate max-w-md">
+                            {page.url}
                           </p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             ) : (
-              <Card className="bg-muted/30">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No pages available
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="border rounded-lg p-8 text-center">
+                <p className="text-xs text-foreground opacity-85">
+                  No pages available
+                </p>
+              </div>
             )}
           </TabsContent>
 
-          <TabsContent value="links" className="space-y-4">
+          <TabsContent value="links" className="space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-foreground opacity-60">
+                {knowledge.linksStored || 0} {knowledge.linksStored === 1 ? "link" : "links"} discovered
+              </span>
+            </div>
             {isLoadingResults ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
+                  <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
             ) : results?.links && results.links.length > 0 ? (
-              <div className="space-y-2">
-                {results.links.slice(0, 100).map((link, index) => (
-                  <Card key={index} className="bg-muted/30">
-                    <CardContent className="pt-6">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground truncate flex-1">{link.from}</span>
-                        <span className="text-muted-foreground">→</span>
-                        <a
-                          href={link.to}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline truncate flex-1 flex items-center gap-1"
-                        >
-                          {link.to}
-                          <ExternalLink className="h-3 w-3 shrink-0" />
-                        </a>
-                        <Badge variant="outline" className="shrink-0">
-                          {link.type}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-9 text-xs font-semibold">From</TableHead>
+                      <TableHead className="h-9 text-xs font-semibold">To</TableHead>
+                      <TableHead className="h-9 text-xs font-semibold">Type</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {results.links.slice(0, 100).map((link, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="py-2">
+                          <p className="text-xs text-foreground opacity-85 truncate max-w-md">
+                            {link.from}
+                          </p>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <a
+                            href={link.to}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                          >
+                            <span className="truncate max-w-md">{link.to}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Badge variant="outline" className="text-xs">
+                            {link.type}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
                 {results.links.length > 100 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">
-                    Showing first 100 of {results.links.length} links
-                  </p>
+                  <div className="border-t p-2 text-center">
+                    <p className="text-xs text-foreground opacity-85">
+                      Showing first 100 of {results.links.length} links
+                    </p>
+                  </div>
                 )}
               </div>
             ) : (
-              <Card className="bg-muted/30">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No links available
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="border rounded-lg p-8 text-center">
+                <p className="text-xs text-foreground opacity-85">
+                  No links available
+                </p>
+              </div>
             )}
           </TabsContent>
 
-          {knowledge.explorationErrors && knowledge.explorationErrors.length > 0 && (
-            <TabsContent value="errors" className="space-y-4">
-              <div className="space-y-2">
-                {knowledge.explorationErrors.map((error, index) => {
-                  const getErrorTypeBadge = () => {
-                    if (!error.error_type) return null
-                    const colors: Record<string, string> = {
-                      network: "border-blue-600 text-blue-600",
-                      timeout: "border-yellow-600 text-yellow-600",
-                      http_4xx: "border-orange-600 text-orange-600",
-                      http_5xx: "border-red-600 text-red-600",
-                      parsing: "border-purple-600 text-purple-600",
-                      other: "border-muted-foreground text-muted-foreground",
+              {knowledge.explorationErrors && knowledge.explorationErrors.length > 0 && (
+                <TabsContent value="errors" className="space-y-2">
+                  {knowledge.explorationErrors.map((error, index) => {
+                    const getErrorTypeBadge = () => {
+                      if (!error.error_type) return null
+                      const colors: Record<string, string> = {
+                        network: "border-blue-600 text-blue-600",
+                        timeout: "border-yellow-600 text-yellow-600",
+                        http_4xx: "border-orange-600 text-orange-600",
+                        http_5xx: "border-red-600 text-red-600",
+                        parsing: "border-purple-600 text-purple-600",
+                        other: "border-foreground/50 text-foreground",
+                      }
+                      return (
+                        <Badge variant="outline" className={cn("text-xs", colors[error.error_type] || "")}>
+                          {error.error_type}
+                        </Badge>
+                      )
                     }
-                    return (
-                      <Badge variant="outline" className={colors[error.error_type] || ""}>
-                        {error.error_type}
-                      </Badge>
-                    )
-                  }
 
-                  return (
-                    <Alert key={index} variant="destructive" className="py-2">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription className="text-xs">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{error.url}</div>
-                            <div className="text-muted-foreground mt-0.5">{error.error}</div>
-                            {error.retry_count !== undefined && error.retry_count > 0 && (
-                              <div className="text-muted-foreground mt-0.5">
-                                Retries: {error.retry_count}
-                              </div>
-                            )}
+                    return (
+                      <Alert key={index} variant="destructive" className="py-2">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <AlertDescription className="text-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">{error.url}</div>
+                              <div className="text-foreground opacity-85 mt-0.5">{error.error}</div>
+                              {error.retry_count !== undefined && error.retry_count > 0 && (
+                                <div className="text-foreground opacity-85 mt-0.5">
+                                  Retries: {error.retry_count}
+                                </div>
+                              )}
+                            </div>
+                            {getErrorTypeBadge()}
                           </div>
-                          {getErrorTypeBadge()}
-                        </div>
-                      </AlertDescription>
-                    </Alert>
-                  )
-                })}
-              </div>
-            </TabsContent>
+                        </AlertDescription>
+                      </Alert>
+                    )
+                  })}
+                </TabsContent>
+              )}
+              </Tabs>
+            </div>
+          ) : (
+            <div className="border rounded-lg p-8 text-center">
+              <p className="text-xs text-foreground opacity-85">
+                Knowledge sync must complete before contents are available.
+              </p>
+            </div>
           )}
-        </Tabs>
-      )}
+        </TabsContent>
+
+        {/* History Tab */}
+        <TabsContent value="history" className="space-y-6 mt-6">
+          <KnowledgeSyncActivity
+            knowledgeId={knowledge.id}
+            currentStatus={knowledge.status}
+            startedAt={knowledge.startedAt}
+            completedAt={knowledge.completedAt}
+            pagesStored={knowledge.pagesStored}
+            linksStored={knowledge.linksStored}
+            explorationErrors={knowledge.explorationErrors}
+            syncHistory={knowledge.syncHistory}
+            createdAt={knowledge.createdAt}
+          />
+        </TabsContent>
+      </Tabs>
 
       {error && (
         <Alert variant="destructive" className="py-2">

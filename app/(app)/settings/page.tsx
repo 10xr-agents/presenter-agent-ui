@@ -15,10 +15,10 @@ export default async function SettingsPage() {
   const tenantState = await getTenantState(session.user.id)
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="py-6">
+      <div className="mb-6">
         <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
+        <p className="mt-0.5 text-sm text-foreground">
           Manage your tenant settings and configuration
         </p>
       </div>

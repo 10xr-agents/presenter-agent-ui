@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -35,17 +36,44 @@ export async function GET(
       )
     }
 
+    console.log("[Website Knowledge] Fetching status via endpoint", {
+      knowledgeId: id,
+      jobId: knowledge.explorationJobId,
+    })
+    
     const jobStatus = await getJobStatus(knowledge.explorationJobId)
+
+    // Ensure progress exists with defaults
+    const progress = jobStatus.progress || {
+      completed: 0,
+      queued: 0,
+      failed: 0,
+      current_url: null,
+    }
+
+    console.log("[Website Knowledge] Status retrieved via endpoint", {
+      knowledgeId: id,
+      jobId: knowledge.explorationJobId,
+      status: jobStatus.status,
+      progress: {
+        completed: progress.completed ?? 0,
+        queued: progress.queued ?? 0,
+        failed: progress.failed ?? 0,
+      },
+    })
 
     return NextResponse.json({
       data: {
         job_id: jobStatus.job_id,
         status: jobStatus.status,
         progress: {
-          ...jobStatus.progress,
-          estimated_time_remaining: jobStatus.progress.estimated_time_remaining,
-          processing_rate: jobStatus.progress.processing_rate,
-          recent_pages: jobStatus.progress.recent_pages,
+          completed: progress.completed ?? 0,
+          queued: progress.queued ?? 0,
+          failed: progress.failed ?? 0,
+          current_url: progress.current_url ?? null,
+          estimated_time_remaining: progress.estimated_time_remaining,
+          processing_rate: progress.processing_rate,
+          recent_pages: progress.recent_pages,
         },
         started_at: jobStatus.started_at,
         updated_at: jobStatus.updated_at,

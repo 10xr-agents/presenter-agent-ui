@@ -8,8 +8,26 @@ export interface IWebsiteKnowledge extends mongoose.Document {
   websiteDomain: string // Extracted domain for matching/reuse
   
   // Exploration job tracking
-  explorationJobId: string | null // Job ID from Browser Automation Service
-  status: WebsiteKnowledgeStatus
+  explorationJobId: string | null // Current/latest Job ID from Browser Automation Service
+  status: WebsiteKnowledgeStatus // Current/latest status
+  
+  // Sync history - tracks all sync runs (initial + resyncs)
+  syncHistory?: Array<{
+    jobId: string // Exploration job ID for this sync run
+    status: WebsiteKnowledgeStatus
+    triggerType: "initial" | "resync"
+    startedAt: Date
+    completedAt?: Date
+    pagesProcessed?: number
+    linksProcessed?: number
+    errorCount?: number
+  }>
+  
+  // Authentication credentials (encrypted at application layer)
+  websiteCredentials?: {
+    username: string
+    password: string // Encrypted before storage
+  }
   
   // Exploration configuration
   maxPages?: number
@@ -63,9 +81,37 @@ const WebsiteKnowledgeSchema = new Schema<IWebsiteKnowledge>(
       index: true,
     },
     
+    // Sync history - tracks all sync runs
+    syncHistory: [
+      {
+        jobId: { type: String, required: true },
+        status: {
+          type: String,
+          enum: ["pending", "exploring", "completed", "failed", "cancelled"],
+          required: true,
+        },
+        triggerType: {
+          type: String,
+          enum: ["initial", "resync"],
+          required: true,
+        },
+        startedAt: { type: Date, required: true },
+        completedAt: Date,
+        pagesProcessed: Number,
+        linksProcessed: Number,
+        errorCount: Number,
+      },
+    ],
+    
+    // Authentication credentials (encrypted at application layer)
+    websiteCredentials: {
+      username: String,
+      password: String, // Encrypted before storage
+    },
+    
     // Exploration configuration
-    maxPages: { type: Number, min: 1 },
-    maxDepth: { type: Number, min: 1, max: 10, default: 3 },
+    maxPages: { type: Number, min: 1, default: 100 },
+    maxDepth: { type: Number, min: 1, max: 20, default: 10 },
     strategy: { type: String, enum: ["BFS", "DFS"], default: "BFS" },
     includePaths: [String], // Path patterns to include
     excludePaths: [String], // Path patterns to exclude

@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
@@ -31,21 +30,11 @@ export default async function OrganizationTeamsPage() {
 
   if (!organizationId) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Teams"
-          description="Manage teams and team members"
-          breadcrumbs={[
-            { label: "Dashboard", href: "/dashboard" },
-            { label: "Settings", href: "/settings" },
-            { label: "Organization", href: "/settings/organization" },
-            { label: "Teams" },
-          ]}
-        />
+      <div className="py-6">
         <SettingsLayout tenantState={tenantState}>
-          <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
-            <h2 className="font-semibold text-destructive">Organization Required</h2>
-            <p className="text-sm text-muted-foreground">
+          <div className="border rounded-lg border-destructive/50 bg-destructive/5 p-4">
+            <h2 className="text-xs font-semibold text-destructive">Organization Required</h2>
+            <p className="mt-0.5 text-xs text-foreground">
               Please select an organization to view teams
             </p>
           </div>
@@ -55,17 +44,7 @@ export default async function OrganizationTeamsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Teams"
-        description="Manage teams and team members"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Organization", href: "/settings/organization" },
-          { label: "Teams" },
-        ]}
-      />
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
         <TeamList organizationId={organizationId} />
       </SettingsLayout>

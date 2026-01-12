@@ -271,9 +271,30 @@ Full brand guidelines are in `brand/brand.md`. Key resources:
 | Gradient | `#559EFF` → `#0065BA` | Premium elements, CTAs |
 
 ### Typography
+
+**Font Families:**
 - **Poppins Semi Bold (600)** - Headlines, navigation, buttons
 - **Poppins Regular (400)** - Body text, descriptions
 - **Sofia Sans Extra Condensed** - Accent labels only (use sparingly)
+
+**Typography Hierarchy & Legibility:**
+- **Page Titles**: `text-lg font-semibold` (18px) - Use `text-foreground` (NOT muted)
+- **Page Descriptions**: `text-sm text-foreground` with `mt-0.5` spacing (NOT muted - primary content)
+- **Section Headers**: `text-sm font-semibold` - Use `text-foreground` (e.g., "Authentication", "Advanced Options")
+- **Body Text**: `text-sm` or `text-xs` with `text-foreground` (NOT muted - primary content)
+- **Form Labels**: `text-xs text-muted-foreground` (appropriate use case for muted text)
+- **Helper Text**: `text-xs text-foreground` (NOT muted - primary content)
+
+**Typography Legibility Rules:**
+- **MANDATORY**: All primary content (body text, titles, headings, descriptions, table content, navigation) must use `text-foreground` for maximum legibility
+- **MANDATORY**: Muted text (`text-muted-foreground`) is ONLY allowed for:
+  - Form labels
+  - Placeholder text
+  - Helper/hint text
+  - Disabled states
+  - Metadata labels (e.g., "Created", "Last Updated")
+- **FORBIDDEN**: Never mute primary content text - it must be clearly legible
+- **MANDATORY**: Buttons must use `text-foreground` or high-contrast variants for clear visibility
 
 ## Getting Started
 

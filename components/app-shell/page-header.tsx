@@ -45,7 +45,7 @@ export function PageHeader({
         <div className="space-y-1">
           <h1 className={typography.pageTitle}>{title}</h1>
           {description && (
-            <p className={typography.body + " text-muted-foreground"}>{description}</p>
+            <p className={typography.body + " text-foreground"}>{description}</p>
           )}
         </div>
         {actions && (

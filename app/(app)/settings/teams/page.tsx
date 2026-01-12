@@ -27,17 +27,11 @@ export default async function SettingsTeamsPage() {
 
   if (!organizationId) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-lg font-semibold">Settings</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Manage your tenant settings and configuration
-          </p>
-        </div>
+      <div className="py-6">
         <SettingsLayout tenantState={tenantState}>
-          <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-            <p className="text-sm font-medium text-destructive">Organization Required</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+          <div className="border rounded-lg border-destructive/50 bg-destructive/5 p-4">
+            <p className="text-xs font-semibold text-destructive">Organization Required</p>
+            <p className="mt-0.5 text-xs text-foreground">
               Please select an organization to view teams
             </p>
           </div>
@@ -47,13 +41,7 @@ export default async function SettingsTeamsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Manage your tenant settings and configuration
-        </p>
-      </div>
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
         <TeamList organizationId={organizationId} />
       </SettingsLayout>

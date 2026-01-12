@@ -3,12 +3,18 @@
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { PasswordInput } from "@/components/ui/password-input"
+import {
+  KnowledgeDescriptionField,
+  KnowledgeNameField,
+  KnowledgePathRestrictions,
+  KnowledgeUrlField,
+} from "@/components/knowledge/knowledge-form-fields"
 import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
 
 interface KnowledgeCreationFormProps {
@@ -20,11 +26,13 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
   const [websiteUrl, setWebsiteUrl] = useState("")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
-  const [skipCredentials, setSkipCredentials] = useState(true)
+  const [skipAuthentication, setSkipAuthentication] = useState(true)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [includePaths, setIncludePaths] = useState("")
   const [excludePaths, setExcludePaths] = useState("")
+  const [maxPages, setMaxPages] = useState<number | "">(100)
+  const [maxDepth, setMaxDepth] = useState<number | "">(10)
   const [urlError, setUrlError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,15 +58,6 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
     }
   }
 
-  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setWebsiteUrl(value)
-    if (value.trim()) {
-      validateUrl(value)
-    } else {
-      setUrlError(null)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,24 +70,33 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
     setError(null)
 
     try {
+      // Prepare request payload
+      const payload = {
+        websiteUrl: websiteUrl.trim(),
+        organizationId,
+        maxPages: typeof maxPages === "number" ? maxPages : 100,
+        maxDepth: typeof maxDepth === "number" ? maxDepth : 10,
+        strategy: "BFS" as const,
+        name: name.trim() || undefined,
+        description: description.trim() || undefined,
+        includePaths: includePaths
+          ? includePaths.split(",").map((p) => p.trim()).filter(Boolean)
+          : undefined,
+        excludePaths: excludePaths
+          ? excludePaths.split(",").map((p) => p.trim()).filter(Boolean)
+          : undefined,
+        websiteCredentials: !skipAuthentication && username.trim() && password.trim()
+          ? {
+              username: username.trim(),
+              password: password.trim(),
+            }
+          : undefined,
+      }
+
       const response = await fetch("/api/website-knowledge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          websiteUrl: websiteUrl.trim(),
-          organizationId,
-          maxPages: 50,
-          maxDepth: 3,
-          strategy: "BFS",
-          name: name.trim() || undefined,
-          description: description.trim() || undefined,
-          includePaths: includePaths
-            ? includePaths.split(",").map((p) => p.trim()).filter(Boolean)
-            : undefined,
-          excludePaths: excludePaths
-            ? excludePaths.split(",").map((p) => p.trim()).filter(Boolean)
-            : undefined,
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -99,10 +107,12 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
       const result = (await response.json()) as { data?: { id: string } }
       if (result.data?.id) {
         setCreatedKnowledgeId(result.data.id)
-        // Optionally redirect after a delay, or let user stay to see progress
+        // Redirect after a short delay to allow user to see success state
         setTimeout(() => {
           router.push(`/knowledge/${result.data?.id}`)
         }, 2000)
+      } else {
+        throw new Error("No knowledge ID returned from server")
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create knowledge"
@@ -116,175 +126,193 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
 
   if (createdKnowledgeId) {
     return (
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              Knowledge created successfully
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Exploration has started. You'll be redirected to view progress.
-            </p>
-            <WebsiteKnowledgeProgress
-              knowledgeId={createdKnowledgeId}
-              onComplete={() => {
-                router.push(`/knowledge/${createdKnowledgeId}`)
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4 border rounded-lg p-6">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          Knowledge created successfully
+        </div>
+        <p className="text-xs text-foreground">
+          Website exploration has started. The Browser Automation Service is now extracting knowledge from your website.
+        </p>
+        <WebsiteKnowledgeProgress
+          knowledgeId={createdKnowledgeId}
+          onComplete={() => {
+            router.push(`/knowledge/${createdKnowledgeId}`)
+          }}
+        />
+        <p className="text-xs text-foreground opacity-85">
+          You'll be redirected to the knowledge detail page shortly to view progress and results.
+        </p>
+      </div>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="websiteUrl" className="text-sm font-semibold">
-              Website URL <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="websiteUrl"
-              type="url"
-              value={websiteUrl}
-              onChange={handleUrlChange}
-              onBlur={() => validateUrl(websiteUrl)}
-              placeholder="https://example.com"
-              required
-              className={urlError ? "border-destructive" : ""}
-            />
-            {urlError ? (
-              <p className="text-xs text-destructive">{urlError}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                The website to extract knowledge from
-              </p>
-            )}
-          </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-4">
+        <KnowledgeUrlField
+          value={websiteUrl}
+          onChange={(value) => {
+            setWebsiteUrl(value)
+            if (value.trim()) {
+              validateUrl(value)
+            } else {
+              setUrlError(null)
+            }
+          }}
+          onBlur={() => validateUrl(websiteUrl)}
+          error={urlError}
+          required
+        />
 
-          <div className="space-y-1.5">
-            <Label htmlFor="name" className="text-sm font-semibold">
-              Name (Optional)
-            </Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Website Knowledge"
-            />
-            <p className="text-xs text-muted-foreground">
-              A friendly name for this knowledge source
+        <KnowledgeNameField value={name} onChange={setName} />
+
+        <KnowledgeDescriptionField value={description} onChange={setDescription} />
+      </div>
+
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-semibold">Authentication</h3>
+            <p className="text-xs text-foreground">
+              Optional. Most websites can be processed without credentials.
             </p>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setSkipAuthentication(!skipAuthentication)}
+            className="shrink-0"
+          >
+            {skipAuthentication ? "Add Credentials" : "Skip"}
+          </Button>
+        </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="description" className="text-sm font-semibold">
-              Description (Optional)
-            </Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of this knowledge source"
-              rows={2}
-            />
-          </div>
-
-          <div className="space-y-3 border-t pt-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="includePaths" className="text-sm font-semibold">
-                Include Paths (Optional)
-              </Label>
-              <Input
-                id="includePaths"
-                value={includePaths}
-                onChange={(e) => setIncludePaths(e.target.value)}
-                placeholder="/docs/*, /help/*"
-              />
-              <p className="text-xs text-muted-foreground">
-                Comma-separated path patterns to include. Use * for wildcards (e.g., /docs/*)
-              </p>
-            </div>
+        {!skipAuthentication && (
+          <div className="space-y-3">
+            <Alert className="bg-muted/50 border-muted py-2">
+              <AlertDescription className="text-xs text-foreground">
+                Credentials are encrypted and stored securely. 2FA/OTP is not supported.
+              </AlertDescription>
+            </Alert>
 
             <div className="space-y-1.5">
-              <Label htmlFor="excludePaths" className="text-sm font-semibold">
-                Exclude Paths (Optional)
+              <Label htmlFor="username" className="text-xs text-muted-foreground">
+                Username or Email
               </Label>
               <Input
-                id="excludePaths"
-                value={excludePaths}
-                onChange={(e) => setExcludePaths(e.target.value)}
-                placeholder="/admin/*, /api/*"
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="demo@example.com"
+                className="h-9"
               />
-              <p className="text-xs text-muted-foreground">
-                Comma-separated path patterns to exclude. Use * for wildcards (e.g., /admin/*)
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="h-9"
+              />
+              <p className="text-xs text-foreground opacity-85">
+                2FA/OTP not supported.
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-semibold">Authentication (Optional)</Label>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setSkipCredentials(!skipCredentials)}
-              className="h-7 text-xs"
-            >
-              {skipCredentials ? "Add Credentials" : "Skip"}
-            </Button>
-          </div>
-
-          {!skipCredentials && (
-            <div className="space-y-3 border-t pt-3">
-              <Alert className="bg-muted/50 border-muted py-2">
-                <AlertDescription className="text-xs text-muted-foreground">
-                  Credentials are encrypted and stored securely. 2FA/OTP is not supported.
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="username" className="text-sm font-semibold">
-                  Username or Email
-                </Label>
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="demo@example.com"
-                />
+      <div className="border-t pt-4">
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="advanced" className="border-none">
+            <AccordionTrigger>
+              <div className="flex-1 text-left space-y-0.5">
+                <div>Advanced Options</div>
+                <div className="text-xs font-normal opacity-85">
+                  Depth, page limits, and path restrictions
+                </div>
               </div>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="pt-2 space-y-4">
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="maxPages" className="text-xs text-muted-foreground">
+                      Max Pages
+                    </Label>
+                    <Input
+                      id="maxPages"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={maxPages}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setMaxPages(value === "" ? "" : parseInt(value, 10))
+                      }}
+                      placeholder="100"
+                      className="h-9"
+                    />
+                    <p className="text-xs text-foreground opacity-85">
+                      Maximum number of pages to process (default: 100)
+                    </p>
+                  </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-sm font-semibold">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password"
-                />
-                <p className="text-xs text-muted-foreground">
-                  2FA/OTP not supported.
-                </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="maxDepth" className="text-xs text-muted-foreground">
+                      Max Depth
+                    </Label>
+                    <Input
+                      id="maxDepth"
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={maxDepth}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setMaxDepth(value === "" ? "" : parseInt(value, 10))
+                      }}
+                      placeholder="10"
+                      className="h-9"
+                    />
+                    <p className="text-xs text-foreground opacity-85">
+                      Maximum crawl depth from start URL (default: 10)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3">
+                  <KnowledgePathRestrictions
+                    includePaths={includePaths}
+                    excludePaths={excludePaths}
+                    onIncludePathsChange={setIncludePaths}
+                    onExcludePathsChange={setExcludePaths}
+                  />
+                </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </div>
 
       {error && (
         <Alert variant="destructive" className="py-2">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="text-xs">{error}</AlertDescription>
+          <AlertDescription className="text-xs">
+            <div className="space-y-1">
+              <p className="font-medium">Failed to create knowledge</p>
+              <p>{error}</p>
+              <p className="opacity-85">
+                Please check your website URL and try again. If the issue persists, verify the Browser Automation Service is running.
+              </p>
+            </div>
+          </AlertDescription>
         </Alert>
       )}
 

@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
 import { getActiveOrganizationId, getTenantState, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
@@ -41,18 +40,16 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
 
   if (!organizationId) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Teams"
-          description="Manage team members and permissions"
-          breadcrumbs={[
-            { label: "Dashboard", href: "/dashboard" },
-            { label: "Teams" },
-          ]}
-        />
-        <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
-          <h2 className="font-semibold text-destructive">Organization Features Required</h2>
-          <p className="text-sm text-muted-foreground">
+      <div className="py-6">
+        <div className="mb-6">
+          <h1 className="text-lg font-semibold">Teams</h1>
+          <p className="mt-0.5 text-sm text-foreground">
+            Manage team members and permissions
+          </p>
+        </div>
+        <div className="border rounded-lg border-destructive/50 bg-destructive/5 p-4">
+          <h2 className="text-xs font-semibold text-destructive">Organization Features Required</h2>
+          <p className="mt-0.5 text-xs text-foreground">
             Teams are only available when organization features are enabled.
           </p>
         </div>
@@ -61,15 +58,13 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Teams"
-        description="Manage team members and permissions"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Teams" },
-        ]}
-      />
+    <div className="py-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold">Teams</h1>
+        <p className="mt-0.5 text-sm text-foreground">
+          Manage team members and permissions
+        </p>
+      </div>
       <TeamList organizationId={organizationId} />
     </div>
   )

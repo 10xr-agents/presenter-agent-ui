@@ -557,40 +557,161 @@ ELSE IF tenant state = "organization":
 
 ### 2.1 Visual Design System
 
-#### Typography Hierarchy
+#### Typography Hierarchy & Legibility
+
+**Core Principle:** We do not mute primary content text. All primary content must be clearly legible and use high-contrast colors.
 
 **Page Titles:**
-- Size: `text-3xl` (30px)
-- Weight: `font-bold` (700)
-- Tracking: `tracking-tight`
-- Line height: `leading-tight`
+- Size: `text-lg` (18px) - **UPDATED: Reduced from text-3xl for better density**
+- Weight: `font-semibold` (600)
+- Color: `text-foreground` (NOT muted - primary content)
 - Usage: Main page headings (one per page)
 
-**Section Titles:**
-- Size: `text-2xl` (24px)
+**Page Descriptions:**
+- Size: `text-sm` (14px)
+- Weight: `font-normal` (400)
+- Color: `text-foreground` (NOT muted - primary content)
+- Spacing: `mt-0.5`
+- Usage: Page descriptions and primary content
+
+**Section Headers:**
+- Size: `text-sm` (14px) - **UPDATED: Reduced from text-2xl**
 - Weight: `font-semibold` (600)
-- Usage: Major sections within pages
+- Color: `text-foreground` (NOT muted)
+- Usage: Major sections within pages, form section headers (e.g., "Authentication", "Advanced Options")
 
 **Subsection Titles:**
-- Size: `text-xl` (20px)
+- Size: `text-sm` (14px) - **UPDATED: Reduced from text-xl**
 - Weight: `font-semibold` (600)
+- Color: `text-foreground` (NOT muted)
 - Usage: Subsections, card headers
 
 **Body Text:**
-- Size: `text-base` (16px)
+- Size: `text-sm` (14px) or `text-xs` (12px) - **UPDATED: Reduced from text-base**
 - Weight: `font-normal` (400)
-- Line height: `leading-relaxed`
-- Usage: Primary content
+- Color: `text-foreground` (NOT muted - primary content)
+- Usage: Primary content, descriptions, body text
 
-**Small Text:**
-- Size: `text-sm` (14px)
-- Weight: `font-normal` (400)
-- Usage: Descriptions, captions, metadata
-
-**Tiny Text:**
+**Form Labels:**
 - Size: `text-xs` (12px)
 - Weight: `font-normal` (400)
-- Usage: Labels, timestamps, badges
+- Color: `text-muted-foreground` (appropriate use case)
+- Usage: Form field labels, metadata labels
+
+**Helper Text:**
+- Size: `text-xs` (12px)
+- Weight: `font-normal` (400)
+- Color: `text-foreground` (NOT muted - primary content)
+- Usage: Helper text, descriptions, captions
+
+**Typography Legibility Rules:**
+- **MANDATORY**: All primary content (body text, titles, headings, descriptions, table content, navigation) must use `text-foreground` for maximum legibility
+- **MANDATORY**: Muted text (`text-muted-foreground`) is ONLY allowed for:
+  - Form labels
+  - Placeholder text
+  - Helper/hint text
+  - Disabled states
+  - Metadata labels (e.g., "Created", "Last Updated")
+- **FORBIDDEN**: Never mute primary content text - it must be clearly legible
+- **MANDATORY**: Buttons must use `text-foreground` or high-contrast variants for clear visibility
+
+**Muted Text Usage Rules:**
+
+✅ **Allowed Use Cases (Muted Text):**
+- Form Labels: Field labels in forms
+- Placeholder Text: Input placeholders
+- Helper/Hint Text: Contextual hints (though primary helper text should use `text-foreground`)
+- Disabled States: Text in disabled UI elements
+- Metadata Labels: Labels for metadata (e.g., "Created", "Last Updated", "Status")
+
+❌ **Forbidden Use Cases (Do NOT Mute):**
+- Body text
+- Page titles
+- Section headings
+- Table content
+- Navigation labels
+- Primary descriptions
+- Error messages
+- Empty state text
+- Button text
+- Primary content of any kind
+
+**Button Visibility:**
+- **Primary buttons**: `text-primary-foreground` (high contrast)
+- **Outline buttons**: `text-foreground` (high contrast)
+- **Ghost buttons**: `text-foreground` (high contrast)
+- **Secondary buttons**: `text-foreground` (high contrast)
+- All buttons must be immediately recognizable as interactive elements
+- Button text must never appear faded or disabled unless the button actually is disabled
+- Primary actions must stand out clearly from the background
+
+**CSS Variables:**
+
+Light Mode:
+```css
+--foreground: 207 100% 6%;  /* Rich Black - Primary text */
+--muted-foreground: 207 40% 35%;  /* Readable but clearly secondary - for labels, placeholders, helper text, metadata only */
+```
+
+Dark Mode:
+```css
+--foreground: 0 0% 98%;  /* Near white - Primary text */
+--muted-foreground: 210 20% 70%;  /* Readable but clearly secondary - for labels, placeholders, helper text, metadata only */
+```
+
+**Examples:**
+
+✅ **Correct Usage:**
+```typescript
+// Page title and description
+<h1 className="text-lg font-semibold">Settings</h1>
+<p className="mt-0.5 text-sm text-foreground">Manage your tenant settings</p>
+
+// Section header
+<h3 className="text-sm font-semibold">Authentication</h3>
+
+// Form label (muted is OK)
+<Label className="text-xs text-muted-foreground">Username</Label>
+
+// Body text (NOT muted)
+<p className="text-sm text-foreground">This is primary content that must be clearly legible.</p>
+
+// Button (high contrast)
+<Button className="text-foreground">Submit</Button>
+```
+
+❌ **Incorrect Usage:**
+```typescript
+// ❌ WRONG - Muted page description
+<p className="text-sm text-muted-foreground">Manage your settings</p>
+
+// ❌ WRONG - Muted body text
+<p className="text-sm text-muted-foreground">This is primary content.</p>
+
+// ❌ WRONG - Muted button text
+<Button className="text-muted-foreground">Submit</Button>
+
+// ❌ WRONG - Muted navigation
+<Link className="text-muted-foreground">Dashboard</Link>
+```
+
+**Validation Checklist:**
+Before finalizing any UI component, verify:
+- [ ] All primary text uses `text-foreground` (NOT muted)
+- [ ] Muted text is used only for appropriate cases (form labels, placeholders, metadata labels)
+- [ ] All buttons are clearly visible with high-contrast text
+- [ ] Typography hierarchy is consistent across all pages
+- [ ] No UI element looks disabled unless it actually is
+- [ ] All text is clearly legible at a glance
+
+**Quality Bar:**
+The final typography should feel:
+- **Confident**: Text is crisp and clear
+- **Professional**: Suitable for enterprise, long-session usage
+- **Accessible**: Meets WCAG AA contrast standards
+- **Consistent**: Same rules applied across entire application
+
+We optimize for **clarity and usability first**, not aesthetic minimalism.
 
 #### Spacing Scale
 
@@ -617,7 +738,8 @@ ELSE IF tenant state = "organization":
 - Success: Green (for positive actions, success states)
 - Warning: Amber (for warnings, caution)
 - Error: Red (for errors, destructive actions)
-- Muted: Gray (for secondary text, borders)
+- Muted: Gray (for form labels, placeholders, helper text, metadata labels ONLY - NOT for primary content)
+- **Foreground**: High-contrast text color for all primary content (body text, titles, headings, descriptions, table content, navigation)
 
 **Background Hierarchy:**
 - Base: `bg-background` (white/black)
@@ -643,11 +765,12 @@ ELSE IF tenant state = "organization":
 - States: Default, hover, active, disabled, loading
 
 **Forms:**
-- Label: `text-sm font-medium`
-- Input: `border rounded-md px-3 py-2`
+- Label: `text-xs text-muted-foreground` (appropriate use case for muted text)
+- Input: `border rounded-md px-3 py-2 h-9`
 - Error: Red border + error message below
 - Success: Green border (optional)
-- Help text: `text-sm text-muted-foreground`
+- Help text: `text-xs text-foreground` (NOT muted - primary content)
+- Section headers: `text-sm font-semibold` (e.g., "Authentication", "Advanced Options")
 
 **Tables:**
 - Header: `font-semibold text-sm`

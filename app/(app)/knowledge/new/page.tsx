@@ -1,8 +1,8 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { KnowledgeCreationForm } from "@/components/knowledge/knowledge-creation-form"
 import { auth } from "@/lib/auth"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function NewKnowledgePage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -11,21 +11,25 @@ export default async function NewKnowledgePage() {
     redirect("/login")
   }
 
-  // Get organization ID from Better Auth active organization context
-  const organizationId = "default-org" // TODO: Get from Better Auth active organization
+  // Get tenant state and organization ID
+  const tenantState = await getTenantState(session.user.id)
+  let organizationId: string | null = null
+  if (tenantState === "organization") {
+    organizationId = await getActiveOrganizationId()
+  }
+
+  // In normal mode, use user ID; in organization mode, use organization ID
+  const knowledgeOrgId = tenantState === "normal" ? session.user.id : (organizationId || session.user.id)
 
   return (
-    <div className="space-y-6 py-6">
-      <PageHeader
-        title="Create Knowledge"
-        description="Extract and index knowledge from a website"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Knowledge", href: "/knowledge" },
-          { label: "Create" },
-        ]}
-      />
-      <KnowledgeCreationForm organizationId={organizationId} />
+    <div className="py-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold">Create Knowledge</h1>
+        <p className="mt-0.5 text-sm text-foreground">
+          Extract and index knowledge from a website
+        </p>
+      </div>
+      <KnowledgeCreationForm organizationId={knowledgeOrgId} />
     </div>
   )
 }

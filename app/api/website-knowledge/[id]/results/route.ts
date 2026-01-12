@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -35,8 +36,23 @@ export async function GET(
       )
     }
 
+    console.log("[Website Knowledge] Fetching job results", {
+      knowledgeId: id,
+      jobId: knowledge.explorationJobId,
+      websiteUrl: knowledge.websiteUrl,
+    })
+    
     // Fetch results from Browser Automation Service
     const jobResults = await getJobResults(knowledge.explorationJobId, false)
+
+    console.log("[Website Knowledge] Job results retrieved", {
+      knowledgeId: id,
+      jobId: knowledge.explorationJobId,
+      status: jobResults.status,
+      pagesStored: jobResults.results.pages_stored,
+      linksStored: jobResults.results.links_stored,
+      errorCount: jobResults.results.errors.length,
+    })
 
     return NextResponse.json({
       data: {

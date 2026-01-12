@@ -52,6 +52,10 @@ export function WebsiteKnowledgeProgress({
   // Fetch initial status and get exploration job ID
   const fetchStatus = async () => {
     try {
+      console.log("[Website Knowledge Progress] Fetching initial status", {
+        knowledgeId,
+      })
+      
       const response = await fetch(`/api/website-knowledge/${knowledgeId}`)
       if (!response.ok) {
         throw new Error("Failed to fetch knowledge")
@@ -71,6 +75,13 @@ export function WebsiteKnowledgeProgress({
       }
 
       if (result.data) {
+        console.log("[Website Knowledge Progress] Status fetched", {
+          knowledgeId,
+          status: result.data.status,
+          jobId: result.data.explorationJobId,
+          hasJobStatus: !!result.data.jobStatus,
+        })
+        
         setStatus(result.data.status as typeof status)
         if (result.data.explorationJobId) {
           setExplorationJobId(result.data.explorationJobId)
@@ -80,13 +91,25 @@ export function WebsiteKnowledgeProgress({
         }
 
         if (result.data.status === "completed") {
+          console.log("[Website Knowledge Progress] Exploration completed", {
+            knowledgeId,
+            jobId: result.data.explorationJobId,
+          })
           onComplete?.()
         } else if (result.data.status === "failed") {
+          console.error("[Website Knowledge Progress] Exploration failed", {
+            knowledgeId,
+            jobId: result.data.explorationJobId,
+          })
           onError?.("Exploration failed")
         }
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch status"
+      console.error("[Website Knowledge Progress] Error fetching status", {
+        knowledgeId,
+        error: errorMessage,
+      })
       setError(errorMessage)
       onError?.(errorMessage)
     }
@@ -147,6 +170,13 @@ export function WebsiteKnowledgeProgress({
       const { ws, close } = createKnowledgeWebSocket(
         explorationJobId,
         (message: WebSocketMessage) => {
+          console.log("[Website Knowledge Progress] WebSocket message received", {
+            knowledgeId,
+            jobId: explorationJobId,
+            messageType: message.type,
+            hasData: !!message.data,
+          })
+          
           if (message.type === "progress" && message.data) {
             setProgress({
               completed: message.data.completed || 0,
@@ -157,11 +187,22 @@ export function WebsiteKnowledgeProgress({
               processing_rate: message.data.processing_rate,
             })
             if (message.data.status) {
+              console.log("[Website Knowledge Progress] Status updated via WebSocket", {
+                knowledgeId,
+                jobId: explorationJobId,
+                newStatus: message.data.status,
+              })
               setStatus(message.data.status as typeof status)
             }
           } else if (message.type === "page_completed" && message.data && message.data.page) {
             // Update recent pages if available
             const page = message.data.page
+            console.log("[Website Knowledge Progress] Page completed", {
+              knowledgeId,
+              jobId: explorationJobId,
+              pageUrl: page.url,
+              pageTitle: page.title,
+            })
             setProgress((prev) => ({
               ...prev,
               completed: (prev.completed || 0) + 1,
@@ -175,13 +216,34 @@ export function WebsiteKnowledgeProgress({
               ],
             }))
           } else if (message.type === "completed") {
+            console.log("[Website Knowledge Progress] Exploration completed via WebSocket", {
+              knowledgeId,
+              jobId: explorationJobId,
+            })
             setStatus("completed")
             onComplete?.()
           } else if (message.type === "failed") {
+            console.error("[Website Knowledge Progress] Exploration failed via WebSocket", {
+              knowledgeId,
+              jobId: explorationJobId,
+              errorData: message.data?.error,
+            })
             setStatus("failed")
             onError?.("Exploration failed")
           } else if (message.type === "cancelled") {
+            console.log("[Website Knowledge Progress] Exploration cancelled via WebSocket", {
+              knowledgeId,
+              jobId: explorationJobId,
+            })
             setStatus("cancelled")
+          } else if (message.type === "error" && message.data?.error) {
+            console.error("[Website Knowledge Progress] Error received via WebSocket", {
+              knowledgeId,
+              jobId: explorationJobId,
+              errorUrl: message.data.error.url,
+              errorMessage: message.data.error.error,
+              errorType: message.data.error.error_type,
+            })
           }
         },
         () => {

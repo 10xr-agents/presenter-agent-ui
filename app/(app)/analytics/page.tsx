@@ -20,10 +20,10 @@ export default async function AnalyticsPage() {
   const analyticsOrgId = organizationId || session.user.id
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="py-6">
+      <div className="mb-6">
         <h1 className="text-lg font-semibold">Analytics</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
+        <p className="mt-0.5 text-sm text-foreground">
           Detailed analytics and insights for your Screen Agents
         </p>
       </div>

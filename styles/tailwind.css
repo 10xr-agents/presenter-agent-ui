@@ -114,11 +114,11 @@
 
   /* Secondary: Lighter blue tint */
   --secondary: 210 40% 96%;
-  --secondary-foreground: 207 100% 6%;
+  --secondary-foreground: 207 95% 8%;  /* Slightly lighter for better contrast on secondary backgrounds */
 
-  /* Muted */
+  /* Muted - Readable but distinguishable for appropriate use cases (labels, placeholders, helper text, metadata) */
   --muted: 210 40% 96%;
-  --muted-foreground: 207 30% 45%;
+  --muted-foreground: 207 40% 35%;  /* Readable but clearly secondary - for labels, placeholders, helper text, metadata only */
 
   /* Accent: French Sky Blue */
   --accent: 212 98% 70%;
@@ -178,9 +178,9 @@
   --secondary: 207 50% 15%;
   --secondary-foreground: 0 0% 98%;
 
-  /* Muted */
+  /* Muted - Readable but distinguishable for appropriate use cases (labels, placeholders, helper text, metadata) */
   --muted: 207 50% 15%;
-  --muted-foreground: 210 20% 65%;
+  --muted-foreground: 210 20% 70%;  /* Readable but clearly secondary - for labels, placeholders, helper text, metadata only */
 
   /* Accent: French Sky Blue */
   --accent: 212 98% 70%;
@@ -230,6 +230,7 @@
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   /* Typography hierarchy from brand.md */
@@ -258,6 +259,33 @@
    ============================================================================= */
 
 @layer utilities {
+  /* Accordion animations */
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  .animate-accordion-down {
+    animation: accordion-down 0.2s ease-out;
+  }
+
+  .animate-accordion-up {
+    animation: accordion-up 0.2s ease-out;
+  }
+
   /* Brand gradient backgrounds */
   .bg-brand-gradient {
     background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);

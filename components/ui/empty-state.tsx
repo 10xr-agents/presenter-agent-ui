@@ -34,7 +34,7 @@ export function EmptyState({
         </div>
       )}
       <h3 className="mb-2 text-lg font-semibold">{title}</h3>
-      <p className="mb-6 max-w-md text-center text-sm text-muted-foreground">{description}</p>
+      <p className="mb-6 max-w-md text-center text-sm text-foreground opacity-85">{description}</p>
       {(action || secondaryAction) && (
         <div className="flex flex-col gap-3 sm:flex-row">
           {action && (

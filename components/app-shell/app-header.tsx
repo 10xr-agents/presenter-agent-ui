@@ -31,7 +31,7 @@ export function AppHeader({ tenantState = "normal" }: AppHeaderProps) {
         </div>
 
         {/* Right side - Organization Switcher and User Menu */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* Only show organization switcher in organization mode */}
           {tenantState === "organization" && (
             <div className="hidden md:block">

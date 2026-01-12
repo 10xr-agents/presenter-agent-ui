@@ -48,17 +48,15 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="bg-muted/30">
-              <CardContent className="pt-6">
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-7 w-12" />
-                </div>
-              </CardContent>
-            </Card>
+            <div key={i} className="border rounded-lg p-4">
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-12" />
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -67,26 +65,27 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-        <p className="text-sm font-medium text-destructive">Unable to load dashboard</p>
-        <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+      <div className="border rounded-lg border-destructive/50 bg-destructive/5 p-4">
+        <p className="text-xs font-semibold text-destructive">Unable to load dashboard</p>
+        <p className="mt-0.5 text-xs text-foreground opacity-85">{error}</p>
       </div>
     )
   }
 
   const hasAgents = (metrics?.totalAgents || 0) > 0
 
-  // Empty state - clean, centered, prominent
+  // Empty state - calm, instructional, Resend style
   if (!hasAgents) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <h2 className="mb-2 text-2xl font-semibold">No Screen Agents yet</h2>
-        <p className="mb-8 max-w-md text-sm text-muted-foreground">
+      <div className="border rounded-lg p-12 text-center">
+        <Bot className="mx-auto h-8 w-8 text-foreground opacity-60 mb-2" />
+        <h2 className="text-sm font-semibold mb-1">No Screen Agents yet</h2>
+        <p className="text-xs text-foreground mb-4 max-w-md mx-auto">
           Start creating Screen Agents to see insights and manage your AI-powered presentations.
         </p>
-        <Button asChild size="lg">
+        <Button asChild size="sm">
           <Link href="/screen-agents/new">
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 h-3.5 w-3.5" />
             Create your first agent
           </Link>
         </Button>
@@ -96,128 +95,110 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
 
   // Dashboard with metrics - Resend-style: clean cards, minimal styling
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Metrics Grid - Resend style: subtle background cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-muted/30">
-          <CardContent className="pt-6">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Agents</p>
-              <p className="text-2xl font-semibold">{metrics?.totalAgents || 0}</p>
-              {metrics?.activeAgents !== undefined && metrics.activeAgents > 0 && (
-                <p className="text-xs text-muted-foreground">{metrics.activeAgents} active</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="border rounded-lg p-4">
+          <div className="space-y-1">
+            <p className="text-xs text-foreground opacity-85">Agents</p>
+            <p className="text-xl font-semibold">{metrics?.totalAgents || 0}</p>
+            {metrics?.activeAgents !== undefined && metrics.activeAgents > 0 && (
+              <p className="text-xs text-foreground opacity-85">{metrics.activeAgents} active</p>
+            )}
+          </div>
+        </div>
 
-        <Card className="bg-muted/30">
-          <CardContent className="pt-6">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Sessions this week</p>
-              <p className="text-2xl font-semibold">{metrics?.recentSessions || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border rounded-lg p-4">
+          <div className="space-y-1">
+            <p className="text-xs text-foreground opacity-85">Sessions this week</p>
+            <p className="text-xl font-semibold">{metrics?.recentSessions || 0}</p>
+          </div>
+        </div>
 
-        <Card className="bg-muted/30">
-          <CardContent className="pt-6">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Total sessions</p>
-              <p className="text-2xl font-semibold">{metrics?.totalSessions || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border rounded-lg p-4">
+          <div className="space-y-1">
+            <p className="text-xs text-foreground opacity-85">Total sessions</p>
+            <p className="text-xl font-semibold">{metrics?.totalSessions || 0}</p>
+          </div>
+        </div>
 
-        <Card className="bg-muted/30">
-          <CardContent className="pt-6">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">In progress</p>
-              <p className="text-2xl font-semibold">{metrics?.processingAgents || 0}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="border rounded-lg p-4">
+          <div className="space-y-1">
+            <p className="text-xs text-foreground opacity-85">In progress</p>
+            <p className="text-xl font-semibold">{metrics?.processingAgents || 0}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Primary Action Card - Resend style: clean, minimal */}
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-semibold">Create a new Screen Agent</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Build an AI agent that presents and navigates your website interactively
-              </p>
-            </div>
-            <Button asChild>
-              <Link href="/screen-agents/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Create agent
-              </Link>
-            </Button>
+      {/* Primary Action - Resend style: clean, minimal */}
+      <div className="border rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Create a new Screen Agent</h3>
+            <p className="mt-0.5 text-xs text-foreground opacity-85">
+              Build an AI agent that presents and navigates your website interactively
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <Button asChild size="sm">
+            <Link href="/screen-agents/new">
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              Create agent
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       {/* Quick Navigation - Resend style: simple, clean links */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="bg-muted/30 transition-colors hover:bg-muted/50">
-          <CardContent className="pt-6">
-            <Link href="/screen-agents" className="block">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">View all agents</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Manage and configure your Screen Agents
-                  </p>
-                </div>
-                <svg
-                  className="h-5 w-5 text-muted-foreground"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </div>
-            </Link>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Link href="/screen-agents" className="border rounded-lg p-4 transition-colors hover:bg-muted/30 block">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">View all agents</p>
+              <p className="mt-0.5 text-xs text-foreground opacity-85">
+                Manage and configure your Screen Agents
+              </p>
+            </div>
+            <svg
+              className="h-4 w-4 text-foreground opacity-60 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </div>
+        </Link>
 
-        <Card className="bg-muted/30 transition-colors hover:bg-muted/50">
-          <CardContent className="pt-6">
-            <Link href="/analytics" className="block">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">View analytics</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Detailed insights and performance metrics
-                  </p>
-                </div>
-                <svg
-                  className="h-5 w-5 text-muted-foreground"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </div>
-            </Link>
-          </CardContent>
-        </Card>
+        <Link href="/analytics" className="border rounded-lg p-4 transition-colors hover:bg-muted/30 block">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">View analytics</p>
+              <p className="mt-0.5 text-xs text-foreground opacity-85">
+                Detailed insights and performance metrics
+              </p>
+            </div>
+            <svg
+              className="h-4 w-4 text-foreground opacity-60 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </div>
+        </Link>
       </div>
     </div>
   )

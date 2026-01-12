@@ -1,9 +1,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { OverviewDashboard } from "@/components/dashboard/overview-dashboard"
 import { auth } from "@/lib/auth"
-import { spacing } from "@/lib/utils/design-system"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
@@ -40,13 +38,13 @@ export default async function DashboardPage() {
   }
 
   // In normal mode, use user ID as the tenant ID
-  const dashboardOrgId = tenantState === "normal" ? session.user.id : (organizationId || "default-org")
+  const dashboardOrgId = tenantState === "normal" ? session.user.id : (organizationId || session.user.id)
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="py-6">
+      <div className="mb-6">
         <h1 className="text-lg font-semibold">Dashboard</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
+        <p className="mt-0.5 text-sm text-foreground">
           Overview of your Screen Agents and activity
         </p>
       </div>

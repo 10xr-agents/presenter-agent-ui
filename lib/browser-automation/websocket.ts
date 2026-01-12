@@ -74,30 +74,57 @@ export function createKnowledgeWebSocket(
   const baseUrl = getBaseUrl()
   const wsUrl = `${baseUrl}/api/knowledge/explore/ws/${jobId}`
 
+  console.log("[WebSocket] Creating connection", {
+    jobId,
+    baseUrl,
+    wsUrl,
+  })
+
   const ws = new WebSocket(wsUrl)
 
   ws.onopen = () => {
-    console.log(`WebSocket connected for job ${jobId}`)
+    console.log("[WebSocket] Connected for knowledge exploration", {
+      jobId,
+      wsUrl,
+    })
   }
 
   ws.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data) as WebSocketMessage
+      console.log("[WebSocket] Message received", {
+        jobId,
+        messageType: message.type,
+        hasData: !!message.data,
+      })
       onMessage(message)
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to parse message"
-      console.error("WebSocket message parse error:", errorMessage)
+      console.error("[WebSocket] Message parse error", {
+        jobId,
+        error: errorMessage,
+        rawData: event.data,
+      })
       onError?.(new Error(errorMessage))
     }
   }
 
   ws.onerror = (error) => {
-    console.error("WebSocket error:", error)
+    console.error("[WebSocket] Connection error", {
+      jobId,
+      wsUrl,
+      error: error instanceof Error ? error.message : String(error),
+    })
     onError?.(new Error("WebSocket connection error"))
   }
 
-  ws.onclose = () => {
-    console.log(`WebSocket closed for job ${jobId}`)
+  ws.onclose = (event) => {
+    console.log("[WebSocket] Connection closed", {
+      jobId,
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+    })
   }
 
   return {

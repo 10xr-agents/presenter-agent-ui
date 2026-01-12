@@ -15,13 +15,7 @@ export default async function SettingsGeneralPage() {
   const tenantState = await getTenantState(session.user.id)
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Manage your tenant settings and configuration
-        </p>
-      </div>
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
         <TenantGeneralForm />
       </SettingsLayout>

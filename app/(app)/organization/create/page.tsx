@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { CreateOrgForm } from "@/components/organizations/create-org-form"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
@@ -19,15 +18,13 @@ export default async function CreateOrganizationPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Create Organization"
-        description="Set up your organization to enable team collaboration, billing, and advanced features"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Create Organization" },
-        ]}
-      />
+    <div className="py-6">
+      <div className="mb-6">
+        <h1 className="text-lg font-semibold">Create Organization</h1>
+        <p className="mt-0.5 text-sm text-foreground">
+          Set up your organization to enable team collaboration, billing, and advanced features
+        </p>
+      </div>
       <CreateOrgForm />
     </div>
   )

@@ -306,13 +306,14 @@ Before generating code, verify:
 
 ### Page Titles & Headers
 - **MANDATORY**: Page titles must use `text-lg font-semibold` (never larger)
-- **MANDATORY**: Page descriptions must use `text-sm text-muted-foreground` with `mt-0.5` spacing
+- **MANDATORY**: Page descriptions must use `text-sm text-foreground` with `mt-0.5` spacing (NOT muted - primary content)
 - **MANDATORY**: Section headers within pages must use `text-sm font-semibold`
 - **MANDATORY**: Card titles must use `text-sm font-semibold` (never `text-base` or larger)
-- **MANDATORY**: Helper text and descriptions must use `text-xs text-muted-foreground`
+- **MANDATORY**: Helper text and descriptions must use `text-xs text-foreground` (NOT muted - primary content)
 - **FORBIDDEN**: Never use `text-xl`, `text-2xl`, or larger for page titles
 - **FORBIDDEN**: Never use `text-base` for descriptions or helper text
 - **FORBIDDEN**: Never use marketing-style oversized typography inside the app
+- **FORBIDDEN**: Never mute primary content text (descriptions, body text, titles)
 
 ```typescript
 // ❌ WRONG
@@ -321,14 +322,27 @@ Before generating code, verify:
 
 // ✅ CORRECT
 <h1 className="text-lg font-semibold">Settings</h1>
-<p className="mt-0.5 text-sm text-muted-foreground">Manage your tenant settings and configuration</p>
+<p className="mt-0.5 text-sm text-foreground">Manage your tenant settings and configuration</p>
 ```
 
 ### Content Typography
-- **MANDATORY**: Body text must use `text-sm` (default) or `text-xs` (secondary)
+- **MANDATORY**: Body text must use `text-sm` (default) or `text-xs` (secondary) with `text-foreground` (NOT muted)
 - **MANDATORY**: Value displays (numbers, amounts) must use `text-2xl font-semibold` maximum
-- **MANDATORY**: Labels must use `text-xs text-muted-foreground`
+- **MANDATORY**: Form labels must use `text-xs text-muted-foreground` (appropriate use case)
+- **MANDATORY**: Primary content (descriptions, body text, table content) must use `text-foreground` (NOT muted)
 - **FORBIDDEN**: Never use `text-base` or larger for body text in cards or forms
+- **FORBIDDEN**: Never mute primary content text
+
+### Typography Legibility Rules
+- **MANDATORY**: All primary content (body text, titles, headings, descriptions, table content, navigation) must use `text-foreground` for maximum legibility
+- **MANDATORY**: Muted text (`text-muted-foreground`) is ONLY allowed for:
+  - Form labels
+  - Placeholder text
+  - Helper/hint text
+  - Disabled states
+  - Metadata labels (e.g., "Created", "Last Updated")
+- **FORBIDDEN**: Never mute primary content text - it must be clearly legible
+- **MANDATORY**: Buttons must use `text-foreground` or high-contrast variants for clear visibility
 
 ---
 

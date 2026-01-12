@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
@@ -25,6 +26,10 @@ export async function POST(req: NextRequest) {
     description?: string
     includePaths?: string[]
     excludePaths?: string[]
+    websiteCredentials?: {
+      username: string
+      password: string
+    }
   }
 
   const {
@@ -37,6 +42,7 @@ export async function POST(req: NextRequest) {
     description,
     includePaths,
     excludePaths,
+    websiteCredentials,
   } = body
 
   // Validate URL
@@ -57,6 +63,19 @@ export async function POST(req: NextRequest) {
 
     const domain = extractDomain(websiteUrl)
 
+    console.log("[Website Knowledge] Starting exploration", {
+      websiteUrl,
+      domain,
+      organizationId,
+      maxPages,
+      maxDepth: maxDepth || 3,
+      strategy: strategy || "BFS",
+      includePaths,
+      excludePaths,
+      hasAuthentication: !!websiteCredentials,
+      userId: session.user.id,
+    })
+
     // Check if knowledge already exists for this domain
     const existing = await (WebsiteKnowledge as any).findOne({
       organizationId,
@@ -65,6 +84,12 @@ export async function POST(req: NextRequest) {
     })
 
     if (existing) {
+      console.log("[Website Knowledge] Already exists for domain", {
+        domain,
+        existingId: existing._id.toString(),
+        existingStatus: existing.status,
+        organizationId,
+      })
       return NextResponse.json(
         {
           data: {
@@ -85,37 +110,110 @@ export async function POST(req: NextRequest) {
     let status: "pending" | "exploring" | "failed" = "pending"
 
     try {
+      console.log("[Website Knowledge] Calling browser automation service", {
+        websiteUrl,
+        maxPages: maxPages || 100,
+        maxDepth: maxDepth || 10,
+        strategy: strategy || "BFS",
+        includePaths,
+        excludePaths,
+        hasAuthentication: !!websiteCredentials,
+      })
+
       const explorationResponse = await startExploration({
         start_url: websiteUrl,
-        max_pages: maxPages,
-        max_depth: maxDepth || 3,
+        max_pages: maxPages || 100,
+        max_depth: maxDepth || 10,
         strategy: strategy || "BFS",
         include_paths: includePaths,
         exclude_paths: excludePaths,
+        authentication: websiteCredentials
+          ? {
+              username: websiteCredentials.username,
+              password: websiteCredentials.password,
+            }
+          : undefined,
       })
       explorationJobId = explorationResponse.job_id
       status = explorationResponse.status === "queued" ? "pending" : "exploring"
+
+      console.log("[Website Knowledge] Exploration job started", {
+        jobId: explorationJobId,
+        status: explorationResponse.status,
+        websiteUrl,
+        organizationId,
+      })
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error("Failed to start exploration:", errorMessage)
+      console.error("[Website Knowledge] Failed to start exploration job", {
+        websiteUrl,
+        organizationId,
+        error: errorMessage,
+        maxPages,
+        maxDepth: maxDepth || 3,
+        strategy: strategy || "BFS",
+      })
+      Sentry.captureException(error, {
+        tags: {
+          operation: "start_exploration",
+          websiteUrl,
+          organizationId,
+        },
+        extra: {
+          maxPages,
+          maxDepth: maxDepth || 3,
+          strategy: strategy || "BFS",
+          includePaths,
+          excludePaths,
+        },
+      })
       status = "failed"
     }
 
+    // Create initial sync run for history
+    const initialSyncRun = {
+      jobId: explorationJobId || "",
+      status,
+      triggerType: "initial" as const,
+      startedAt: new Date(),
+      completedAt: undefined,
+      pagesProcessed: undefined,
+      linksProcessed: undefined,
+      errorCount: undefined,
+    }
+
     // Create website knowledge record
+    // Note: Credentials should be encrypted before storage in production
+    // For now, storing as-is (encryption should be added at application layer)
     const websiteKnowledge = await (WebsiteKnowledge as any).create({
       organizationId,
       websiteUrl,
       websiteDomain: domain,
       explorationJobId,
       status,
-      maxPages,
-      maxDepth: maxDepth || 3,
+      websiteCredentials: websiteCredentials
+        ? {
+            username: websiteCredentials.username,
+            password: websiteCredentials.password, // TODO: Encrypt before storage
+          }
+        : undefined,
+      maxPages: maxPages || 100,
+      maxDepth: maxDepth || 10,
       strategy: strategy || "BFS",
       includePaths: includePaths && includePaths.length > 0 ? includePaths : undefined,
       excludePaths: excludePaths && excludePaths.length > 0 ? excludePaths : undefined,
       name: name || `${domain} - Website Knowledge`,
       description,
       startedAt: status !== "failed" ? new Date() : undefined,
+      syncHistory: [initialSyncRun],
+    })
+
+    console.log("[Website Knowledge] Record created", {
+      knowledgeId: websiteKnowledge._id.toString(),
+      jobId: explorationJobId,
+      status,
+      websiteUrl,
+      organizationId,
     })
 
     return NextResponse.json({
@@ -129,7 +227,18 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (error: unknown) {
-    console.error("Website knowledge creation error:", error)
+    console.error("[Website Knowledge] Creation error", {
+      websiteUrl,
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    Sentry.captureException(error, {
+      tags: {
+        operation: "create_website_knowledge",
+        websiteUrl,
+        organizationId,
+      },
+    })
     const errorMessage = error instanceof Error ? error.message : String(error)
     return NextResponse.json(
       { error: errorMessage || "Failed to create website knowledge" },
@@ -151,6 +260,8 @@ export async function GET(req: NextRequest) {
   const organizationId = searchParams.get("organizationId")
   const status = searchParams.get("status")
   const websiteDomain = searchParams.get("websiteDomain")
+  const page = parseInt(searchParams.get("page") || "1", 10)
+  const limit = Math.min(parseInt(searchParams.get("limit") || "25", 10), 100) // Max 100, default 25
 
   if (!organizationId) {
     return NextResponse.json({ error: "organizationId is required" }, { status: 400 })
@@ -175,10 +286,19 @@ export async function GET(req: NextRequest) {
       query.websiteDomain = websiteDomain
     }
 
+    // Get total count for pagination
+    const totalCount = await (WebsiteKnowledge as any).countDocuments(query)
+
+    // Calculate pagination
+    const skip = (page - 1) * limit
+    const totalPages = Math.ceil(totalCount / limit)
+
     const knowledgeList = await (WebsiteKnowledge as any)
       .find(query)
       .sort({ createdAt: -1 })
-      .limit(100)
+      .skip(skip)
+      .limit(limit)
+      .lean()
 
     return NextResponse.json({
       data: knowledgeList.map((item: IWebsiteKnowledge) => ({
@@ -205,6 +325,14 @@ export async function GET(req: NextRequest) {
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
       })),
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
     })
   } catch (error: unknown) {
     console.error("Website knowledge list error:", error)

@@ -119,27 +119,25 @@ export function ScreenAgentList({
   })
 
   return (
-    <div className="space-y-6">
-
-      <div className="flex gap-4 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search agents..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSearch()
-                }
-              }}
-              className="pl-10"
-            />
-          </div>
+    <div className="space-y-4">
+      {/* Search and Filters */}
+      <div className="flex gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground opacity-60" />
+          <Input
+            placeholder="Search agents..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleSearch()
+              }
+            }}
+            className="h-9 pl-9 text-sm"
+          />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="h-9 w-[140px] text-sm">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -151,7 +149,7 @@ export function ScreenAgentList({
           </SelectContent>
         </Select>
         <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="h-9 w-[140px] text-sm">
             <SelectValue placeholder="Visibility" />
           </SelectTrigger>
           <SelectContent>
@@ -162,34 +160,27 @@ export function ScreenAgentList({
             <SelectItem value="public">Public</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={handleSearch} disabled={isLoading}>
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Searching...
-            </>
-          ) : (
-            "Search"
-          )}
-        </Button>
       </div>
 
       {filteredAgents.length === 0 ? (
-        <div className="text-center py-12 border rounded-lg">
-          <p className="text-muted-foreground mb-4">
+        <div className="border rounded-lg p-12 text-center">
+          <Video className="mx-auto h-8 w-8 text-foreground opacity-60 mb-2" />
+          <h3 className="text-sm font-semibold mb-1">
             {agents.length === 0 ? "No Screen Agents yet" : "No agents match your filters"}
-          </p>
+          </h3>
           {agents.length === 0 && (
-            <Button asChild>
-              <Link href="/screen-agents/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Your First Agent
-              </Link>
-            </Button>
+            <div className="mt-4">
+              <Button asChild size="sm">
+                <Link href="/screen-agents/new">
+                  <Plus className="mr-2 h-3.5 w-3.5" />
+                  Create Your First Agent
+                </Link>
+              </Button>
+            </div>
           )}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {filteredAgents.map((agent) => (
             <ScreenAgentCard
               key={agent.id}

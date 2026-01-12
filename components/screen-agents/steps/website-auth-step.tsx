@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
 import type { WizardData } from "@/hooks/use-screen-agent-wizard"
 
 interface WebsiteAuthStepProps {
@@ -79,9 +80,8 @@ export function WebsiteAuthStep({
 
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
@@ -105,7 +105,7 @@ export function WebsiteAuthStep({
           Previous
         </Button>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={handleSkip}>
+          <Button variant="outline" onClick={handleSkip}>
             {skip ? "Add Credentials" : "Skip"}
           </Button>
           {!skip && (

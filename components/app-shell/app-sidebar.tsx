@@ -102,14 +102,14 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
               key={item.name}
               href={item.href}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  : "text-foreground hover:bg-accent hover:text-foreground"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span>{item.name}</span>
+              <span className="leading-snug">{item.name}</span>
             </Link>
           )
         })}
@@ -118,14 +118,14 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
       {/* User info at bottom - Resend style */}
       {mounted && user && (
         <div className="border-t p-3">
-          <div className="flex items-center gap-2.5">
-            <Avatar className="h-7 w-7">
+          <div className="flex items-center gap-2">
+            <Avatar className="h-7 w-7 shrink-0">
               <AvatarImage src={user.image || undefined} alt={user.name || user.email || "User"} />
-              <AvatarFallback className="text-xs">{userInitials}</AvatarFallback>
+              <AvatarFallback className="text-xs font-medium">{userInitials}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium">{user.name || "User"}</p>
-              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              <p className="truncate text-xs font-medium leading-snug">{user.name || "User"}</p>
+              <p className="truncate text-xs text-foreground leading-snug opacity-90">{user.email}</p>
             </div>
           </div>
         </div>

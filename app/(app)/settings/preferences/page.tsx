@@ -1,6 +1,5 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { PageHeader } from "@/components/app-shell"
 import { PreferencesForm } from "@/components/settings/preferences/preferences-form"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
@@ -16,16 +15,7 @@ export default async function PreferencesSettingsPage() {
   const tenantState = await getTenantState(session.user.id)
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Preferences"
-        description="Customize your theme, language, and notification settings"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Settings", href: "/settings" },
-          { label: "Preferences" },
-        ]}
-      />
+    <div className="py-6">
       <SettingsLayout tenantState={tenantState}>
         <PreferencesForm />
       </SettingsLayout>

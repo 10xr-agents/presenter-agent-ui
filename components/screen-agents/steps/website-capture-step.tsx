@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Textarea } from "@/components/ui/textarea"
 import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
 import { WebsiteKnowledgeSelector } from "@/components/website-knowledge/website-knowledge-selector"
@@ -262,7 +263,7 @@ export function WebsiteCaptureStep({
           <div className="flex items-center justify-between">
             <Label className="text-sm font-semibold">Website Knowledge</Label>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               asChild
               className="h-7 text-xs"
@@ -313,7 +314,7 @@ export function WebsiteCaptureStep({
           <Label className="text-sm font-medium">Credentials (Optional)</Label>
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => setSkipCredentials(!skipCredentials)}
             className="h-7 text-xs"
@@ -339,9 +340,8 @@ export function WebsiteCaptureStep({
 
             <div className="space-y-1.5">
               <Label htmlFor="password" className="text-sm font-medium">Password</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"

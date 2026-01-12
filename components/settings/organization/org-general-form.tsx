@@ -83,16 +83,18 @@ export function OrgGeneralForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+        <Alert variant="destructive" className="py-2">
+          <AlertDescription className="text-xs">{error}</AlertDescription>
         </Alert>
       )}
 
       <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Organization Name</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="name" className="text-xs text-muted-foreground">
+            Organization Name
+          </Label>
           <Input
             id="name"
             value={formData.name}
@@ -100,11 +102,14 @@ export function OrgGeneralForm() {
             placeholder="My Organization"
             required
             disabled={loading}
+            className="h-9"
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="slug">Organization Slug</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="slug" className="text-xs text-muted-foreground">
+            Organization Slug
+          </Label>
           <Input
             id="slug"
             value={formData.slug}
@@ -118,14 +123,17 @@ export function OrgGeneralForm() {
             required
             disabled={loading}
             pattern="[a-z0-9-]+"
+            className="h-9"
           />
           <p className="text-xs text-muted-foreground">
             URL-friendly identifier (lowercase letters, numbers, and hyphens only)
           </p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="description">Description</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="description" className="text-xs text-muted-foreground">
+            Description
+          </Label>
           <Textarea
             id="description"
             value={formData.description}
@@ -133,17 +141,18 @@ export function OrgGeneralForm() {
               setFormData({ ...formData, description: e.target.value })
             }
             placeholder="A brief description of your organization"
-            rows={4}
+            rows={3}
             disabled={loading}
+            className="text-sm"
           />
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={loading}>
+      <div className="flex justify-end pt-2">
+        <Button type="submit" disabled={loading} size="sm">
           {loading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
               Saving...
             </>
           ) : (
