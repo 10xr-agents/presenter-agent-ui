@@ -6,7 +6,6 @@ import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import {
   Card,
   CardContent,
@@ -14,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import {
   Dialog,
   DialogContent,

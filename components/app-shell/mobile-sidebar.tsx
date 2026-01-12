@@ -3,6 +3,7 @@
 import {
   Activity,
   BarChart3,
+  BookOpen,
   CreditCard,
   LayoutDashboard,
   Menu,
@@ -16,8 +17,8 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import type { TenantState } from "@/lib/utils/tenant-state"
 import { cn } from "@/lib/utils"
+import type { TenantState } from "@/lib/utils/tenant-state"
 
 interface MobileSidebarProps {
   tenantState?: TenantState
@@ -33,6 +34,11 @@ const baseNavigation = [
     name: "Screen Agents",
     href: "/screen-agents",
     icon: Presentation,
+  },
+  {
+    name: "Knowledge",
+    href: "/knowledge",
+    icon: BookOpen,
   },
   {
     name: "Analytics",

@@ -8,14 +8,15 @@ import {
   Presentation,
   Settings,
   Users,
+  BookOpen,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import type { TenantState } from "@/lib/utils/tenant-state"
 import { authClient } from "@/lib/auth/client"
 import { cn } from "@/lib/utils"
+import type { TenantState } from "@/lib/utils/tenant-state"
 
 const { useSession } = authClient
 
@@ -33,6 +34,11 @@ const baseNavigation = [
     name: "Screen Agents",
     href: "/screen-agents",
     icon: Presentation,
+  },
+  {
+    name: "Knowledge",
+    href: "/knowledge",
+    icon: BookOpen,
   },
   {
     name: "Analytics",

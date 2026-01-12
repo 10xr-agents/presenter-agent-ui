@@ -4,8 +4,10 @@ import { format } from "date-fns"
 import { MoreVertical, Play, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
+import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
-import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import { toast } from "@/lib/utils/toast"
 
 export interface ScreenAgent {

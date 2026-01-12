@@ -3,10 +3,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { useScreenAgentWizard } from "@/hooks/use-screen-agent-wizard"
-import { BasicIdentityStep } from "./steps/basic-identity-step"
-import { WebsiteCaptureStep } from "./steps/website-capture-step"
-import { KnowledgeSourcesStep } from "./steps/knowledge-sources-step"
 import { AdvancedVoiceStep } from "./steps/advanced-voice-step"
+import { BasicIdentityStep } from "./steps/basic-identity-step"
+import { KnowledgeSourcesStep } from "./steps/knowledge-sources-step"
+import { WebsiteCaptureStep } from "./steps/website-capture-step"
 
 interface CreationWizardProps {
   organizationId: string

@@ -1,13 +1,17 @@
 "use client"
 
 import { AlertCircle, CheckCircle2, Loader2, TestTube } from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
+import { WebsiteKnowledgeSelector } from "@/components/website-knowledge/website-knowledge-selector"
 import type { WizardData } from "@/hooks/use-screen-agent-wizard"
 
 interface WebsiteCaptureStepProps {
@@ -40,6 +44,8 @@ export function WebsiteCaptureStep({
   const [urlError, setUrlError] = useState<string | null>(null)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "success" | "error">("idle")
+  const [activeKnowledgeId, setActiveKnowledgeId] = useState<string | null>(null)
+  const [isCreatingKnowledge, setIsCreatingKnowledge] = useState(false)
 
   const validateUrl = (url: string): boolean => {
     if (!url.trim()) {
@@ -69,7 +75,66 @@ export function WebsiteCaptureStep({
     } else {
       setUrlError(null)
     }
+    // Reset active knowledge when URL changes
+    setActiveKnowledgeId(null)
   }
+
+  // Automatically start knowledge acquisition when URL is validated
+  useEffect(() => {
+    // Check if URL is valid
+    let isValid = false
+    try {
+      if (targetWebsiteUrl.trim()) {
+        const urlObj = new URL(targetWebsiteUrl)
+        isValid = ["http:", "https:"].includes(urlObj.protocol)
+      }
+    } catch {
+      isValid = false
+    }
+
+    if (!targetWebsiteUrl || urlError || !isValid) {
+      return
+    }
+
+    // Debounce: wait 1 second after user stops typing
+    const timeoutId = setTimeout(async () => {
+      if (isCreatingKnowledge || activeKnowledgeId) {
+        return
+      }
+
+      setIsCreatingKnowledge(true)
+      try {
+        const response = await fetch("/api/website-knowledge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            websiteUrl: targetWebsiteUrl.trim(),
+            organizationId,
+            maxPages: 50,
+            maxDepth: 3,
+            strategy: "BFS",
+            // Path restrictions can be added here if needed in the future
+          }),
+        })
+
+        if (response.ok) {
+          const result = (await response.json()) as { data?: { id: string; message?: string } }
+          if (result.data?.id) {
+            setActiveKnowledgeId(result.data.id)
+            // If message indicates existing knowledge, it's already selected
+            // The selector will handle displaying it
+          }
+        }
+      } catch (err: unknown) {
+        // Silently fail - knowledge acquisition is optional
+        console.error("Failed to start knowledge acquisition:", err)
+      } finally {
+        setIsCreatingKnowledge(false)
+      }
+    }, 1000)
+
+    return () => clearTimeout(timeoutId)
+  }, [targetWebsiteUrl, organizationId, urlError, isCreatingKnowledge, activeKnowledgeId])
 
   const handleTestConnection = async () => {
     if (!validateUrl(targetWebsiteUrl)) {
@@ -190,6 +255,58 @@ export function WebsiteCaptureStep({
           </p>
         )}
       </div>
+
+      {/* Website Knowledge Section */}
+      {targetWebsiteUrl && !urlError && (
+        <div className="space-y-3 border-t pt-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold">Website Knowledge</Label>
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className="h-7 text-xs"
+            >
+              <Link href="/knowledge">
+                Manage Knowledge
+              </Link>
+            </Button>
+          </div>
+          <WebsiteKnowledgeSelector
+            organizationId={organizationId}
+            websiteUrl={targetWebsiteUrl}
+            selectedKnowledgeId={activeKnowledgeId || undefined}
+            onSelect={(knowledgeId) => {
+              setActiveKnowledgeId(knowledgeId)
+              // Store in wizard data for later use
+              // Note: This could be added to WizardData if needed
+            }}
+            onCreateNew={() => {
+              // Knowledge creation is handled automatically
+            }}
+          />
+
+          {/* Show active knowledge progress if one is being generated */}
+          {activeKnowledgeId && (
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Current Exploration</Label>
+                  <WebsiteKnowledgeProgress
+                    knowledgeId={activeKnowledgeId}
+                    onComplete={() => {
+                      // Knowledge completed - can proceed
+                    }}
+                    onError={(error) => {
+                      console.error("Knowledge exploration error:", error)
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="space-y-3 border-t pt-3">
         <div className="flex items-center justify-between">

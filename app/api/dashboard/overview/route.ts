@@ -2,8 +2,8 @@ import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
-import { ScreenAgent } from "@/lib/models/screen-agent"
 import { PresentationSession } from "@/lib/models/presentation-session"
+import { ScreenAgent } from "@/lib/models/screen-agent"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
 /**
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     const isNormalMode = tenantState === "normal"
 
     // Get agent counts
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const allAgents = isNormalMode
       ? await (ScreenAgent as any).find({ ownerId: organizationId })
       : await (ScreenAgent as any).find({ organizationId })

@@ -1,9 +1,9 @@
+import { Shield } from "lucide-react"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { Shield } from "lucide-react"
+import { SettingsLayout } from "@/components/settings/settings-layout"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
-import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 

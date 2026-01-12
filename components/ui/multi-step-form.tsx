@@ -1,7 +1,7 @@
 "use client"
 
 import { Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
-import { useState, ReactNode } from "react"
+import { ReactNode, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"

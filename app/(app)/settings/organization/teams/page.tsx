@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app-shell"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
-import { getTenantState, hasOrganizationFeatures, getActiveOrganizationId } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantState, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
 
 export default async function OrganizationTeamsPage() {
   const session = await auth.api.getSession({ headers: await headers() })

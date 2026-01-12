@@ -1,9 +1,9 @@
 import { headers } from "next/headers"
-import { redirect } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
-import { auth } from "@/lib/auth"
+import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { auth } from "@/lib/auth"
 
 export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() })

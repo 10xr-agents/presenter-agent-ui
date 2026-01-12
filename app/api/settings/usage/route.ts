@@ -1,10 +1,10 @@
 import { headers } from "next/headers"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 import { connectDB } from "@/lib/db/mongoose"
-import { ScreenAgent } from "@/lib/models/screen-agent"
 import { PresentationSession } from "@/lib/models/presentation-session"
+import { ScreenAgent } from "@/lib/models/screen-agent"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export async function GET() {
   try {

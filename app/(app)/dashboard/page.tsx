@@ -3,8 +3,8 @@ import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/app-shell"
 import { OverviewDashboard } from "@/components/dashboard/overview-dashboard"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 import { spacing } from "@/lib/utils/design-system"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
  * Dashboard Page - High-Level Overview

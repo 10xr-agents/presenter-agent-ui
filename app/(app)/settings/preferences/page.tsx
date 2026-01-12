@@ -1,8 +1,8 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/app-shell"
-import { SettingsLayout } from "@/components/settings/settings-layout"
 import { PreferencesForm } from "@/components/settings/preferences/preferences-form"
+import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 

@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Get screen agent metrics
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const screenAgents = isNormalMode
       ? await (ScreenAgent as any).find({ ownerId: organizationId })
       : await (ScreenAgent as any).find({ organizationId })

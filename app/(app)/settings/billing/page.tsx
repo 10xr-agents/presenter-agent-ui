@@ -1,9 +1,9 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { SettingsLayout } from "@/components/settings/settings-layout"
 import { BillingContent } from "@/components/settings/billing/billing-content"
+import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function SettingsBillingPage() {
   const session = await auth.api.getSession({ headers: await headers() })

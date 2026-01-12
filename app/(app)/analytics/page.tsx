@@ -1,7 +1,7 @@
 import { headers } from "next/headers"
 import { Dashboard } from "@/components/analytics/dashboard"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function AnalyticsPage() {
   const session = await auth.api.getSession({ headers: await headers() })

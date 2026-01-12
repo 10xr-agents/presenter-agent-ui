@@ -11,12 +11,12 @@
  */
 
 import { headers } from "next/headers"
-import { connectDB } from "@/lib/db/mongoose"
 import { auth } from "@/lib/auth"
+import { connectDB } from "@/lib/db/mongoose"
 import { ScreenAgent } from "@/lib/models/screen-agent"
 import { Team } from "@/lib/models/team"
 import { TeamMembership } from "@/lib/models/team-membership"
-import { createTeam, addTeamMember } from "@/lib/teams/manager"
+import { addTeamMember, createTeam } from "@/lib/teams/manager"
 
 export interface MigrationResult {
   success: boolean

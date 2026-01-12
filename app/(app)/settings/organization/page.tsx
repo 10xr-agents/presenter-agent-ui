@@ -1,8 +1,8 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/app-shell"
-import { SettingsLayout } from "@/components/settings/settings-layout"
 import { OrgGeneralForm } from "@/components/settings/organization/org-general-form"
+import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 

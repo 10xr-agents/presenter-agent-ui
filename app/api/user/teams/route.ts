@@ -1,10 +1,10 @@
 import { headers } from "next/headers"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
-import { listTeams } from "@/lib/teams/manager"
-import { TeamMembership } from "@/lib/models/team-membership"
 import { connectDB } from "@/lib/db/mongoose"
+import { TeamMembership } from "@/lib/models/team-membership"
+import { listTeams } from "@/lib/teams/manager"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export async function GET() {
   try {

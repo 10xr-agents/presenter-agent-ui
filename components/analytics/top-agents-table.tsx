@@ -1,7 +1,7 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
+import { Card, CardContent } from "@/components/ui/card"
 
 interface TopAgent {
   id: string

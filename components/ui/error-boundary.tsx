@@ -1,9 +1,9 @@
 "use client"
 
-import { Component, type ReactNode } from "react"
 import { AlertCircle, RefreshCw } from "lucide-react"
-import { Button } from "./button"
+import { Component, type ReactNode } from "react"
 import { Alert, AlertDescription, AlertTitle } from "./alert"
+import { Button } from "./button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card"
 
 interface ErrorBoundaryProps {

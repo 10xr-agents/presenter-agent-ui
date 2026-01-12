@@ -45,6 +45,8 @@ export const env = createEnv({
     SENTRY_AUTH_TOKEN: z.string().optional(),
     // Feature Flags
     FEATURE_FLAGS_ENABLED: z.string().optional(),
+    // Browser Automation Service
+    BROWSER_AUTOMATION_SERVICE_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
@@ -86,6 +88,8 @@ export const env = createEnv({
     FEATURE_FLAGS_ENABLED: process.env.FEATURE_FLAGS_ENABLED,
     // Prisma Logging
     PRISMA_LOG_QUERIES: process.env.PRISMA_LOG_QUERIES,
+    // Browser Automation Service
+    BROWSER_AUTOMATION_SERVICE_URL: process.env.BROWSER_AUTOMATION_SERVICE_URL,
     NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
     NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   },

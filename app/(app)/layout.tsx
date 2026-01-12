@@ -5,8 +5,8 @@ import { AppSidebar } from "@/components/app-shell/app-sidebar"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { auth } from "@/lib/auth"
 import { isOnboardingComplete } from "@/lib/onboarding/flow"
-import { getTenantState } from "@/lib/utils/tenant-state"
 import { spacing } from "@/lib/utils/design-system"
+import { getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function AppLayout({
   children,

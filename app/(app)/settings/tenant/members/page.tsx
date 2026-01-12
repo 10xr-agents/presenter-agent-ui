@@ -1,10 +1,10 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/app-shell"
-import { SettingsLayout } from "@/components/settings/settings-layout"
 import { OrganizationMembersList } from "@/components/settings/organization/member-list"
+import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 
 export default async function TenantMembersPage() {

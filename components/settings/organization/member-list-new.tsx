@@ -1,7 +1,9 @@
 "use client"
 
+import { format } from "date-fns"
 import { Loader2, Mail, MoreVertical, Shield, Trash2, User, UserPlus } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
+import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,13 +23,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
-import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { authClient } from "@/lib/auth/client"
 import { toast } from "@/lib/utils/toast"
 import { InviteMemberDialog } from "./invite-member-dialog"
-import { format } from "date-fns"
-import { Skeleton } from "@/components/ui/skeleton"
 
 interface Member {
   id: string

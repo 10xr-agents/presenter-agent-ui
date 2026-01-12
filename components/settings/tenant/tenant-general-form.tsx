@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Loader2, Save } from "lucide-react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -12,9 +13,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Save } from "lucide-react"
-import { toast } from "@/lib/utils/toast"
 import { authClient } from "@/lib/auth/client"
+import { toast } from "@/lib/utils/toast"
 
 export function TenantGeneralForm() {
   const [loading, setLoading] = useState(true)

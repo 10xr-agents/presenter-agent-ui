@@ -1,7 +1,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { SettingsLayout } from "@/components/settings/settings-layout"
 import { PasswordForm } from "@/components/settings/authentication/password-form"
+import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
 import { getTenantState } from "@/lib/utils/tenant-state"
 

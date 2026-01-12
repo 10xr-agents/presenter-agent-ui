@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/app-shell"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
-import { getTenantState, hasOrganizationFeatures, getActiveOrganizationId } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantState, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
 
 interface TeamsPageProps {
   searchParams: Promise<{ organizationId?: string }>

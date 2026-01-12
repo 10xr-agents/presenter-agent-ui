@@ -1,7 +1,7 @@
-import { cn } from "@/lib/utils"
 import { ReactNode } from "react"
-import { BreadcrumbsWithActions, type BreadcrumbItemWithActions } from "@/components/ui/breadcrumbs-with-actions"
-import { typography, spacing } from "@/lib/utils/design-system"
+import { type BreadcrumbItemWithActions, BreadcrumbsWithActions } from "@/components/ui/breadcrumbs-with-actions"
+import { cn } from "@/lib/utils"
+import { spacing, typography } from "@/lib/utils/design-system"
 
 interface BreadcrumbItem {
   label: string
