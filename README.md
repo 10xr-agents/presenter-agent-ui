@@ -226,6 +226,9 @@ SENTRY_AUTH_TOKEN=xxxxx
 # Feature Flags
 FEATURE_FLAGS_ENABLED=false
 
+# Prisma Logging (development only - set to "true" to enable query logging)
+PRISMA_LOG_QUERIES=false
+
 # Public Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```

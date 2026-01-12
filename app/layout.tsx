@@ -21,21 +21,22 @@ const sofiaSans = Sofia_Sans_Extra_Condensed({
 
 export const metadata: Metadata = {
   title: {
-    default: "AppealGen AI - Medical Denial Appeal Generator | 10XR",
-    template: "%s | AppealGen AI",
+    default: "Screen Agent Platform - Interactive AI-Powered Screen Presentations",
+    template: "%s | Screen Agent Platform",
   },
   description:
-    "AppealGen AI by 10XR - AI-powered medical denial appeal generator. Generate citation-backed appeals in seconds, not hours.",
+    "Create, distribute, and analyze interactive AI-powered screen presentations. Deliver personalized, voice-guided walkthroughs for sales demos, customer onboarding, product training, and technical support.",
   keywords: [
-    "medical appeals",
-    "denial appeals",
-    "healthcare",
-    "AI",
-    "medical necessity",
-    "insurance appeals",
-    "10XR",
+    "screen presentations",
+    "interactive demos",
+    "AI presentations",
+    "voice-guided tours",
+    "product demos",
+    "customer onboarding",
+    "sales enablement",
+    "screen agents",
   ],
-  authors: [{ name: "10XR", url: "https://10xr.co" }],
+  authors: [{ name: "Screen Agent Platform" }],
 }
 
 export default function RootLayout({

@@ -39,10 +39,12 @@ export function OAuthButtons({ mode = "login" }: OAuthButtonsProps) {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true)
     try {
-      await signIn.social({
-        provider: "google",
-        callbackURL: "/",
-      })
+        // OAuth redirect will be handled by Better Auth
+        // The server will check onboarding status and redirect accordingly
+        await signIn.social({
+          provider: "google",
+          callbackURL: "/dashboard", // Will be validated and potentially redirected to onboarding
+        })
     } catch (error) {
       console.error("Google sign-in error:", error)
     } finally {

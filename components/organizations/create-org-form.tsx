@@ -32,9 +32,9 @@ export function CreateOrgForm() {
         return
       }
 
-      // Redirect to organization dashboard
+      // Redirect to dashboard (will show organization view)
       if (result.data) {
-        router.push(`/org/${result.data.slug}`)
+        router.push("/dashboard")
         router.refresh()
       }
     } catch (err) {

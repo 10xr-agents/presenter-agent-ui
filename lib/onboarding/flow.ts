@@ -102,14 +102,14 @@ export async function isOnboardingComplete(userId: string): Promise<boolean> {
 }
 
 // Get onboarding progress
-export async function getOnboardingProgress(userId: string): Promise<{
+export async function getOnboardingProgress(_userId: string): Promise<{
   currentStep: OnboardingStep
   completedSteps: OnboardingStep[]
   progress: number
 }> {
   await connectDB()
 
-  const onboarding = await getOnboarding(userId)
+  const onboarding = await getOnboarding(_userId)
   const totalSteps = 3 // welcome, team-invite, tour (excluding 'complete' for progress calculation)
   const progress = (onboarding.completedSteps.length / totalSteps) * 100
 

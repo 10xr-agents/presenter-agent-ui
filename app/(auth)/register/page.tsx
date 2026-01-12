@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator"
 
 export const metadata: Metadata = {
   title: "Create Account",
-  description: "Create a new AppealGen AI account",
+  description: "Create a new Screen Agent Platform account",
 }
 
 export default function RegisterPage() {
@@ -14,7 +14,7 @@ export default function RegisterPage() {
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
         <CardDescription>
-          Get started with AppealGen AI today
+          Get started with Screen Agent Platform today
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -2,7 +2,7 @@
 
 import { AlertCircle, Loader2, Lock, Mail } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { signIn } from "@/lib/auth/client"
 
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -33,7 +34,14 @@ export function LoginForm() {
         return
       }
 
-      router.push("/")
+      // Redirect to callback URL if provided, otherwise let server handle routing
+      const callbackUrl = searchParams.get("callbackUrl")
+      if (callbackUrl) {
+        router.push(callbackUrl)
+      } else {
+        // Let the server-side routing handle the redirect based on onboarding status
+        router.push("/dashboard")
+      }
       router.refresh()
     } catch (err) {
       setError("An unexpected error occurred")

@@ -34,16 +34,61 @@ export async function GET(req: NextRequest) {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
+    // Determine if this is normal mode (userId) or organization mode
+    // In normal mode, organizationId is actually the userId
+    // Check if this looks like a user ID (no organization exists with this ID)
+    // For now, we'll check if screen agents exist with ownerId matching this
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const agentsByOrg = await (ScreenAgent as any).find({ organizationId }).limit(1)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const agentsByOwner = await (ScreenAgent as any).find({ ownerId: organizationId }).limit(1)
+
+    const isNormalMode = agentsByOwner.length > 0 && agentsByOrg.length === 0
+
     // Get analytics aggregation
-    const analytics = await aggregateOrganizationAnalytics(
-      organizationId,
-      startDate,
-      endDate
-    )
+    let analytics
+    if (isNormalMode) {
+      // For normal mode, aggregate by ownerId
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const personalSessions = await (PresentationSession as any).find({
+        startedAt: { $gte: startDate, $lte: endDate },
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const personalAgents = await (ScreenAgent as any).find({ ownerId: organizationId })
+      const personalAgentIds = personalAgents.map((a: any) => a._id.toString())
+      const filteredSessions = personalSessions.filter((s: any) =>
+        personalAgentIds.includes(s.screenAgentId?.toString())
+      )
+
+      // Calculate basic metrics for normal mode
+      const totalSessions = filteredSessions.length
+      const completedSessions = filteredSessions.filter((s: any) => s.completionStatus === "completed").length
+      const totalDuration = filteredSessions.reduce((sum: number, s: any) => sum + (s.durationSeconds || 0), 0)
+
+      analytics = {
+        totalSessions,
+        completionRate: totalSessions > 0 ? completedSessions / totalSessions : 0,
+        averageSessionDuration: totalSessions > 0 ? totalDuration / totalSessions / 60 : 0, // in minutes
+        averageEngagementScore: 0, // TODO: Calculate from engagement metrics
+        totalQuestions: 0, // TODO: Calculate from events
+        totalPageNavigations: 0, // TODO: Calculate from events
+        topQuestions: [],
+        eventBreakdown: {},
+      }
+    } else {
+      // Organization mode - use existing aggregation
+      analytics = await aggregateOrganizationAnalytics(
+        organizationId,
+        startDate,
+        endDate
+      )
+    }
 
     // Get screen agent metrics
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const screenAgents = await (ScreenAgent as any).find({ organizationId })
+    const screenAgents = isNormalMode
+      ? await (ScreenAgent as any).find({ ownerId: organizationId })
+      : await (ScreenAgent as any).find({ organizationId })
 
     // Calculate total costs (minutes * rate - placeholder)
     // TODO: Calculate actual costs from usage events

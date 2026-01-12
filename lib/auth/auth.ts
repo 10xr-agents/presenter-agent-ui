@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth"
 import { prismaAdapter } from "better-auth/adapters/prisma"
 import { organization } from "better-auth/plugins"
 import { Resend } from "resend"
+import { logger } from "@/lib/utils/logger"
 
 // Lazy import prisma to allow Better Auth CLI to read config without Prisma client
 function getPrisma() {
@@ -26,7 +27,7 @@ function getResendClient(): Resend | null {
 
 // Email sender configuration
 const getEmailFrom = () =>
-  process.env.EMAIL_FROM || "AppealGen AI <noreply@appealgen.ai>"
+  process.env.EMAIL_FROM || "Screen Agent Platform <noreply@screenagent.ai>"
 
 // Build auth config - conditionally include database adapter
 const authConfig: Parameters<typeof betterAuth>[0] = {
@@ -39,7 +40,7 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
   } : {}),
 
   // App configuration
-  appName: "AppealGen AI",
+  appName: "Screen Agent Platform",
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET || "development-secret-change-in-production-min-32-chars",
 
@@ -54,17 +55,38 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
       
       // Invitation email handler
       async sendInvitationEmail(data) {
+        logger.info("Organization invitation email requested", {
+          organizationId: data.organization.id,
+          organizationName: data.organization.name,
+          inviteeEmail: data.email,
+          inviterId: data.inviter.user.id,
+          inviterEmail: data.inviter.user.email,
+        })
+
         const resend = getResendClient()
         if (!resend) {
-          console.warn("Resend not configured, skipping invitation email")
-          console.log("Invitation link:", `${process.env.BETTER_AUTH_URL}/accept-invitation/${data.id}`)
+          logger.warn("Resend not configured, skipping invitation email", {
+            organizationId: data.organization.id,
+            inviteeEmail: data.email,
+            invitationId: data.id,
+          })
+          logger.debug("Invitation link (for manual sharing)", {
+            invitationId: data.id,
+            link: `${process.env.BETTER_AUTH_URL}/accept-invitation/${data.id}`,
+          })
           return
         }
 
         const inviteLink = `${process.env.BETTER_AUTH_URL}/accept-invitation/${data.id}`
         
         try {
-          await resend.emails.send({
+          logger.debug("Sending organization invitation email", {
+            inviteeEmail: data.email,
+            organizationId: data.organization.id,
+            invitationId: data.id,
+          })
+
+          const result = await resend.emails.send({
             from: getEmailFrom(),
             to: data.email,
             subject: `Invitation to join ${data.organization.name}`,
@@ -113,11 +135,31 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                 </body>
               </html>
           `,
-        })
-      } catch (error: unknown) {
-        console.error("Failed to send invitation email:", error)
-        throw error
-      }
+          })
+          
+          if (result.error) {
+            logger.error("Resend API error when sending invitation email", result.error, {
+              organizationId: data.organization.id,
+              inviteeEmail: data.email,
+              invitationId: data.id,
+            })
+            throw new Error(`Failed to send invitation email: ${JSON.stringify(result.error)}`)
+          }
+          
+          logger.info("Organization invitation email sent successfully", {
+            organizationId: data.organization.id,
+            inviteeEmail: data.email,
+            invitationId: data.id,
+            emailId: result.data?.id,
+          })
+        } catch (error: unknown) {
+          logger.error("Failed to send organization invitation email", error, {
+            organizationId: data.organization.id,
+            inviteeEmail: data.email,
+            invitationId: data.id,
+          })
+          throw error
+        }
       },
     }),
   ],
@@ -135,18 +177,38 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
+      logger.info("Email verification requested", {
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name,
+      })
+
       const resend = getResendClient()
       if (!resend) {
-        console.warn("Resend not configured, skipping verification email")
-        console.log("Verification URL:", url)
+        logger.warn("Resend not configured, skipping verification email", {
+          userId: user.id,
+          userEmail: user.email,
+        })
+        logger.debug("Verification URL (for manual sharing)", {
+          userId: user.id,
+          userEmail: user.email,
+          url,
+        })
         return
       }
 
       try {
-        await resend.emails.send({
-          from: getEmailFrom(),
+        const emailFrom = getEmailFrom()
+        logger.debug("Sending email verification", {
+          userId: user.id,
+          userEmail: user.email,
+          emailFrom,
+        })
+        
+        const result = await resend.emails.send({
+          from: emailFrom,
           to: user.email,
-          subject: "Verify your AppealGen AI account",
+          subject: "Verify your Screen Agent Platform account",
           html: `
             <!DOCTYPE html>
             <html>
@@ -163,8 +225,8 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                         <!-- Header -->
                         <tr>
                           <td style="background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%); padding: 32px; border-radius: 8px 8px 0 0; text-align: center;">
-                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">AppealGen AI</h1>
-                            <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">by 10XR</p>
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Screen Agent Platform</h1>
+                            <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">Interactive AI-powered presentations</p>
                           </td>
                         </tr>
                         <!-- Content -->
@@ -175,7 +237,7 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                               Hi ${user.name || "there"},
                             </p>
                             <p style="color: #52525b; margin: 0 0 24px 0; font-size: 16px; line-height: 1.6;">
-                              Thanks for signing up for AppealGen AI! Please verify your email address by clicking the button below.
+                              Thanks for signing up for Screen Agent Platform! Please verify your email address by clicking the button below.
                             </p>
                             <table width="100%" cellpadding="0" cellspacing="0">
                               <tr>
@@ -198,10 +260,7 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
                         <tr>
                           <td style="padding: 24px 32px; border-top: 1px solid #e4e4e7; text-align: center;">
                             <p style="color: #a1a1aa; margin: 0; font-size: 12px;">
-                              &copy; ${new Date().getFullYear()} 10XR. All rights reserved.
-                            </p>
-                            <p style="color: #a1a1aa; margin: 8px 0 0 0; font-size: 12px;">
-                              <a href="https://10xr.co" style="color: #568AFF; text-decoration: none;">10xr.co</a>
+                              &copy; ${new Date().getFullYear()} Screen Agent Platform. All rights reserved.
                             </p>
                           </td>
                         </tr>
@@ -213,9 +272,29 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
             </html>
           `,
         })
+        
+        if (result.error) {
+          logger.error("Resend API error when sending verification email", result.error, {
+            userId: user.id,
+            userEmail: user.email,
+            emailFrom,
+            resendError: result.error,
+          })
+          throw new Error(`Failed to send verification email: ${JSON.stringify(result.error)}`)
+        }
+        
+        logger.info("Email verification sent successfully", {
+          userId: user.id,
+          userEmail: user.email,
+          emailId: result.data?.id,
+        })
       } catch (error: unknown) {
-        console.error("Failed to send verification email:", error)
-        throw error
+        logger.error("Failed to send email verification", error, {
+          userId: user.id,
+          userEmail: user.email,
+        })
+        // Don't throw - Better Auth will handle gracefully
+        // This prevents signup from failing if email sending fails
       }
     },
   },

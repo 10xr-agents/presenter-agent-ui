@@ -1,8 +1,13 @@
 import { headers } from "next/headers"
+import Link from "next/link"
 import { redirect } from "next/navigation"
+import { Plus } from "lucide-react"
+import { PageHeader } from "@/components/app-shell"
+import { Button } from "@/components/ui/button"
 import { ScreenAgentList } from "@/components/screen-agents/screen-agent-list"
 import { auth } from "@/lib/auth"
 import { listScreenAgents } from "@/lib/screen-agents/manager"
+import { spacing } from "@/lib/utils/design-system"
 
 export default async function ScreenAgentsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -38,7 +43,23 @@ export default async function ScreenAgentsPage() {
   }))
 
   return (
-    <div className="container mx-auto py-8">
+    <div className={spacing.section}>
+      <PageHeader
+        title="Screen Agents"
+        description="Manage your interactive screen presentation agents"
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Screen Agents" },
+        ]}
+        actions={
+          <Button asChild>
+            <Link href="/screen-agents/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Agent
+            </Link>
+          </Button>
+        }
+      />
       <ScreenAgentList initialAgents={initialAgents} organizationId={organizationId} />
     </div>
   )

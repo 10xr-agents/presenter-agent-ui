@@ -13,7 +13,7 @@ export default async function OnboardingPage() {
   // Check if already completed
   const completed = await isOnboardingComplete(session.user.id)
   if (completed) {
-    redirect("/")
+    redirect("/dashboard")
   }
 
   const onboarding = await getOnboarding(session.user.id)

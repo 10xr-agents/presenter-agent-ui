@@ -1,11 +1,11 @@
 import type { Metadata } from "next"
-import { LoginForm, OAuthButtons } from "@/components/auth"
+import { LoginFormWrapper, OAuthButtons } from "@/components/auth"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 
 export const metadata: Metadata = {
   title: "Sign In",
-  description: "Sign in to your AppealGen AI account",
+  description: "Sign in to your Screen Agent Platform account",
 }
 
 export default function LoginPage() {
@@ -31,7 +31,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <LoginForm />
+        <LoginFormWrapper />
       </CardContent>
     </Card>
   )

@@ -1,8 +1,11 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { BarChart3, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { EmptyState } from "@/components/ui/empty-state"
+import { DashboardSkeleton } from "@/components/ui/skeleton-loaders"
 import { ActivityFeed } from "./activity-feed"
 import { CostChart } from "./charts/cost-chart"
 import { UsageChart } from "./charts/usage-chart"
@@ -55,6 +58,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ organizationId }: DashboardProps) {
+  const router = useRouter()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -84,11 +88,7 @@ export function Dashboard({ organizationId }: DashboardProps) {
   }, [organizationId, selectedDays])
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   if (error) {

@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db/mongoose"
-import { type IUsageEvent, UsageEvent } from "@/lib/models/usage-event"
+import { UsageEvent } from "@/lib/models/usage-event"
 
 // Free tier limits
 export const FREE_TIER_MINUTES_PER_MONTH = 20 // 20 free minutes per month
@@ -31,6 +31,7 @@ export async function getFreeTierUsageMinutes(
   const monthEnd = getCurrentMonthEnd()
 
   // Sum up session_minutes usage events for this month
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const usageEvents = await (UsageEvent as any).aggregate([
     {
       $match: {
@@ -72,6 +73,7 @@ export async function getFreeTierScreenAgentCount(
   // Import ScreenAgent model dynamically to avoid circular dependencies
   const { ScreenAgent } = await import("@/lib/models/screen-agent")
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const count = await (ScreenAgent as any).countDocuments({
     organizationId,
     status: { $in: ["draft", "active", "paused"] }, // Count active agents

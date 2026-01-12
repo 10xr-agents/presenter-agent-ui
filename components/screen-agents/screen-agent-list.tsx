@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Plus, Search } from "lucide-react"
+import { Loader2, Plus, Search, Video } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { EmptyState } from "@/components/ui/empty-state"
 import { ScreenAgentCard } from "./screen-agent-card"
 import { ShareModal } from "./share-modal"
 
@@ -101,19 +102,8 @@ export function ScreenAgentList({
   }
 
   const handleDelete = async (agentId: string) => {
-    if (!confirm("Are you sure you want to delete this Screen Agent?")) return
-
-    try {
-      const response = await fetch(`/api/screen-agents/${agentId}`, {
-        method: "DELETE",
-      })
-      if (!response.ok) throw new Error("Failed to delete")
-
-      router.refresh()
-      await handleSearch()
-    } catch (error: unknown) {
-      console.error("Delete error:", error)
-    }
+    // This will be handled by ScreenAgentTable's ConfirmationDialog
+    // Keep this for backward compatibility if needed
   }
 
   const handleShare = (agent: ScreenAgent) => {
@@ -130,20 +120,6 @@ export function ScreenAgentList({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Screen Agents</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your interactive screen presentation agents
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/screen-agents/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Agent
-          </Link>
-        </Button>
-      </div>
 
       <div className="flex gap-4 flex-wrap">
         <div className="flex-1 min-w-[200px]">

@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
 import {
   Card,
   CardContent,
@@ -57,6 +58,9 @@ export function TeamMemberManagement({ teamId }: TeamMemberManagementProps) {
   const [newMemberUserId, setNewMemberUserId] = useState("")
   const [newMemberRole, setNewMemberRole] = useState<"team_admin" | "team_member">("team_member")
   const [addingMember, setAddingMember] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [memberToDelete, setMemberToDelete] = useState<string | null>(null)
+  const [isRemoving, setIsRemoving] = useState(false)
 
   useEffect(() => {
     fetchMembers()
@@ -116,13 +120,17 @@ export function TeamMemberManagement({ teamId }: TeamMemberManagementProps) {
   }
 
   const handleRemoveMember = async (userId: string) => {
-    if (!confirm("Are you sure you want to remove this member?")) {
-      return
-    }
+    setMemberToDelete(userId)
+    setDeleteDialogOpen(true)
+  }
 
+  const confirmRemove = async () => {
+    if (!memberToDelete) return
+
+    setIsRemoving(true)
     try {
       const response = await fetch(
-        `/api/teams/${teamId}/members?userId=${userId}`,
+        `/api/teams/${teamId}/members?userId=${memberToDelete}`,
         {
           method: "DELETE",
         }
@@ -138,6 +146,10 @@ export function TeamMemberManagement({ teamId }: TeamMemberManagementProps) {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.error(errorMessage)
+    } finally {
+      setIsRemoving(false)
+      setDeleteDialogOpen(false)
+      setMemberToDelete(null)
     }
   }
 
@@ -315,6 +327,18 @@ export function TeamMemberManagement({ teamId }: TeamMemberManagementProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmationDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Remove Team Member"
+        description="Are you sure you want to remove this member from the team? This action cannot be undone."
+        confirmText="Remove"
+        variant="destructive"
+        onConfirm={confirmRemove}
+        loading={isRemoving}
+        icon={<Trash2 className="h-5 w-5" />}
+      />
     </Card>
   )
 }

@@ -1,13 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { auth } from "@/lib/auth"
-import {
-  getNotifications,
-  getUnreadCount,
-  markAllAsRead,
-  markAsRead,
-} from "@/lib/notifications/manager"
-import { GET, HEAD, PATCH } from "../notifications/route"
+import { getUserNotifications, markNotificationAsRead } from "@/lib/notifications/manager"
+import { GET, POST } from "../notifications/route"
 
 vi.mock("@/lib/auth", () => ({
   auth: {
@@ -18,10 +13,8 @@ vi.mock("@/lib/auth", () => ({
 }))
 
 vi.mock("@/lib/notifications/manager", () => ({
-  getNotifications: vi.fn(),
-  markAsRead: vi.fn(),
-  markAllAsRead: vi.fn(),
-  getUnreadCount: vi.fn(),
+  getUserNotifications: vi.fn(),
+  markNotificationAsRead: vi.fn(),
 }))
 
 describe("Notifications API", () => {
@@ -38,96 +31,93 @@ describe("Notifications API", () => {
       const mockNotifications = [
         {
           _id: "notif-1",
+          type: "session_completed",
           title: "Test",
           message: "Test message",
-          read: false,
+          metadata: {},
+          channels: ["in_app"],
+          status: "read",
+          sentAt: new Date(),
+          readAt: new Date(),
+          createdAt: new Date(),
         },
       ]
 
-      vi.mocked(getNotifications).mockResolvedValue(mockNotifications as any)
+      vi.mocked(getUserNotifications).mockResolvedValue(mockNotifications as any)
 
       const request = new Request("http://localhost/api/notifications")
       const response = await GET(request)
-      const data = await response.json()
+      const data = (await response.json()) as { notifications?: unknown[] }
 
       expect(response.status).toBe(200)
-      expect(data).toHaveLength(1)
+      expect(data.notifications).toHaveLength(1)
     })
 
-    it("should filter unread notifications", async () => {
+    it("should filter notifications by status", async () => {
       vi.mocked(auth.api.getSession).mockResolvedValue({
         user: { id: "user-123" },
       } as any)
 
-      const request = new Request(
-        "http://localhost/api/notifications?unreadOnly=true"
-      )
+      const request = new Request("http://localhost/api/notifications?status=read")
       await GET(request)
 
-      expect(getNotifications).toHaveBeenCalledWith(
+      expect(getUserNotifications).toHaveBeenCalledWith(
         "user-123",
-        expect.objectContaining({ unreadOnly: true })
+        expect.objectContaining({ status: "read" })
       )
     })
   })
 
-  describe("PATCH /api/notifications", () => {
+  describe("POST /api/notifications", () => {
     it("should mark notification as read", async () => {
       vi.mocked(auth.api.getSession).mockResolvedValue({
         user: { id: "user-123" },
       } as any)
 
-      vi.mocked(markAsRead).mockResolvedValue()
+      const mockNotification = {
+        _id: "notif-1",
+        userId: "user-123",
+        type: "session_completed",
+        title: "Test",
+        message: "Test message",
+        metadata: {},
+        channels: ["in_app"],
+        status: "read",
+        sentAt: new Date(),
+        readAt: new Date(),
+        createdAt: new Date(),
+      }
+
+      vi.mocked(markNotificationAsRead).mockResolvedValue(mockNotification as any)
 
       const request = new Request("http://localhost/api/notifications", {
-        method: "PATCH",
-        body: JSON.stringify({ notificationId: "notif-123" }),
+        method: "POST",
+        body: JSON.stringify({ notificationId: "notif-1" }),
       })
 
-      const response = await PATCH(request)
-      const data = await response.json()
+      const response = await POST(request)
+      const data = (await response.json()) as { notification?: { id: string; status: string } }
 
       expect(response.status).toBe(200)
-      expect(data.success).toBe(true)
-      expect(markAsRead).toHaveBeenCalledWith("notif-123", "user-123")
+      expect(data.notification?.status).toBe("read")
+      expect(markNotificationAsRead).toHaveBeenCalledWith("notif-1")
     })
 
-    it("should mark all as read", async () => {
+    it("should return 400 if notificationId is missing", async () => {
       vi.mocked(auth.api.getSession).mockResolvedValue({
         user: { id: "user-123" },
       } as any)
 
-      vi.mocked(markAllAsRead).mockResolvedValue()
-
       const request = new Request("http://localhost/api/notifications", {
-        method: "PATCH",
-        body: JSON.stringify({ markAll: true }),
+        method: "POST",
+        body: JSON.stringify({}),
       })
 
-      const response = await PATCH(request)
-      const data = await response.json()
+      const response = await POST(request)
+      const data = (await response.json()) as { error?: string }
 
-      expect(response.status).toBe(200)
-      expect(data.success).toBe(true)
-      expect(markAllAsRead).toHaveBeenCalled()
-    })
-  })
-
-  describe("HEAD /api/notifications", () => {
-    it("should return unread count", async () => {
-      vi.mocked(auth.api.getSession).mockResolvedValue({
-        user: { id: "user-123" },
-      } as any)
-
-      vi.mocked(getUnreadCount).mockResolvedValue(5)
-
-      const request = new Request("http://localhost/api/notifications")
-      const response = await HEAD(request)
-      const data = await response.json()
-
-      expect(response.status).toBe(200)
-      expect(data.count).toBe(5)
+      expect(response.status).toBe(400)
+      expect(data.error).toBe("notificationId is required")
     })
   })
 })
-

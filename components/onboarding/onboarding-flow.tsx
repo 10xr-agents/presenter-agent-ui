@@ -2,12 +2,13 @@
 
 import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import type { OnboardingStep } from "@/lib/onboarding/flow"
 import { DEFAULT_TOUR_STEPS, ProductTour } from "./product-tour"
 import { TeamInviteStep } from "./team-invite-step"
+import { WelcomeStep } from "./welcome-step"
 
 interface OnboardingFlowProps {
   onComplete?: () => void
@@ -18,21 +19,49 @@ interface OnboardingFlowProps {
 export function OnboardingFlow({ onComplete, initialStep = "welcome", userId: _userId }: OnboardingFlowProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(initialStep)
-  const [showTour, setShowTour] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   const steps: OnboardingStep[] = ["welcome", "team-invite", "tour", "complete"]
   const currentStepIndex = steps.indexOf(currentStep)
-  const progress = ((currentStepIndex + 1) / steps.length) * 100
+  // Calculate progress: welcome doesn't count, so progress is based on remaining steps
+  const progressableSteps = steps.filter((step) => step !== "welcome" && step !== "complete")
+  const progressableIndex = progressableSteps.indexOf(currentStep)
+  const progress = currentStep === "welcome" 
+    ? 0 
+    : currentStep === "complete"
+    ? 100
+    : ((progressableIndex + 1) / progressableSteps.length) * 100
 
-  const handleTeamInviteNext = () => {
+  const handleTeamInviteNext = async () => {
+    // Mark team-invite step as completed
+    try {
+      await fetch("/api/onboarding/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "team-invite",
+        }),
+      })
+    } catch (error: unknown) {
+      console.error("Failed to update onboarding step:", error)
+    }
     setCurrentStep("tour")
-    setShowTour(true)
   }
 
-  const handleTeamInviteSkip = () => {
+  const handleTeamInviteSkip = async () => {
+    // Mark team-invite step as skipped (still record it as completed)
+    try {
+      await fetch("/api/onboarding/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "team-invite",
+        }),
+      })
+    } catch (error: unknown) {
+      console.error("Failed to update onboarding step:", error)
+    }
     setCurrentStep("tour")
-    setShowTour(true)
   }
 
   const handleTourComplete = async () => {
@@ -54,12 +83,12 @@ export function OnboardingFlow({ onComplete, initialStep = "welcome", userId: _u
       setCurrentStep("complete")
       onComplete?.()
       
-      // Redirect to dashboard
-      router.push("/screen-agents")
+      // Redirect to dashboard after onboarding completion
+      router.push("/dashboard")
     } catch (error: unknown) {
       console.error("Failed to complete onboarding:", error)
       // Still redirect even if API call fails
-      router.push("/screen-agents")
+      router.push("/dashboard")
     } finally {
       setIsLoading(false)
     }
@@ -84,12 +113,12 @@ export function OnboardingFlow({ onComplete, initialStep = "welcome", userId: _u
       setCurrentStep("complete")
       onComplete?.()
       
-      // Redirect to dashboard
-      router.push("/screen-agents")
+      // Redirect to dashboard after onboarding completion
+      router.push("/dashboard")
     } catch (error: unknown) {
       console.error("Failed to complete onboarding:", error)
       // Still redirect even if API call fails
-      router.push("/screen-agents")
+      router.push("/dashboard")
     } finally {
       setIsLoading(false)
     }
@@ -104,29 +133,21 @@ export function OnboardingFlow({ onComplete, initialStep = "welcome", userId: _u
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 py-8">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold">Welcome! Let's Get Started</h1>
-        <p className="text-muted-foreground">
-          Follow these quick steps to set up your account. You can skip any step.
-        </p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-8 py-8">
+      {currentStep !== "welcome" && (
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold">Setup Your Account</h1>
+          <p className="text-muted-foreground">
+            Follow these quick steps to get started. You can skip any step and return later.
+          </p>
+        </div>
+      )}
 
-      <Progress value={progress} className="h-2" />
+      {currentStep !== "welcome" && <Progress value={progress} className="h-2" />}
 
       <div className="rounded-lg border bg-card p-6 shadow-sm">
         {currentStep === "welcome" && (
-          <div className="space-y-4">
-            <p>Welcome to the Gemini Navigator Platform! Let's get started.</p>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={() => setCurrentStep("team-invite")}
-              >
-                Get Started
-              </Button>
-            </div>
-          </div>
+          <WelcomeStep onNext={() => setCurrentStep("team-invite")} />
         )}
 
         {currentStep === "team-invite" && (
@@ -154,22 +175,21 @@ export function OnboardingFlow({ onComplete, initialStep = "welcome", userId: _u
             </div>
 
             <div className="flex justify-end gap-4">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={handleTourSkip}
-                className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
                 disabled={isLoading}
               >
                 Skip Tour
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={handleTourComplete}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 disabled={isLoading}
               >
                 Complete Tour
-              </button>
+              </Button>
             </div>
           </div>
         )}

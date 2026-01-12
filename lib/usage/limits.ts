@@ -1,6 +1,5 @@
 import { connectDB } from "@/lib/db/mongoose"
 import { type IUsageLimit, UsageLimit, type UsageLimitType } from "@/lib/models/usage-limit"
-import { createNotification } from "@/lib/notifications/manager"
 
 export type { UsageLimitType }
 

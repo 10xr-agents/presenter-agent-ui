@@ -1,14 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
 
 interface TopAgent {
   id: string
@@ -22,19 +15,30 @@ interface TopAgentsTableProps {
 }
 
 export function TopAgentsTable({ agents }: TopAgentsTableProps) {
-  if (agents.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Top Agents</CardTitle>
-          <CardDescription>Most active screen agents</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">No agents found</p>
-        </CardContent>
-      </Card>
-    )
-  }
+  const columns: Column<TopAgent>[] = [
+    {
+      id: "name",
+      header: "Agent Name",
+      accessorKey: "name",
+      sortable: true,
+      filterable: true,
+      cell: (row) => <span className="font-medium">{row.name}</span>,
+    },
+    {
+      id: "sessions",
+      header: "Sessions",
+      accessorKey: "sessionCount",
+      sortable: true,
+      cell: (row) => <span className="text-right">{row.sessionCount}</span>,
+    },
+    {
+      id: "minutes",
+      header: "Minutes",
+      accessorKey: "minutesConsumed",
+      sortable: true,
+      cell: (row) => <span className="text-right">{row.minutesConsumed}</span>,
+    },
+  ]
 
   return (
     <Card>
@@ -43,24 +47,13 @@ export function TopAgentsTable({ agents }: TopAgentsTableProps) {
         <CardDescription>Most active screen agents by session count</CardDescription>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Agent Name</TableHead>
-              <TableHead className="text-right">Sessions</TableHead>
-              <TableHead className="text-right">Minutes</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {agents.map((agent) => (
-              <TableRow key={agent.id}>
-                <TableCell className="font-medium">{agent.name}</TableCell>
-                <TableCell className="text-right">{agent.sessionCount}</TableCell>
-                <TableCell className="text-right">{agent.minutesConsumed}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <AdvancedTable
+          data={agents}
+          columns={columns}
+          searchable
+          searchPlaceholder="Search agents..."
+          emptyMessage="No agents found"
+        />
       </CardContent>
     </Card>
   )

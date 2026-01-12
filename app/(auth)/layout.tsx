@@ -20,13 +20,13 @@ export default function AuthLayout({
 
           <div className="space-y-6">
             <blockquote className="text-xl font-medium leading-relaxed">
-              &ldquo;A production-ready Next.js starter with everything you need
-              to build modern web applications.&rdquo;
+              &ldquo;Create intelligent, conversational screen presentations that
+              respond to viewer questions in real-time while demonstrating live websites.&rdquo;
             </blockquote>
             <div className="flex items-center space-x-4">
               <div className="h-px flex-1 bg-white/30" />
               <span className="text-sm text-white/70">
-                Start building faster
+                Interactive AI-powered presentations
               </span>
               <div className="h-px flex-1 bg-white/30" />
             </div>

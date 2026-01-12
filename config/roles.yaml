@@ -1,9 +1,14 @@
 # Role Configuration
 # Define roles and their permissions here
 # This file is loaded at runtime and can be updated without code changes
+#
+# ROLE HIERARCHY:
+# 1. Platform-level: platform_admin (internal only)
+# 2. Tenant-level: owner, admin, member, viewer (apply to all tenants)
+# 3. Team-level: team_admin, team_member (organization mode only, defined in code)
 
 roles:
-  # Platform-level roles (super admin)
+  # Platform-level roles (super admin - internal only)
   platform_admin:
     name: "Platform Admin"
     description: "Full access to platform administration"
@@ -11,10 +16,10 @@ roles:
       - "*" # All permissions
     inherits: []
 
-  # Organization-level roles
+  # Tenant-level roles (apply to all tenants - both Normal and Organization mode)
   owner:
     name: "Owner"
-    description: "Organization owner with full control"
+    description: "Ultimate authority within a tenant with full control"
     permissions:
       organization:
         - create
@@ -23,6 +28,14 @@ roles:
         - delete
         - manage_members
         - manage_billing
+        - manage_settings
+      screenAgent:
+        - create
+        - read
+        - update
+        - delete
+        - run
+        - share
       project:
         - create
         - read
@@ -34,26 +47,29 @@ roles:
         - read
         - update
         - delete
-      aiAgent:
-        - create
-        - read
-        - update
-        - delete
-        - run
+        - share
       billing:
         - read
         - update
         - manage_subscription
+        - view_invoices
     inherits: []
 
   admin:
     name: "Admin"
-    description: "Organization administrator"
+    description: "Operational administrator with member management capabilities"
     permissions:
       organization:
         - read
         - update
         - manage_members
+      screenAgent:
+        - create
+        - read
+        - update
+        - delete
+        - run
+        - share
       project:
         - create
         - read
@@ -64,22 +80,19 @@ roles:
         - read
         - update
         - delete
-      aiAgent:
-        - create
-        - read
-        - update
-        - delete
-        - run
       billing:
         - read
     inherits: []
 
   member:
     name: "Member"
-    description: "Standard organization member"
+    description: "Standard contributor with resource creation and management"
     permissions:
       organization:
         - read
+      screenAgent:
+        - read
+        - run
       project:
         - create
         - read
@@ -88,22 +101,19 @@ roles:
         - create
         - read
         - update
-      aiAgent:
-        - read
-        - run
     inherits: []
 
   viewer:
     name: "Viewer"
-    description: "Read-only access"
+    description: "Read-only participant with no creation or mutation access"
     permissions:
       organization:
+        - read
+      screenAgent:
         - read
       project:
         - read
       document:
-        - read
-      aiAgent:
         - read
     inherits: []
 
@@ -133,12 +143,13 @@ permissions:
     - delete
     - share
   
-  aiAgent:
+  screenAgent:
     - create
     - read
     - update
     - delete
     - run
+    - share
     - manage_tools
   
   billing:

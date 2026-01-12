@@ -29,6 +29,8 @@ export const env = createEnv({
     // Organization Settings
     ORGANIZATION_LIMIT: z.string().optional(),
     MEMBERSHIP_LIMIT: z.string().optional(),
+    // Prisma Logging
+    PRISMA_LOG_QUERIES: z.enum(["true", "false"]).optional(),
     // Stripe Billing
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -82,6 +84,8 @@ export const env = createEnv({
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     // Feature Flags
     FEATURE_FLAGS_ENABLED: process.env.FEATURE_FLAGS_ENABLED,
+    // Prisma Logging
+    PRISMA_LOG_QUERIES: process.env.PRISMA_LOG_QUERIES,
     NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
     NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   },

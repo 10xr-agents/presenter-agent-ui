@@ -2,10 +2,14 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 // Routes that require authentication
+// Note: Routes in (app) directory are protected by the layout
 const protectedRoutes: string[] = [
   "/dashboard",
-  "/settings",
+  "/screen-agents",
+  "/analytics",
   "/billing",
+  "/teams",
+  "/settings",
   "/admin",
 ]
 
@@ -40,9 +44,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Redirect authenticated users from auth routes to home (or onboarding)
+  // Redirect authenticated users from auth routes
+  // Note: The (app) layout will handle onboarding check and redirect accordingly
   if (isAuthRoute && isAuthenticated) {
-    return NextResponse.redirect(new URL("/", request.url))
+    return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
   return NextResponse.next()
