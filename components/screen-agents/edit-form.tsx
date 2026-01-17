@@ -1,6 +1,7 @@
 "use client"
 
-import { Loader2, Save } from "lucide-react"
+import { Save } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -274,7 +275,7 @@ export function EditForm({ agent }: EditFormProps) {
         <Button type="submit" disabled={isLoading}>
           {isLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner className="mr-2 h-4 w-4" />
               Saving...
             </>
           ) : (

@@ -148,8 +148,37 @@ export async function startExploration(
     })
 
     if (!response.ok) {
-      const error = (await response.json()) as ErrorResponse
-      const errorMessage = error.error || error.detail || "Failed to start exploration"
+      let errorData: unknown
+      try {
+        errorData = await response.json()
+      } catch {
+        errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+      }
+      
+      // Handle Pydantic validation errors (422) - error is an array
+      let errorMessage = "Failed to start exploration"
+      if (Array.isArray(errorData)) {
+        // Pydantic validation errors format: [{ type, loc, msg, input }]
+        const validationErrors = errorData.map((err: unknown) => {
+          const e = err as { loc?: unknown[]; msg?: string }
+          const fieldPath = Array.isArray(e.loc) ? e.loc.join(".") : "unknown"
+          return `${fieldPath}: ${e.msg || "Field required"}`
+        })
+        errorMessage = `Validation error: ${validationErrors.join(", ")}`
+      } else if (typeof errorData === "object" && errorData !== null) {
+        const err = errorData as { error?: string; detail?: string | unknown[] }
+        if (Array.isArray(err.detail)) {
+          // Handle FastAPI validation errors in detail field
+          const validationErrors = err.detail.map((e: unknown) => {
+            const errorItem = e as { loc?: unknown[]; msg?: string }
+            const fieldPath = Array.isArray(errorItem.loc) ? errorItem.loc.join(".") : "unknown"
+            return `${fieldPath}: ${errorItem.msg || "Field required"}`
+          })
+          errorMessage = `Validation error: ${validationErrors.join(", ")}`
+        } else {
+          errorMessage = err.error || (typeof err.detail === "string" ? err.detail : errorMessage)
+        }
+      }
       
       console.error("[Browser Automation] Service error starting exploration", {
         baseUrl,
@@ -157,7 +186,11 @@ export async function startExploration(
         status: response.status,
         statusText: response.statusText,
         error: errorMessage,
-        errorDetail: error.detail,
+        errorDetail: errorData,
+        requestBody: {
+          ...request,
+          authentication: request.authentication ? { username: request.authentication.username, password: "***" } : undefined,
+        },
       })
       
       Sentry.captureException(new Error(errorMessage), {
@@ -168,8 +201,11 @@ export async function startExploration(
         },
         extra: {
           baseUrl,
-          request,
-          errorResponse: error,
+          request: {
+            ...request,
+            authentication: request.authentication ? { username: request.authentication.username, password: "***" } : undefined,
+          },
+          errorResponse: errorData,
         },
       })
       
@@ -359,14 +395,27 @@ export async function getJobStatus(jobId: string): Promise<JobStatusResponse> {
       progress: safeProgress,
     })
 
-    // Return properly typed response with safe progress
-    return {
+    const finalStatus: JobStatusResponse = {
       job_id: jobStatus.job_id,
       status: jobStatus.status,
       progress: safeProgress,
       started_at: jobStatus.started_at ?? null,
       updated_at: jobStatus.updated_at ?? null,
-    } as JobStatusResponse
+    }
+
+    // CRITICAL: Validate job status structure
+    const { validateJobStatus } = await import("./validation")
+    try {
+      validateJobStatus(finalStatus, jobId)
+    } catch (validationError: unknown) {
+      // Validation throws on critical failures - log but don't fail status fetch
+      console.error("[Browser Automation] Job status validation failed (non-fatal)", {
+        jobId,
+        validationError: validationError instanceof Error ? validationError.message : String(validationError),
+      })
+    }
+
+    return finalStatus
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     
@@ -400,7 +449,11 @@ export async function pauseJob(jobId: string): Promise<JobControlResponse> {
 
   if (!response.ok) {
     const error = (await response.json()) as ErrorResponse
-    throw new Error(error.error || error.detail || "Failed to pause job")
+    const errorMessage = error.error || error.detail || "Failed to pause job"
+    const errorWithStatus = new Error(errorMessage) as Error & { statusCode?: number; isNotFound?: boolean }
+    errorWithStatus.statusCode = response.status
+    errorWithStatus.isNotFound = response.status === 404
+    throw errorWithStatus
   }
 
   return (await response.json()) as JobControlResponse
@@ -448,7 +501,11 @@ export async function cancelJob(
 
   if (!response.ok) {
     const error = (await response.json()) as ErrorResponse
-    throw new Error(error.error || error.detail || "Failed to cancel job")
+    const errorMessage = error.error || error.detail || "Failed to cancel job"
+    const errorWithStatus = new Error(errorMessage) as Error & { statusCode?: number; isNotFound?: boolean }
+    errorWithStatus.statusCode = response.status
+    errorWithStatus.isNotFound = response.status === 404
+    throw errorWithStatus
   }
 
   return (await response.json()) as JobControlResponse
@@ -489,24 +546,137 @@ export async function getJobResults(
       throw new Error(errorMessage)
     }
 
-    const result = (await response.json()) as JobResultsResponse
+    let result: unknown
+    try {
+      const responseText = await response.text()
+      console.log("[Browser Automation] Raw job results response", {
+        jobId,
+        status: response.status,
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 500),
+      })
+      
+      result = JSON.parse(responseText) as unknown
+    } catch (parseError: unknown) {
+      const error = "Failed to parse job results response as JSON"
+      console.error("[Browser Automation] CRITICAL FAILURE - Invalid JSON response", {
+        jobId,
+        partial,
+        parseError: parseError instanceof Error ? parseError.message : String(parseError),
+        responseStatus: response.status,
+        responseStatusText: response.statusText,
+      })
+      Sentry.captureException(parseError, {
+        tags: {
+          operation: "get_job_results",
+          jobId,
+          failure_type: "json_parse_error",
+        },
+        extra: {
+          jobId,
+          partial,
+          responseStatus: response.status,
+        },
+      })
+      throw new Error(error)
+    }
+
+    // CRITICAL: Validate response structure
+    if (!result || typeof result !== "object") {
+      const error = "Job results response is not an object"
+      console.error("[Browser Automation] CRITICAL FAILURE - Invalid response structure", {
+        jobId,
+        partial,
+        responseType: typeof result,
+        response: result,
+      })
+      Sentry.captureMessage("Browser automation job results invalid structure", {
+        level: "error",
+        tags: {
+          operation: "get_job_results",
+          jobId,
+          failure_type: "invalid_structure",
+        },
+        extra: {
+          jobId,
+          partial,
+          responseType: typeof result,
+        },
+      })
+      throw new Error(error)
+    }
+
+    const jobResults = result as Partial<JobResultsResponse>
+
+    // CRITICAL: Validate required fields
+    if (!jobResults.job_id || !jobResults.status || !jobResults.results) {
+      const error = "Job results response missing required fields (job_id, status, or results)"
+      console.error("[Browser Automation] CRITICAL FAILURE - Missing required fields", {
+        jobId,
+        partial,
+        hasJobId: !!jobResults.job_id,
+        hasStatus: !!jobResults.status,
+        hasResults: !!jobResults.results,
+        responseKeys: Object.keys(jobResults),
+      })
+      Sentry.captureMessage("Browser automation job results missing required fields", {
+        level: "error",
+        tags: {
+          operation: "get_job_results",
+          jobId,
+          failure_type: "missing_required_fields",
+        },
+        extra: {
+          jobId,
+          partial,
+          hasJobId: !!jobResults.job_id,
+          hasStatus: !!jobResults.status,
+          hasResults: !!jobResults.results,
+          responseKeys: Object.keys(jobResults),
+        },
+      })
+      throw new Error(error)
+    }
+
+    // Ensure results object has required fields with defaults
+    const safeResults = {
+      pages_stored: typeof jobResults.results.pages_stored === "number" ? jobResults.results.pages_stored : 0,
+      links_stored: typeof jobResults.results.links_stored === "number" ? jobResults.results.links_stored : 0,
+      external_links_detected: typeof jobResults.results.external_links_detected === "number" 
+        ? jobResults.results.external_links_detected 
+        : 0,
+      errors: Array.isArray(jobResults.results.errors) ? jobResults.results.errors : [],
+    }
+
+    const finalResult: JobResultsResponse = {
+      job_id: jobResults.job_id,
+      status: jobResults.status,
+      results: safeResults,
+      pages: Array.isArray(jobResults.pages) ? jobResults.pages : undefined,
+      links: Array.isArray(jobResults.links) ? jobResults.links : undefined,
+      website_metadata: jobResults.website_metadata,
+    }
     
-    console.log("[Browser Automation] Job results retrieved", {
+    console.log("[Browser Automation] Job results retrieved and validated", {
       jobId,
-      status: result.status,
-      pagesStored: result.results.pages_stored,
-      linksStored: result.results.links_stored,
-      externalLinksDetected: result.results.external_links_detected,
-      errorCount: result.results.errors.length,
+      status: finalResult.status,
+      pagesStored: finalResult.results.pages_stored,
+      linksStored: finalResult.results.links_stored,
+      externalLinksDetected: finalResult.results.external_links_detected,
+      errorCount: finalResult.results.errors.length,
+      hasPagesArray: !!finalResult.pages,
+      hasLinksArray: !!finalResult.links,
+      pagesArrayLength: finalResult.pages?.length ?? 0,
+      linksArrayLength: finalResult.links?.length ?? 0,
       partial,
     })
 
     // Log errors if any
-    if (result.results.errors.length > 0) {
+    if (finalResult.results.errors.length > 0) {
       console.warn("[Browser Automation] Job completed with errors", {
         jobId,
-        errorCount: result.results.errors.length,
-        errors: result.results.errors.map((e) => ({
+        errorCount: finalResult.results.errors.length,
+        errors: finalResult.results.errors.map((e) => ({
           url: e.url,
           errorType: e.error_type,
           retryCount: e.retry_count,
@@ -514,7 +684,29 @@ export async function getJobResults(
       })
     }
 
-    return result
+    // CRITICAL: Import and run validation
+    const { validateJobResults } = await import("./validation")
+    try {
+      const validation = validateJobResults(finalResult, jobId)
+      console.log("[Browser Automation] Job results validation passed", {
+        jobId,
+        isValid: validation.isValid,
+        confidence: validation.confidence,
+        extractedPages: validation.extractedPages,
+        extractedLinks: validation.extractedLinks,
+        hasUsableContent: validation.hasUsableContent,
+        issueCount: validation.issues.length,
+      })
+    } catch (validationError: unknown) {
+      // Validation throws on critical failures - re-throw to fail loudly
+      console.error("[Browser Automation] CRITICAL FAILURE - Job results validation failed", {
+        jobId,
+        validationError: validationError instanceof Error ? validationError.message : String(validationError),
+      })
+      throw validationError
+    }
+
+    return finalResult
   } catch (error: unknown) {
     console.error("[Browser Automation] Error getting job results", {
       baseUrl,

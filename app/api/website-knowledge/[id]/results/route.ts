@@ -36,23 +36,75 @@ export async function GET(
       )
     }
 
-    console.log("[Website Knowledge] Fetching job results", {
+    console.log("[Website Knowledge] PIPELINE STEP: Fetching job results via API endpoint", {
       knowledgeId: id,
       jobId: knowledge.explorationJobId,
       websiteUrl: knowledge.websiteUrl,
+      stage: "api_results_fetch",
     })
     
     // Fetch results from Browser Automation Service
+    // Validation is already done in getJobResults, but we log the trace here
     const jobResults = await getJobResults(knowledge.explorationJobId, false)
 
-    console.log("[Website Knowledge] Job results retrieved", {
+    console.log("[Website Knowledge] PIPELINE STEP: Job results retrieved and validated", {
       knowledgeId: id,
       jobId: knowledge.explorationJobId,
       status: jobResults.status,
       pagesStored: jobResults.results.pages_stored,
       linksStored: jobResults.results.links_stored,
+      externalLinksDetected: jobResults.results.external_links_detected,
       errorCount: jobResults.results.errors.length,
+      hasPagesArray: !!jobResults.pages,
+      hasLinksArray: !!jobResults.links,
+      pagesArrayLength: jobResults.pages?.length ?? 0,
+      linksArrayLength: jobResults.links?.length ?? 0,
+      stage: "api_results_ready",
     })
+    
+    // Log detailed page content summary if available
+    if (jobResults.pages && jobResults.pages.length > 0) {
+      const pagesWithContent = jobResults.pages.filter((p) => p.content && p.content.length > 0).length
+      const pagesWithTitle = jobResults.pages.filter((p) => p.title && p.title.length > 0).length
+      const avgContentLength = jobResults.pages
+        .filter((p) => p.content && typeof p.content === "string")
+        .reduce((sum, p) => sum + (p.content as string).length, 0) / pagesWithContent || 0
+      
+      console.log("[Website Knowledge] PIPELINE STEP: Page content analysis", {
+        knowledgeId: id,
+        jobId: knowledge.explorationJobId,
+        totalPages: jobResults.pages.length,
+        pagesWithContent,
+        pagesWithTitle,
+        avgContentLength: Math.round(avgContentLength),
+        stage: "content_analysis",
+      })
+    }
+
+    // Run validation to get confidence and issues
+    let validationInfo: {
+      confidence?: "high" | "medium" | "low" | "none"
+      issues?: string[]
+      hasUsableContent?: boolean
+    } = {}
+    
+    try {
+      const { validateJobResults } = await import("@/lib/browser-automation/validation")
+      const validation = validateJobResults(jobResults, knowledge.explorationJobId)
+      validationInfo = {
+        confidence: validation.confidence,
+        issues: validation.issues,
+        hasUsableContent: validation.hasUsableContent,
+      }
+    } catch (validationError: unknown) {
+      // Validation failed - this is expected for invalid results
+      // We'll still return the results but mark confidence as "none"
+      validationInfo = {
+        confidence: "none",
+        issues: [validationError instanceof Error ? validationError.message : String(validationError)],
+        hasUsableContent: false,
+      }
+    }
 
     return NextResponse.json({
       data: {
@@ -69,6 +121,7 @@ export async function GET(
           })),
         },
         website_metadata: jobResults.website_metadata,
+        validation: validationInfo,
       },
     })
   } catch (error: unknown) {

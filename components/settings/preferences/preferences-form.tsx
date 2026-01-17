@@ -1,12 +1,13 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Select,
   SelectContent,
@@ -85,14 +86,22 @@ export function PreferencesForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <Alert variant="destructive" className="py-2">
-          <AlertDescription className="text-xs">{error}</AlertDescription>
-        </Alert>
-      )}
+    <Card className="bg-muted/30">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Preferences</CardTitle>
+        <CardDescription className="text-xs">
+          Customize your application preferences and notification settings
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive" className="py-2">
+              <AlertDescription className="text-xs">{error}</AlertDescription>
+            </Alert>
+          )}
 
-      <div className="space-y-4">
+          <div className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="theme" className="text-xs text-muted-foreground">
             Theme
@@ -185,18 +194,20 @@ export function PreferencesForm() {
         </div>
       </div>
 
-      <div className="flex justify-end pt-2">
-        <Button type="submit" disabled={loading} size="sm">
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            "Save preferences"
-          )}
-        </Button>
-      </div>
-    </form>
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={loading} size="sm">
+              {loading ? (
+                <>
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
+                  Saving...
+                </>
+              ) : (
+                "Save preferences"
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

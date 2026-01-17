@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PresentationControls } from "./presentation-controls"
@@ -67,7 +67,7 @@ export function PresentationInterface({
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <Spinner className="h-8 w-8 text-primary mx-auto" />
           <p className="text-muted-foreground">Connecting to presentation...</p>
         </div>
       </div>

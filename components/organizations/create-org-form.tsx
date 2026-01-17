@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -83,7 +83,7 @@ export function CreateOrgForm() {
       <Button type="submit" disabled={loading} className="w-full">
         {loading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2 h-4 w-4" />
             Creating...
           </>
         ) : (

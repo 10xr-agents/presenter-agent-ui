@@ -1,11 +1,13 @@
 "use client"
 
 import { format } from "date-fns"
-import { Loader2, MoreVertical } from "lucide-react"
+import { MoreVertical } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -119,194 +121,209 @@ export function ProfileForm() {
   if (isPending || loadingData) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Spinner className="h-5 w-5 text-muted-foreground" />
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      {/* Your email - Resend style: blend into page */}
-      <div>
-        <h3 className="text-sm font-semibold mb-1">Your email</h3>
-        <form onSubmit={handleSubmit} className="space-y-3 mt-2">
-          {error && (
-            <Alert variant="destructive" className="py-2">
-              <AlertDescription className="text-xs">{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-xs text-muted-foreground">
-              Email address
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              disabled={loading || true}
-              className="h-9"
-            />
-            <p className="text-xs text-muted-foreground">
-              Email changes require verification. Contact support if you need to change your email.
-            </p>
-          </div>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={loading} size="sm">
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update email"
-              )}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* Invites - Resend style: blend into page */}
-      <div className="border-t pt-4">
-        <h3 className="text-sm font-semibold mb-1">Invites</h3>
-        <p className="text-xs text-muted-foreground mt-2">There are no pending invites.</p>
-      </div>
-
-      {/* Teams - Resend style: blend into page (only in organization mode) */}
-      {tenantState === "organization" && (
-        <div className="border-t pt-4">
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold mb-1">Teams</h3>
-              <p className="text-xs text-muted-foreground mb-3">
-                The teams that are associated with your account.
+    <div className="space-y-6">
+      {/* Your email */}
+      <Card className="bg-muted/30">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Your email</CardTitle>
+          <CardDescription className="text-xs">
+            Manage your email address and authentication settings
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <Alert variant="destructive" className="py-2">
+                <AlertDescription className="text-xs">{error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-xs font-medium">
+                Email address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                disabled={loading || true}
+                className="h-9"
+              />
+              <p className="text-xs text-muted-foreground">
+                Email changes require verification. Contact support if you need to change your email.
               </p>
             </div>
-              {teams.length > 0 ? (
-                <div className="space-y-2">
-                  {teams.map((team) => (
-                    <div
-                      key={team.id}
-                      className="flex items-center justify-between rounded-md border p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                          1
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold">{team.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Joined on {format(new Date(team.joinedAt), "MMMM d, yyyy")}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          {team.role}
-                        </span>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7">
-                              <MoreVertical className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem className="text-xs">View team</DropdownMenuItem>
-                            <DropdownMenuItem className="text-xs">Leave team</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">You are not part of any teams.</p>
-              )}
-          </div>
-        </div>
-      )}
+            <div className="flex justify-end pt-2">
+              <Button type="submit" disabled={loading} size="sm">
+                {loading ? (
+                  <>
+                    <Spinner className="mr-2 h-3.5 w-3.5" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update email"
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
-      {/* Authentication - Resend style: blend into page */}
-      <div className="border-t pt-4">
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold mb-1">Authentication</h3>
-            <p className="text-xs text-muted-foreground mb-3">
-              Link your account to third-party authentication providers.
-            </p>
-          </div>
-          {connectedAccounts.length > 0 && (
-            <div className="space-y-2">
-              {connectedAccounts.map((account) => (
-                <div
-                  key={account.provider}
-                  className="flex items-center justify-between rounded-md border p-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium uppercase">
-                      {account.provider[0]}
+      {/* Invites */}
+      <Card className="bg-muted/30">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Invites</CardTitle>
+          <CardDescription className="text-xs">
+            Manage team and organization invitations
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">There are no pending invites.</p>
+        </CardContent>
+      </Card>
+
+      {/* Teams (only in organization mode) */}
+      {tenantState === "organization" && (
+        <Card className="bg-muted/30">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">Teams</CardTitle>
+            <CardDescription className="text-xs">
+              The teams that are associated with your account
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {teams.length > 0 ? (
+              <div className="space-y-2">
+                {teams.map((team) => (
+                  <div
+                    key={team.id}
+                    className="flex items-center justify-between rounded-md border bg-background p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                        {team.name[0]?.toUpperCase() || "T"}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold">{team.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Joined on {format(new Date(team.joinedAt), "MMMM d, yyyy")}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold capitalize">{account.provider}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {account.email} • Connected on{" "}
-                        {format(new Date(account.connectedAt), "MMM d, yyyy")}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium capitalize">
+                        {team.role}
+                      </span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem className="text-xs">View team</DropdownMenuItem>
+                          <DropdownMenuItem className="text-xs">Leave team</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              Link GitHub
-            </Button>
-            <Button variant="outline" size="sm">
-              Link Google
-            </Button>
-          </div>
-        </div>
-      </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">You are not part of any teams.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Multi-Factor Authentication - Resend style: blend into page */}
-      <div className="border-t pt-4">
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold mb-1">Multi-Factor Authentication (MFA)</h3>
-            <p className="text-xs text-muted-foreground mb-3">
-              Protect your account by adding an extra layer of security.
-            </p>
+      {/* Authentication */}
+      <Card className="bg-muted/30">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Authentication</CardTitle>
+          <CardDescription className="text-xs">
+            Link your account to third-party authentication providers
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {connectedAccounts.length > 0 && (
+              <div className="space-y-2">
+                {connectedAccounts.map((account) => (
+                  <div
+                    key={account.provider}
+                    className="flex items-center justify-between rounded-md border bg-background p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium uppercase">
+                        {account.provider[0]}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold capitalize">{account.provider}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {account.email} • Connected on{" "}
+                          {format(new Date(account.connectedAt), "MMM d, yyyy")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm">
+                Link GitHub
+              </Button>
+              <Button variant="outline" size="sm">
+                Link Google
+              </Button>
+            </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Multi-Factor Authentication */}
+      <Card className="bg-muted/30">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Multi-Factor Authentication (MFA)</CardTitle>
+          <CardDescription className="text-xs">
+            Protect your account by adding an extra layer of security
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           <Button variant="outline" size="sm">
             Enable MFA
           </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Delete Account - Resend style: blend into page (conditional messaging) */}
-      <div className="border-t pt-4">
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold mb-1">Delete Account</h3>
+      {/* Delete Account */}
+      <Card className="bg-muted/30 border-destructive/20">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold text-destructive">Delete Account</CardTitle>
+          <CardDescription className="text-xs">
             {tenantState === "organization" ? (
               <>
-                <p className="text-xs text-muted-foreground mb-1">
-                  Accounts can only be deleted when there are no more teams still associated with it.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Please leave all teams before deleting your account.
-                </p>
+                Accounts can only be deleted when there are no more teams still associated with it.
+                Please leave all teams before deleting your account.
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Permanently delete your account and all associated data. This action cannot be undone.
-              </p>
+              "Permanently delete your account and all associated data. This action cannot be undone."
             )}
-          </div>
-        </div>
-      </div>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="destructive" size="sm">
+            Delete Account
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   )
 }

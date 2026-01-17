@@ -1,7 +1,8 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { Bell, Loader2 } from "lucide-react"
+import { Bell } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -77,7 +78,7 @@ export function NotificationList({ limit = 50 }: NotificationListProps) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Spinner className="h-8 w-8 text-primary" />
       </div>
     )
   }

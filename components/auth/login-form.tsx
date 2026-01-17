@@ -1,6 +1,7 @@
 "use client"
 
-import { AlertCircle, Loader2, Lock, Mail } from "lucide-react"
+import { AlertCircle, Lock, Mail } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
@@ -105,7 +106,7 @@ export function LoginForm() {
       <Button type="submit" className="w-full" disabled={isLoading}>
         {isLoading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2 h-4 w-4" />
             Signing in...
           </>
         ) : (

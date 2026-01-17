@@ -2,7 +2,8 @@
 
 import { formatDistanceToNow } from "date-fns"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 
 interface ActivityItem {
   id: string
@@ -23,14 +24,21 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
   if (activities.length === 0) {
     return (
       <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold">Recent Activity</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Latest presentation sessions
-            </p>
-          </div>
-          <p className="text-sm text-muted-foreground">No recent activity</p>
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>
+          <CardDescription className="text-xs">
+            Latest presentation sessions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Empty className="border-0 p-0">
+            <EmptyHeader>
+              <EmptyTitle className="text-sm font-semibold">No recent activity</EmptyTitle>
+              <EmptyDescription className="text-xs">
+                Activity will appear here as sessions are created
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </CardContent>
       </Card>
     )
@@ -51,13 +59,13 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
 
   return (
     <Card className="bg-muted/30">
-      <CardContent className="pt-6">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold">Recent Activity</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Latest presentation sessions
-          </p>
-        </div>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>
+        <CardDescription className="text-xs">
+          Latest presentation sessions
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         <div className="space-y-3">
           {activities.map((activity) => {
             const startedAt = typeof activity.startedAt === "string"

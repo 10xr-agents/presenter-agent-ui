@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertCircle, ExternalLink, Globe, Loader2, RefreshCw, Trash2 } from "lucide-react"
+import { AlertCircle, ExternalLink, Globe, RefreshCw, Square, X, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -29,15 +29,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
 import { KnowledgeSyncActivity } from "@/components/knowledge/knowledge-sync-activity"
 import { KnowledgeConfiguration } from "@/components/knowledge/knowledge-configuration"
-import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
+import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
+import { KnowledgeValidationStatus } from "@/components/knowledge/knowledge-validation-status"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
-interface WebsiteKnowledge {
+interface KnowledgeSource {
   id: string
-  websiteUrl: string
-  websiteDomain: string
-  status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
-  explorationJobId: string | null
+  sourceType: "documentation" | "website" | "video" | "file"
+  sourceUrl?: string
+  sourceName: string
+  fileName?: string
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
+  jobId: string | null
+  workflowId: string | null
   maxPages?: number
   maxDepth?: number
   strategy?: "BFS" | "DFS"
@@ -45,13 +51,16 @@ interface WebsiteKnowledge {
   excludePaths?: string[]
   pagesStored?: number
   linksStored?: number
+  screensExtracted?: number
+  tasksExtracted?: number
   externalLinksDetected?: number
-  explorationErrors?: Array<{
-    url: string
-    error: string
-    error_type?: "network" | "timeout" | "http_4xx" | "http_5xx" | "parsing" | "other"
-    retry_count?: number
+  extractionErrors?: Array<{
+    message: string
+    phase?: string
+    timestamp?: string
   }>
+  validationConfidence?: "high" | "medium" | "low" | "none"
+  validationIssues?: string[]
   name?: string
   description?: string
   tags?: string[]
@@ -61,20 +70,26 @@ interface WebsiteKnowledge {
   completedAt?: string
   syncHistory?: Array<{
     jobId: string
-    status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+    workflowId?: string
+    status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
     triggerType: "initial" | "resync"
     startedAt: string | Date
     completedAt?: string | Date
+    phase?: string
+    progress?: number
+    errorMessages?: string[] // Renamed from 'errors' to avoid Mongoose reserved pathname
+    warnings?: string[]
     pagesProcessed?: number
     linksProcessed?: number
     errorCount?: number
   }>
+  organizationId?: string
   createdAt: string
   updatedAt: string
 }
 
 interface KnowledgeDetailProps {
-  knowledge: WebsiteKnowledge
+  knowledge: KnowledgeSource
   organizationId: string
 }
 
@@ -117,6 +132,13 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isResyncing, setIsResyncing] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
+  const [isCanceling, setIsCanceling] = useState(false)
+  const [validationInfo, setValidationInfo] = useState<{
+    confidence?: "high" | "medium" | "low" | "none"
+    issues?: string[]
+    hasUsableContent?: boolean
+  } | null>(null)
 
   const handleRefresh = useCallback(() => {
     router.refresh()
@@ -127,39 +149,36 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
   }, [router])
 
   useEffect(() => {
-    // Only fetch results if status is completed and we have a job ID
-    if (knowledge.status === "completed" && knowledge.explorationJobId) {
-      const fetchResults = async () => {
-        setIsLoadingResults(true)
-        setError(null)
+    // Fetch validation info and results for completed knowledge
+    if (knowledge.status === "completed" && knowledge.jobId) {
+      const fetchValidationInfo = async () => {
         try {
-          const response = await fetch(`/api/website-knowledge/${knowledge.id}/results`)
-          if (!response.ok) {
-            throw new Error("Failed to fetch results")
-          }
-
-          const data = (await response.json()) as { data?: ExplorationResults }
-          if (data.data) {
-            setResults(data.data)
+          // For website knowledge, fetch from browser automation results API
+          if (knowledge.sourceType === "website") {
+            const response = await fetch(`/api/website-knowledge/${knowledge.id}/results`)
+            if (response.ok) {
+              const result = (await response.json()) as { data?: { validation?: typeof validationInfo } }
+              if (result.data?.validation) {
+                setValidationInfo(result.data.validation)
+              }
+            }
           }
         } catch (err: unknown) {
-          const errorMessage = err instanceof Error ? err.message : "Failed to load results"
-          setError(errorMessage)
-        } finally {
-          setIsLoadingResults(false)
+          console.error("[Knowledge Detail] Failed to fetch validation info", {
+            knowledgeId: knowledge.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
         }
       }
-
-      fetchResults()
+      fetchValidationInfo()
     }
-    // Only depend on the actual values we care about, not the entire knowledge object
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [knowledge.id, knowledge.status, knowledge.explorationJobId])
+    setIsLoadingResults(false)
+  }, [knowledge.id, knowledge.status, knowledge.jobId, knowledge.sourceType])
 
   const handleDelete = async () => {
     setIsDeleting(true)
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledge.id}`, {
+      const response = await fetch(`/api/knowledge/${knowledge.id}`, {
         method: "DELETE",
       })
 
@@ -178,7 +197,7 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
   const handleResync = async () => {
     setIsResyncing(true)
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledge.id}/resync`, {
+      const response = await fetch(`/api/knowledge/${knowledge.id}/resync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -198,200 +217,281 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
     }
   }
 
+  const handleStop = async () => {
+    if (!knowledge.jobId) return
+    
+    setIsStopping(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/knowledge/${knowledge.id}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      const data = (await response.json()) as { data?: KnowledgeSource; error?: string }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to stop job")
+      }
+
+      // If backend marked as failed, show error but still refresh
+      if (data.error) {
+        setError(data.error)
+      }
+
+      // Refresh the page to show updated status
+      router.refresh()
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to stop job"
+      setError(errorMessage)
+    } finally {
+      setIsStopping(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!knowledge.jobId) return
+    
+    setIsCanceling(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/knowledge/${knowledge.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      const data = (await response.json()) as { data?: KnowledgeSource; error?: string }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to cancel job")
+      }
+
+      // If backend marked as failed, show error but still refresh
+      if (data.error) {
+        setError(data.error)
+      }
+
+      // Refresh the page to show updated status
+      router.refresh()
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to cancel job"
+      setError(errorMessage)
+    } finally {
+      setIsCanceling(false)
+    }
+  }
+
 
   return (
-    <div className="space-y-6">
-      {/* Primary Actions Header */}
-      <div className="flex items-center justify-end gap-2 pb-4 border-b">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleResync}
-          disabled={isResyncing || ["pending", "exploring"].includes(knowledge.status)}
-          className="h-8 text-xs"
-        >
-          {isResyncing ? (
-            <>
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              Syncing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Re-sync
-            </>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setDeleteDialogOpen(true)}
-          className="h-8 text-xs text-destructive hover:text-destructive"
-        >
-          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-          Delete
-        </Button>
-      </div>
-
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="h-9 bg-transparent p-0 border-b">
-          <TabsTrigger 
-            value="overview" 
-            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-          >
-            Overview
-          </TabsTrigger>
-          <TabsTrigger 
-            value="configuration" 
-            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-          >
-            Configuration
-          </TabsTrigger>
-          <TabsTrigger 
-            value="contents" 
-            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-          >
-            Contents
-          </TabsTrigger>
-          <TabsTrigger 
-            value="history" 
-            className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-          >
-            Activity
-          </TabsTrigger>
-        </TabsList>
+    <div className="bg-background">
+      {/* Integrated Tabs with Actions */}
+      <Tabs defaultValue="overview" className="w-full">
+        <div className="border-b">
+          <div className="flex items-center justify-between">
+            <TabsList className="h-9 bg-transparent p-0 border-0">
+              <TabsTrigger 
+                value="overview" 
+                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+              >
+                Overview
+              </TabsTrigger>
+              <TabsTrigger 
+                value="configuration" 
+                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+              >
+                Configuration
+              </TabsTrigger>
+              <TabsTrigger 
+                value="contents" 
+                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+              >
+                Contents
+              </TabsTrigger>
+              <TabsTrigger 
+                value="history" 
+                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+              >
+                Activity
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Primary Actions - Integrated with tabs */}
+            <div className="flex items-center gap-2 px-4 py-2">
+              {/* Stop and Cancel - Only show for queued/running jobs */}
+              {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
+                <>
+                  {/* Stop (Pause) - Only for running jobs */}
+                  {knowledge.status === "running" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleStop}
+                      disabled={isStopping || isCanceling}
+                      className="h-8 text-xs bg-background hover:bg-accent"
+                    >
+                      {isStopping ? (
+                        <>
+                          <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                          Stopping...
+                        </>
+                      ) : (
+                        <>
+                          <Square className="mr-1.5 h-3.5 w-3.5" />
+                          Stop
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  {/* Cancel - For queued or running jobs */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancel}
+                    disabled={isStopping || isCanceling}
+                    className="h-8 text-xs bg-background hover:bg-accent"
+                  >
+                    {isCanceling ? (
+                      <>
+                        <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                        Canceling...
+                      </>
+                    ) : (
+                      <>
+                        <X className="mr-1.5 h-3.5 w-3.5" />
+                        Cancel
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResync}
+                disabled={isResyncing || ["pending", "queued", "running"].includes(knowledge.status) || isStopping || isCanceling}
+                className="h-8 text-xs bg-background hover:bg-accent"
+              >
+                {isResyncing ? (
+                  <>
+                    <Spinner className="mr-1.5 h-3.5 w-3.5" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    Re-sync
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={isStopping || isCanceling}
+                className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
 
         {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6 mt-6">
-          {/* Source Information */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Globe className="h-3.5 w-3.5 text-foreground opacity-60 shrink-0" />
-              <a
-                href={knowledge.websiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1.5 flex-1 min-w-0"
-              >
-                <span className="truncate">{knowledge.websiteUrl}</span>
-                <ExternalLink className="h-3 w-3 shrink-0" />
-              </a>
-            </div>
-            {results?.website_metadata?.title && (
-              <p className="text-sm font-medium">{results.website_metadata.title}</p>
-            )}
-            {results?.website_metadata?.description && (
-              <p className="text-xs text-foreground opacity-85">{results.website_metadata.description}</p>
-            )}
-            {knowledge.description && !results?.website_metadata?.description && (
-              <p className="text-xs text-foreground opacity-85">{knowledge.description}</p>
-            )}
-          </div>
-
-          {/* Progress for in-progress items */}
-          {["pending", "exploring"].includes(knowledge.status) && knowledge.explorationJobId && (
-            <div className="pt-4 border-t">
-              <WebsiteKnowledgeProgress
-                knowledgeId={knowledge.id}
-                onComplete={handleRefresh}
-              />
-            </div>
-          )}
-
-          {/* Stats for completed items */}
-          {knowledge.status === "completed" && (
-            <div className="grid grid-cols-3 gap-6 pt-4 border-t">
+        <TabsContent value="overview" className="mt-0">
+          <div className="py-6 px-6 space-y-6">
+            {/* Progress for in-progress items */}
+            {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
               <div>
-                <div className="text-2xl font-semibold">{knowledge.pagesStored || 0}</div>
-                <div className="text-xs text-foreground opacity-85 mt-0.5">Pages</div>
+                <KnowledgeProgress
+                  knowledgeId={knowledge.id}
+                  jobId={knowledge.jobId}
+                  workflowId={knowledge.workflowId}
+                  onComplete={handleRefresh}
+                />
               </div>
-              <div>
-                <div className="text-2xl font-semibold">{knowledge.linksStored || 0}</div>
-                <div className="text-xs text-foreground opacity-85 mt-0.5">Links</div>
-              </div>
-              <div>
-                <div className="text-2xl font-semibold">{knowledge.externalLinksDetected || 0}</div>
-                <div className="text-xs text-foreground opacity-85 mt-0.5">External Links</div>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Quick Info */}
-          <div className="pt-4 border-t">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-foreground opacity-60">Configuration</span>
-              <a
-                href="#configuration"
-                onClick={(e) => {
-                  e.preventDefault()
-                  const configTab = document.querySelector('[value="configuration"]') as HTMLElement
-                  configTab?.click()
-                }}
-                className="text-primary hover:underline font-medium"
-              >
-                View full configuration →
-              </a>
+            {/* Stats for completed items */}
+            {knowledge.status === "completed" && (
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <div className="text-2xl font-semibold">{knowledge.pagesStored || 0}</div>
+                  <div className="text-xs text-foreground mt-0.5">Pages indexed</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-semibold">{knowledge.linksStored || 0}</div>
+                  <div className="text-xs text-foreground mt-0.5">Links discovered</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-semibold">{knowledge.externalLinksDetected || 0}</div>
+                  <div className="text-xs text-foreground mt-0.5">External links</div>
+                </div>
+              </div>
+            )}
+
+            {/* Configuration Summary */}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="text-xs text-foreground">Crawl Settings</div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <div>
+                      <span className="text-foreground opacity-60">Strategy:</span>{" "}
+                      <span className="font-medium">{knowledge.strategy || "BFS"}</span>
+                    </div>
+                    <div>
+                      <span className="text-foreground opacity-60">Max Pages:</span>{" "}
+                      <span className="font-medium">{knowledge.maxPages || 100}</span>
+                    </div>
+                    <div>
+                      <span className="text-foreground opacity-60">Max Depth:</span>{" "}
+                      <span className="font-medium">{knowledge.maxDepth || 10}</span>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const configTab = document.querySelector('[value="configuration"]') as HTMLElement
+                    configTab?.click()
+                  }}
+                  className="h-7 text-xs"
+                >
+                  View full configuration →
+                </Button>
+              </div>
             </div>
           </div>
         </TabsContent>
 
         {/* Configuration Tab */}
-        <TabsContent value="configuration" className="space-y-6 mt-6">
-          <KnowledgeConfiguration
-            knowledge={{
-              ...knowledge,
-              organizationId,
-            }}
-            onUpdate={handleConfigUpdate}
-          />
+        <TabsContent value="configuration" className="mt-0">
+          <div className="py-6 px-6">
+            <KnowledgeConfiguration
+              knowledge={{
+                ...knowledge,
+                organizationId,
+              }}
+              onUpdate={handleConfigUpdate}
+            />
+          </div>
         </TabsContent>
 
         {/* Contents Tab */}
-        <TabsContent value="contents" className="space-y-6 mt-6">
-          {knowledge.status === "completed" ? (
-            <div className="space-y-4">
-              {/* Contents Summary */}
-              <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
-                <div className="text-xs font-semibold">Summary</div>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <span className="text-foreground opacity-60">Pages indexed:</span>{" "}
-                    <span className="font-medium">{knowledge.pagesStored || 0}</span>
-                  </div>
-                  <div>
-                    <span className="text-foreground opacity-60">Links discovered:</span>{" "}
-                    <span className="font-medium">{knowledge.linksStored || 0}</span>
-                  </div>
-                  {knowledge.externalLinksDetected !== undefined && (
-                    <div>
-                      <span className="text-foreground opacity-60">External links:</span>{" "}
-                      <span className="font-medium">{knowledge.externalLinksDetected}</span>
-                    </div>
-                  )}
-                  {knowledge.completedAt && (
-                    <div>
-                      <span className="text-foreground opacity-60">Last updated:</span>{" "}
-                      <span className="font-medium">
-                        {new Date(knowledge.completedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="text-xs text-foreground opacity-85">
-                    This Knowledge is indexed and searchable by your agents.
-                  </div>
-                </div>
-              </div>
+        <TabsContent value="contents" className="mt-0">
+          <div className="py-6 px-6">
+            {knowledge.status === "completed" ? (
+              <div className="space-y-4">
 
               <Tabs defaultValue="pages" className="space-y-3">
               <TabsList className="h-9">
                 <TabsTrigger value="pages" className="text-xs">Pages</TabsTrigger>
                 <TabsTrigger value="links" className="text-xs">Links</TabsTrigger>
-                {knowledge.explorationErrors && knowledge.explorationErrors.length > 0 && (
+                {knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
                   <TabsTrigger value="errors" className="text-xs">
-                    Errors ({knowledge.explorationErrors.length})
+                    Errors ({knowledge.extractionErrors.length})
                   </TabsTrigger>
                 )}
               </TabsList>
@@ -445,11 +545,14 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                 </Table>
               </div>
             ) : (
-              <div className="border rounded-lg p-8 text-center">
-                <p className="text-xs text-foreground opacity-85">
-                  No pages available
-                </p>
-              </div>
+              <Empty className="border-0 p-0">
+                <EmptyHeader>
+                  <EmptyTitle className="text-sm font-semibold">No pages available</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    Pages will appear here once extraction is complete.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </TabsContent>
 
@@ -512,49 +615,36 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                 )}
               </div>
             ) : (
-              <div className="border rounded-lg p-8 text-center">
-                <p className="text-xs text-foreground opacity-85">
-                  No links available
-                </p>
-              </div>
+              <Empty className="border-0 p-0">
+                <EmptyHeader>
+                  <EmptyTitle className="text-sm font-semibold">No links available</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    Links will appear here once extraction is complete.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </TabsContent>
 
-              {knowledge.explorationErrors && knowledge.explorationErrors.length > 0 && (
+              {knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
                 <TabsContent value="errors" className="space-y-2">
-                  {knowledge.explorationErrors.map((error, index) => {
-                    const getErrorTypeBadge = () => {
-                      if (!error.error_type) return null
-                      const colors: Record<string, string> = {
-                        network: "border-blue-600 text-blue-600",
-                        timeout: "border-yellow-600 text-yellow-600",
-                        http_4xx: "border-orange-600 text-orange-600",
-                        http_5xx: "border-red-600 text-red-600",
-                        parsing: "border-purple-600 text-purple-600",
-                        other: "border-foreground/50 text-foreground",
-                      }
-                      return (
-                        <Badge variant="outline" className={cn("text-xs", colors[error.error_type] || "")}>
-                          {error.error_type}
-                        </Badge>
-                      )
-                    }
-
+                  {knowledge.extractionErrors.map((error, index) => {
                     return (
                       <Alert key={index} variant="destructive" className="py-2">
                         <AlertCircle className="h-3.5 w-3.5" />
                         <AlertDescription className="text-xs">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium truncate">{error.url}</div>
-                              <div className="text-foreground opacity-85 mt-0.5">{error.error}</div>
-                              {error.retry_count !== undefined && error.retry_count > 0 && (
+                              {error.phase && (
+                                <div className="font-medium truncate">{error.phase}</div>
+                              )}
+                              <div className="text-foreground opacity-85 mt-0.5">{error.message}</div>
+                              {error.timestamp && (
                                 <div className="text-foreground opacity-85 mt-0.5">
-                                  Retries: {error.retry_count}
+                                  {new Date(error.timestamp).toLocaleString()}
                                 </div>
                               )}
                             </div>
-                            {getErrorTypeBadge()}
                           </div>
                         </AlertDescription>
                       </Alert>
@@ -564,28 +654,34 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
               )}
               </Tabs>
             </div>
-          ) : (
-            <div className="border rounded-lg p-8 text-center">
-              <p className="text-xs text-foreground opacity-85">
-                Knowledge sync must complete before contents are available.
-              </p>
-            </div>
-          )}
+            ) : (
+              <Empty className="border-0 p-0">
+                <EmptyHeader>
+                  <EmptyTitle className="text-sm font-semibold">No contents available</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    Knowledge sync must complete before contents are available.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </div>
         </TabsContent>
 
         {/* History Tab */}
-        <TabsContent value="history" className="space-y-6 mt-6">
-          <KnowledgeSyncActivity
-            knowledgeId={knowledge.id}
-            currentStatus={knowledge.status}
-            startedAt={knowledge.startedAt}
-            completedAt={knowledge.completedAt}
-            pagesStored={knowledge.pagesStored}
-            linksStored={knowledge.linksStored}
-            explorationErrors={knowledge.explorationErrors}
-            syncHistory={knowledge.syncHistory}
-            createdAt={knowledge.createdAt}
-          />
+        <TabsContent value="history" className="mt-0">
+          <div className="py-6 px-6">
+            <KnowledgeSyncActivity
+              knowledgeId={knowledge.id}
+              currentStatus={knowledge.status}
+              startedAt={knowledge.startedAt}
+              completedAt={knowledge.completedAt}
+              pagesStored={knowledge.pagesStored}
+              linksStored={knowledge.linksStored}
+              extractionErrors={knowledge.extractionErrors}
+              syncHistory={knowledge.syncHistory}
+              createdAt={knowledge.createdAt}
+            />
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -613,7 +709,7 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
             >
               {isDeleting ? (
                 <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
                   Deleting...
                 </>
               ) : (

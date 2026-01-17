@@ -4,10 +4,10 @@ import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { KnowledgeDetail } from "@/components/knowledge/knowledge-detail"
 import { Button } from "@/components/ui/button"
-import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
+import { KnowledgeStatusBadge, type KnowledgeStatus } from "@/components/knowledge/knowledge-status-badge"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
-import { WebsiteKnowledge } from "@/lib/models/website-knowledge"
+import { KnowledgeSource } from "@/lib/models/knowledge-source"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function KnowledgeDetailPage({
@@ -58,7 +58,7 @@ export default async function KnowledgeDetailPage({
 
     // Use .lean() to get a plain JavaScript object instead of Mongoose document
     // This prevents circular reference issues during serialization
-    const knowledge = await (WebsiteKnowledge as any).findById(id).lean()
+    const knowledge = await (KnowledgeSource as any).findById(id).lean()
 
     if (!knowledge) {
       notFound()
@@ -72,18 +72,39 @@ export default async function KnowledgeDetailPage({
     // Properly serialize Mongoose document to plain object to avoid circular references
     // Convert dates to ISO strings and ensure all nested objects are plain
     // Remove _id fields from subdocuments as they contain buffers that can't be serialized
-    const serializeSyncHistory = (syncHistory: unknown) => {
+    const serializeSyncHistory = (syncHistory: unknown): Array<{
+      jobId: string
+      workflowId?: string
+      status: KnowledgeStatus
+      triggerType: "initial" | "resync"
+      startedAt: string
+      completedAt?: string
+      phase?: string
+      progress?: number
+      errorMessages?: string[] // Renamed from 'errors' to avoid Mongoose reserved pathname
+      errors?: string[] // Keep for backward compatibility during migration
+      warnings?: string[]
+      pagesProcessed?: number
+      linksProcessed?: number
+      errorCount?: number
+    }> => {
       if (!Array.isArray(syncHistory)) return []
-      const validStatuses = ["pending", "exploring", "completed", "failed", "cancelled"] as const
+      const validStatuses = ["pending", "queued", "running", "completed", "failed", "cancelled"] as const
       const validTriggerTypes = ["initial", "resync"] as const
       return syncHistory.map((sync: unknown) => {
         const s = sync as {
           _id?: unknown // Mongoose subdocument _id that needs to be removed
           jobId?: unknown
+          workflowId?: unknown
           status?: unknown
           triggerType?: unknown
           startedAt?: unknown
           completedAt?: unknown
+          phase?: unknown
+          progress?: unknown
+          errorMessages?: unknown // Renamed from 'errors' to avoid Mongoose reserved pathname
+          errors?: unknown // Keep for backward compatibility during migration
+          warnings?: unknown
           pagesProcessed?: unknown
           linksProcessed?: unknown
           errorCount?: unknown
@@ -111,17 +132,25 @@ export default async function KnowledgeDetailPage({
           completedAtStr = isNaN(date.getTime()) ? undefined : date.toISOString()
         }
         
+        // Map old status values to new ones
+        const mappedStatus = status === "exploring" ? "running" : status
+        
         // Return plain object without _id field
         return {
           jobId: String(s.jobId || ""),
-          status: (validStatuses.includes(status as typeof validStatuses[number]) 
-            ? status 
-            : "pending") as typeof validStatuses[number],
+          workflowId: s.workflowId ? String(s.workflowId) : undefined,
+          status: (validStatuses.includes(mappedStatus as typeof validStatuses[number]) 
+            ? mappedStatus 
+            : "pending") as "pending" | "queued" | "running" | "completed" | "failed" | "cancelled",
           triggerType: (validTriggerTypes.includes(triggerType as typeof validTriggerTypes[number])
             ? triggerType
             : "initial") as typeof validTriggerTypes[number],
           startedAt: startedAtStr,
           completedAt: completedAtStr,
+          phase: s.phase ? String(s.phase) : undefined,
+          progress: typeof s.progress === "number" ? s.progress : undefined,
+          errorMessages: Array.isArray(s.errorMessages) ? s.errorMessages.map((e) => String(e)) : (Array.isArray(s.errors) ? s.errors.map((e) => String(e)) : []), // Support both old 'errors' and new 'errorMessages' for backward compatibility
+          warnings: Array.isArray(s.warnings) ? s.warnings.map((w) => String(w)) : [],
           pagesProcessed: typeof s.pagesProcessed === "number" ? s.pagesProcessed : undefined,
           linksProcessed: typeof s.linksProcessed === "number" ? s.linksProcessed : undefined,
           errorCount: typeof s.errorCount === "number" ? s.errorCount : undefined,
@@ -129,43 +158,83 @@ export default async function KnowledgeDetailPage({
       })
     }
 
-    const serializeExplorationErrors = (errors: unknown) => {
-      if (!Array.isArray(errors)) return []
-      return errors.map((error: unknown) => {
-        const e = error as {
-          url?: unknown
-          error?: unknown
-          error_type?: unknown
-          retry_count?: unknown
-        }
-        const errorType = e.error_type ? String(e.error_type) : undefined
-        const validErrorTypes = ["network", "timeout", "http_4xx", "http_5xx", "parsing", "other"] as const
-        return {
-          url: String(e.url || ""),
-          error: String(e.error || ""),
-          error_type: errorType && validErrorTypes.includes(errorType as typeof validErrorTypes[number]) 
-            ? (errorType as typeof validErrorTypes[number])
-            : undefined,
-          retry_count: typeof e.retry_count === "number" ? e.retry_count : undefined,
-        }
-      })
+    // Map old status values to new ones for backward compatibility
+    const mapStatus = (status: string): KnowledgeStatus => {
+      const statusMap: Record<string, KnowledgeStatus> = {
+        "pending": "pending",
+        "exploring": "running",
+        "queued": "queued",
+        "running": "running",
+        "completed": "completed",
+        "failed": "failed",
+        "cancelled": "cancelled",
+      }
+      return statusMap[status] || "pending"
     }
 
-    const knowledgeData = {
+    const knowledgeData: {
+      id: string
+      sourceType: "documentation" | "website" | "video" | "file"
+      sourceUrl?: string
+      sourceName: string
+      fileName?: string
+      status: KnowledgeStatus
+      jobId: string | null
+      workflowId: string | null
+      maxPages?: number
+      maxDepth?: number
+      strategy?: "BFS" | "DFS"
+      includePaths?: string[]
+      excludePaths?: string[]
+      pagesStored?: number
+      linksStored?: number
+      screensExtracted?: number
+      tasksExtracted?: number
+      externalLinksDetected?: number
+      extractionErrors?: Array<{ message: string; phase?: string; timestamp?: string }>
+      name?: string
+      description?: string
+      tags?: string[]
+      timesReferenced: number
+      lastReferencedAt?: string
+      startedAt?: string
+      completedAt?: string
+      syncHistory?: Array<{
+        jobId: string
+        workflowId?: string
+        status: KnowledgeStatus
+        triggerType: "initial" | "resync"
+        startedAt: string
+        completedAt?: string
+        phase?: string
+        progress?: number
+        errorMessages?: string[] // Renamed from 'errors' to avoid Mongoose reserved pathname
+      errors?: string[] // Keep for backward compatibility during migration
+        warnings?: string[]
+        pagesProcessed?: number
+        linksProcessed?: number
+        errorCount?: number
+      }>
+      createdAt: string
+      updatedAt: string
+    } = {
       id: knowledge._id.toString(),
-      websiteUrl: String(knowledge.websiteUrl || ""),
-      websiteDomain: String(knowledge.websiteDomain || ""),
-      status: String(knowledge.status || "pending") as "pending" | "exploring" | "completed" | "failed" | "cancelled",
-      explorationJobId: knowledge.explorationJobId ? String(knowledge.explorationJobId) : null,
-      maxPages: typeof knowledge.maxPages === "number" ? knowledge.maxPages : undefined,
-      maxDepth: typeof knowledge.maxDepth === "number" ? knowledge.maxDepth : undefined,
-      strategy: knowledge.strategy ? String(knowledge.strategy) as "BFS" | "DFS" : undefined,
-      includePaths: Array.isArray(knowledge.includePaths) ? knowledge.includePaths.map(String) : undefined,
-      excludePaths: Array.isArray(knowledge.excludePaths) ? knowledge.excludePaths.map(String) : undefined,
+      sourceType: String(knowledge.sourceType || "website") as "documentation" | "website" | "video" | "file",
+      sourceUrl: knowledge.sourceUrl ? String(knowledge.sourceUrl) : undefined,
+      sourceName: String(knowledge.sourceName || ""),
+      fileName: knowledge.fileName ? String(knowledge.fileName) : undefined,
+      status: mapStatus(String(knowledge.status || "pending")),
+      jobId: knowledge.jobId ? String(knowledge.jobId) : null,
+      workflowId: knowledge.workflowId ? String(knowledge.workflowId) : null,
+      maxPages: knowledge.options?.maxPages ? Number(knowledge.options.maxPages) : undefined,
+      maxDepth: knowledge.options?.maxDepth ? Number(knowledge.options.maxDepth) : undefined,
+      strategy: knowledge.options?.strategy ? String(knowledge.options.strategy) as "BFS" | "DFS" : undefined,
+      includePaths: Array.isArray(knowledge.options?.includePaths) ? knowledge.options.includePaths.map(String) : undefined,
+      excludePaths: Array.isArray(knowledge.options?.excludePaths) ? knowledge.options.excludePaths.map(String) : undefined,
       pagesStored: typeof knowledge.pagesStored === "number" ? knowledge.pagesStored : undefined,
       linksStored: typeof knowledge.linksStored === "number" ? knowledge.linksStored : undefined,
-      externalLinksDetected: typeof knowledge.externalLinksDetected === "number" ? knowledge.externalLinksDetected : undefined,
-      explorationErrors: serializeExplorationErrors(knowledge.explorationErrors),
+      screensExtracted: typeof knowledge.screensExtracted === "number" ? knowledge.screensExtracted : undefined,
+      tasksExtracted: typeof knowledge.tasksExtracted === "number" ? knowledge.tasksExtracted : undefined,
       name: knowledge.name ? String(knowledge.name) : undefined,
       description: knowledge.description ? String(knowledge.description) : undefined,
       tags: Array.isArray(knowledge.tags) ? knowledge.tags.map(String) : undefined,
@@ -179,40 +248,63 @@ export default async function KnowledgeDetailPage({
     }
 
     return (
-      <div className="py-6">
-        {/* Back Affordance */}
-        <div className="mb-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="h-7 text-xs text-foreground opacity-85 hover:text-foreground hover:opacity-100"
-          >
-            <Link href="/knowledge">
-              <ArrowLeft className="mr-1.5 h-3 w-3" />
-              Knowledge
-            </Link>
-          </Button>
-        </div>
-
-        {/* Page Header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div className="space-y-1 flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold truncate">
-                {knowledgeData.name || knowledgeData.websiteDomain}
-              </h1>
-              <KnowledgeStatusBadge status={knowledgeData.status} />
+      <div className="space-y-0">
+        {/* Integrated Header with Back Navigation */}
+        <div className="border-b bg-background">
+          <div className="py-4">
+            {/* Back Navigation - Integrated */}
+            <div className="mb-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild
+                className="h-7 text-xs text-foreground hover:text-foreground hover:bg-accent"
+              >
+                <Link href="/knowledge">
+                  <ArrowLeft className="mr-1.5 h-3 w-3" />
+                  Knowledge
+                </Link>
+              </Button>
             </div>
-            {knowledgeData.description && (
-              <p className="mt-0.5 text-sm text-foreground">
-                {knowledgeData.description}
-              </p>
-            )}
+
+            {/* Primary Header - Name, Status, Source URL */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1.5 flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-lg font-semibold truncate">
+                    {knowledgeData.name || knowledgeData.sourceName}
+                  </h1>
+                  <KnowledgeStatusBadge status={knowledgeData.status} />
+                </div>
+                {knowledgeData.description && (
+                  <p className="text-sm text-foreground">
+                    {knowledgeData.description}
+                  </p>
+                )}
+                {/* Source URL/File - Always visible in header */}
+                <div className="flex items-center gap-1.5 text-xs text-foreground">
+                  <span className="opacity-60">Source:</span>
+                  {knowledgeData.sourceUrl ? (
+                    <a
+                      href={knowledgeData.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium hover:text-primary transition-colors truncate max-w-md"
+                    >
+                      {knowledgeData.sourceUrl}
+                    </a>
+                  ) : (
+                    <span className="font-medium truncate max-w-md">
+                      {knowledgeData.fileName || knowledgeData.sourceName}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Main Content */}
+        {/* Main Content - Tabs integrated within page frame */}
         <KnowledgeDetail 
           knowledge={knowledgeData} 
           organizationId={knowledgeOrgId}

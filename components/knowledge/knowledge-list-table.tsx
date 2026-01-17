@@ -1,7 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
-import { ExternalLink, Globe, Loader2, MoreHorizontal, RefreshCw, Trash2 } from "lucide-react"
+import { ExternalLink, FileText, Globe, MoreHorizontal, RefreshCw, Square, X, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -25,17 +25,29 @@ import {
 import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
 import { Pagination } from "@/components/ui/pagination"
 import { Skeleton } from "@/components/ui/skeleton"
-import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
+import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
-interface WebsiteKnowledge {
+interface KnowledgeSource {
   id: string
-  websiteUrl: string
-  websiteDomain: string
-  status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
-  explorationJobId: string | null
+  sourceType: "documentation" | "website" | "video" | "file"
+  sourceUrl?: string
+  sourceName: string
+  fileName?: string
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
+  jobId: string | null
+  workflowId: string | null
   pagesStored?: number
   linksStored?: number
+  screensExtracted?: number
+  tasksExtracted?: number
+  extractionErrors?: Array<{
+    message: string
+    phase?: string
+    timestamp?: string
+  }>
   name?: string
   description?: string
   startedAt?: string
@@ -44,16 +56,21 @@ interface WebsiteKnowledge {
   updatedAt: string
   syncHistory?: Array<{
     jobId: string
-    status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+    workflowId?: string
+    status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
     triggerType: "initial" | "resync"
     startedAt: string | Date
     completedAt?: string | Date
+    phase?: string
+    progress?: number
+    errorMessages?: string[] // Renamed from 'errors' to avoid Mongoose reserved pathname
+    warnings?: string[]
   }>
 }
 
 interface KnowledgeListTableProps {
   organizationId: string
-  initialData?: WebsiteKnowledge[]
+  initialData?: KnowledgeSource[]
   initialPagination?: {
     page: number
     limit: number
@@ -70,7 +87,7 @@ export function KnowledgeListTable({
   initialPagination,
 }: KnowledgeListTableProps) {
   const router = useRouter()
-  const [knowledgeList, setKnowledgeList] = useState<WebsiteKnowledge[]>(initialData)
+  const [knowledgeList, setKnowledgeList] = useState<KnowledgeSource[]>(initialData)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -78,6 +95,8 @@ export function KnowledgeListTable({
   const [pagination, setPagination] = useState(initialPagination)
   const [resyncingIds, setResyncingIds] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set())
+  const [cancelingIds, setCancelingIds] = useState<Set<string>>(new Set())
 
   const fetchKnowledge = async (newPage: number = page, newStatus: string = statusFilter) => {
     setIsLoading(true)
@@ -91,13 +110,13 @@ export function KnowledgeListTable({
         params.set("status", newStatus)
       }
 
-      const response = await fetch(`/api/website-knowledge?${params.toString()}`)
+      const response = await fetch(`/api/knowledge?${params.toString()}`)
       if (!response.ok) {
         throw new Error("Failed to fetch knowledge")
       }
 
       const result = (await response.json()) as {
-        data?: WebsiteKnowledge[]
+        data?: KnowledgeSource[]
         pagination?: {
           page: number
           limit: number
@@ -135,7 +154,7 @@ export function KnowledgeListTable({
   const handleResync = async (knowledgeId: string) => {
     setResyncingIds((prev) => new Set(prev).add(knowledgeId))
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledgeId}/resync`, {
+      const response = await fetch(`/api/knowledge/${knowledgeId}/resync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -161,7 +180,7 @@ export function KnowledgeListTable({
   const handleDelete = async (knowledgeId: string) => {
     setDeletingId(knowledgeId)
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledgeId}`, {
+      const response = await fetch(`/api/knowledge/${knowledgeId}`, {
         method: "DELETE",
       })
 
@@ -178,7 +197,73 @@ export function KnowledgeListTable({
     }
   }
 
-  const getLastSyncTime = (knowledge: WebsiteKnowledge): string => {
+  const handleStop = async (knowledgeId: string, jobId: string) => {
+    setStoppingIds((prev) => new Set(prev).add(knowledgeId))
+    setError(null)
+    try {
+      const response = await fetch(`/api/knowledge/${knowledgeId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      const data = (await response.json()) as { data?: KnowledgeSource; error?: string }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to stop job")
+      }
+
+      // If backend marked as failed, show error but still refresh
+      if (data.error) {
+        setError(data.error)
+      }
+
+      await fetchKnowledge(page, statusFilter)
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to stop job"
+      setError(errorMessage)
+    } finally {
+      setStoppingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(knowledgeId)
+        return next
+      })
+    }
+  }
+
+  const handleCancel = async (knowledgeId: string, jobId: string) => {
+    setCancelingIds((prev) => new Set(prev).add(knowledgeId))
+    setError(null)
+    try {
+      const response = await fetch(`/api/knowledge/${knowledgeId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      const data = (await response.json()) as { data?: KnowledgeSource; error?: string }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to cancel job")
+      }
+
+      // If backend marked as failed, show error but still refresh
+      if (data.error) {
+        setError(data.error)
+      }
+
+      await fetchKnowledge(page, statusFilter)
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to cancel job"
+      setError(errorMessage)
+    } finally {
+      setCancelingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(knowledgeId)
+        return next
+      })
+    }
+  }
+
+  const getLastSyncTime = (knowledge: KnowledgeSource): string => {
     if (knowledge.completedAt) {
       return format(new Date(knowledge.completedAt), "MMM d, yyyy")
     }
@@ -209,9 +294,9 @@ export function KnowledgeListTable({
           Completed
         </Button>
         <Button
-          variant={statusFilter === "exploring" ? "default" : "outline"}
+          variant={statusFilter === "running" ? "default" : "outline"}
           size="sm"
-          onClick={() => handleStatusFilterChange("exploring")}
+          onClick={() => handleStatusFilterChange("running")}
           className="h-7 text-xs"
         >
           Syncing
@@ -273,21 +358,25 @@ export function KnowledgeListTable({
               </>
             ) : knowledgeList.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Globe className="h-6 w-6 text-foreground opacity-60 mb-2" />
-                    <p className="text-xs font-semibold mb-1">No knowledge found</p>
-                    <p className="text-xs text-foreground opacity-85">
-                      Create your first knowledge source to get started
-                    </p>
-                  </div>
+                <TableCell colSpan={6} className="h-24">
+                  <Empty className="border-0 p-0">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <Globe className="h-5 w-5" />
+                      </EmptyMedia>
+                      <EmptyTitle className="text-sm font-semibold">No knowledge found</EmptyTitle>
+                      <EmptyDescription className="text-xs">
+                        Create your first knowledge source to get started
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </TableCell>
               </TableRow>
             ) : (
               knowledgeList.map((knowledge) => {
                 const isResyncing = resyncingIds.has(knowledge.id)
                 const isDeleting = deletingId === knowledge.id
-                const isActive = ["pending", "exploring"].includes(knowledge.status)
+                const isActive = ["pending", "queued", "running"].includes(knowledge.status)
 
                 return (
                   <TableRow
@@ -301,7 +390,7 @@ export function KnowledgeListTable({
                     <TableCell className="py-2">
                       <div className="space-y-0.5">
                         <div className="text-sm font-semibold">
-                          {knowledge.name || knowledge.websiteDomain}
+                          {knowledge.name || knowledge.sourceName}
                         </div>
                         {knowledge.description && (
                           <div className="text-xs text-foreground opacity-85 line-clamp-1">
@@ -312,30 +401,52 @@ export function KnowledgeListTable({
                     </TableCell>
                     <TableCell className="py-2">
                       <div className="flex items-center gap-1.5">
-                        <Globe className="h-3 w-3 text-foreground opacity-60 shrink-0" />
-                        <a
-                          href={knowledge.websiteUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-xs text-foreground opacity-85 hover:text-primary transition-colors truncate flex items-center gap-1"
-                        >
-                          <span className="truncate max-w-[200px]">{knowledge.websiteUrl}</span>
-                          <ExternalLink className="h-3 w-3 shrink-0" />
-                        </a>
+                        {knowledge.sourceType === "website" || knowledge.sourceType === "documentation" || knowledge.sourceType === "video" ? (
+                          <Globe className="h-3 w-3 text-foreground opacity-60 shrink-0" />
+                        ) : (
+                          <FileText className="h-3 w-3 text-foreground opacity-60 shrink-0" />
+                        )}
+                        {knowledge.sourceUrl ? (
+                          <a
+                            href={knowledge.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-foreground opacity-85 hover:text-primary transition-colors truncate flex items-center gap-1"
+                          >
+                            <span className="truncate max-w-[200px]">{knowledge.sourceUrl}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-xs text-foreground opacity-85 truncate max-w-[200px]">
+                            {knowledge.fileName || knowledge.sourceName}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="py-2">
-                      <KnowledgeStatusBadge status={knowledge.status} />
-                      {isActive && knowledge.explorationJobId && (
-                        <div className="mt-1">
-                          <WebsiteKnowledgeProgress
+                      <div className="space-y-1.5">
+                        <KnowledgeStatusBadge status={knowledge.status} />
+                        {isActive && knowledge.jobId && (
+                          <KnowledgeProgress
                             knowledgeId={knowledge.id}
+                            jobId={knowledge.jobId}
+                            workflowId={knowledge.workflowId}
                             onComplete={() => fetchKnowledge(page, statusFilter)}
                             className="text-xs"
                           />
-                        </div>
-                      )}
+                        )}
+                        {knowledge.status === "failed" && knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
+                          <div className="text-xs text-destructive font-medium">
+                            {knowledge.extractionErrors.length} error{knowledge.extractionErrors.length !== 1 ? "s" : ""}
+                          </div>
+                        )}
+                        {knowledge.status === "completed" && knowledge.pagesStored === 0 && knowledge.linksStored === 0 && (
+                          <div className="text-xs text-destructive font-medium">
+                            ⚠️ No knowledge extracted
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="py-2 text-xs text-foreground opacity-85">
                       {getLastSyncTime(knowledge)}
@@ -367,18 +478,68 @@ export function KnowledgeListTable({
                           >
                             View Details
                           </DropdownMenuItem>
+                          {/* Stop and Cancel - Only for queued/running jobs */}
+                          {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {/* Stop (Pause) - Only for running jobs */}
+                              {knowledge.status === "running" && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleStop(knowledge.id, knowledge.jobId!)
+                                  }}
+                                  disabled={stoppingIds.has(knowledge.id) || cancelingIds.has(knowledge.id)}
+                                  className="text-xs"
+                                >
+                                  {stoppingIds.has(knowledge.id) ? (
+                                    <>
+                                      <Spinner className="mr-2 h-3 w-3" />
+                                      Stopping...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Square className="mr-2 h-3 w-3" />
+                                      Stop
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                              )}
+                              {/* Cancel - For queued or running jobs */}
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleCancel(knowledge.id, knowledge.jobId!)
+                                }}
+                                disabled={stoppingIds.has(knowledge.id) || cancelingIds.has(knowledge.id)}
+                                className="text-xs"
+                              >
+                                {cancelingIds.has(knowledge.id) ? (
+                                  <>
+                                    <Spinner className="mr-2 h-3 w-3" />
+                                    Canceling...
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="mr-2 h-3 w-3" />
+                                    Cancel
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                            </>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation()
                               handleResync(knowledge.id)
                             }}
-                            disabled={isResyncing || ["pending", "exploring"].includes(knowledge.status)}
+                            disabled={isResyncing || ["pending", "queued", "running"].includes(knowledge.status) || stoppingIds.has(knowledge.id) || cancelingIds.has(knowledge.id)}
                             className="text-xs"
                           >
                             {isResyncing ? (
                               <>
-                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                <Spinner className="mr-2 h-3 w-3" />
                                 Syncing...
                               </>
                             ) : (
@@ -396,12 +557,12 @@ export function KnowledgeListTable({
                                 handleDelete(knowledge.id)
                               }
                             }}
-                            disabled={isDeleting}
+                            disabled={isDeleting || stoppingIds.has(knowledge.id) || cancelingIds.has(knowledge.id)}
                             className="text-xs text-destructive focus:text-destructive"
                           >
                             {isDeleting ? (
                               <>
-                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                <Spinner className="mr-2 h-3 w-3" />
                                 Deleting...
                               </>
                             ) : (

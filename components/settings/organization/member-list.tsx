@@ -1,7 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
-import { Loader2, Mail, MoreVertical, Shield, Trash2, User, UserPlus } from "lucide-react"
+import { Mail, MoreVertical, Shield, Trash2, User, UserPlus } from "lucide-react"
 import { useEffect, useState } from "react"
 import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -23,7 +23,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { authClient } from "@/lib/auth/client"
 import { toast } from "@/lib/utils/toast"
 import { InviteMemberDialog } from "./invite-member-dialog"
@@ -292,11 +294,13 @@ export function OrganizationMembersList({
 
   return (
     <>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle>Organization Members</CardTitle>
-            <CardDescription>Manage your organization's team members and their roles.</CardDescription>
+      <Card className="bg-muted/30">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <div className="space-y-1">
+            <CardTitle className="text-sm font-semibold">Organization Members</CardTitle>
+            <CardDescription className="text-xs">
+              Manage your organization's team members and their roles
+            </CardDescription>
           </div>
           <InviteMemberDialog onInviteSuccess={loadMembers} />
         </CardHeader>

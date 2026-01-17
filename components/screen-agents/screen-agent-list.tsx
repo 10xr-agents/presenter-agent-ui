@@ -1,12 +1,13 @@
 "use client"
 
-import { Loader2, Plus, Search, Video } from "lucide-react"
+import { Plus, Search, Video } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { EmptyState } from "@/components/ui/empty-state"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Select,
   SelectContent,
@@ -163,22 +164,29 @@ export function ScreenAgentList({
       </div>
 
       {filteredAgents.length === 0 ? (
-        <div className="border rounded-lg p-12 text-center">
-          <Video className="mx-auto h-8 w-8 text-foreground opacity-60 mb-2" />
-          <h3 className="text-sm font-semibold mb-1">
-            {agents.length === 0 ? "No Screen Agents yet" : "No agents match your filters"}
-          </h3>
-          {agents.length === 0 && (
-            <div className="mt-4">
-              <Button asChild size="sm">
-                <Link href="/screen-agents/new">
-                  <Plus className="mr-2 h-3.5 w-3.5" />
-                  Create Your First Agent
-                </Link>
-              </Button>
-            </div>
-          )}
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Video className="h-5 w-5" />
+            </EmptyMedia>
+            <EmptyTitle className="text-sm font-semibold">
+              {agents.length === 0 ? "No Screen Agents yet" : "No agents match your filters"}
+            </EmptyTitle>
+            {agents.length === 0 && (
+              <>
+                <EmptyDescription className="text-xs">
+                  Create your first Screen Agent to get started with interactive presentations.
+                </EmptyDescription>
+                <Button asChild size="sm" className="mt-4">
+                  <Link href="/screen-agents/new">
+                    <Plus className="mr-2 h-3.5 w-3.5" />
+                    Create Your First Agent
+                  </Link>
+                </Button>
+              </>
+            )}
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {filteredAgents.map((agent) => (

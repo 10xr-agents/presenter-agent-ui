@@ -1,6 +1,7 @@
 "use client"
 
-import { Loader2, Send } from "lucide-react"
+import { Send } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,7 +54,7 @@ export function AgentChat({ organizationId }: { organizationId?: string }) {
           {loading && (
             <div className="flex justify-start">
               <div className="bg-muted rounded-lg p-3">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner className="h-4 w-4" />
               </div>
             </div>
           )}
@@ -71,7 +72,7 @@ export function AgentChat({ organizationId }: { organizationId?: string }) {
           />
           <Button type="submit" disabled={loading || !input.trim()} size="icon">
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner className="h-4 w-4" />
             ) : (
               <Send className="h-4 w-4" />
             )}

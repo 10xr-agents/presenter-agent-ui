@@ -1,10 +1,12 @@
 "use client"
 
-import { Loader2, Settings } from "lucide-react"
+import { Settings } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ShareModal } from "./share-modal"
 
@@ -117,7 +119,7 @@ export function ScreenAgentDetail({ agent }: ScreenAgentDetailProps) {
             <Button size="sm" onClick={handlePublish} disabled={isLoading} className="h-8 text-xs">
               {isLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
                   Publishing...
                 </>
               ) : (
@@ -129,7 +131,7 @@ export function ScreenAgentDetail({ agent }: ScreenAgentDetailProps) {
             <Button variant="outline" size="sm" onClick={handlePause} disabled={isLoading} className="h-8 text-xs">
               {isLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
                   Pausing...
                 </>
               ) : (
@@ -158,118 +160,166 @@ export function ScreenAgentDetail({ agent }: ScreenAgentDetailProps) {
           <TabsTrigger value="settings" className="text-xs">Settings</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <div className="border rounded-lg p-4">
-              <p className="text-xs text-muted-foreground mb-1">Presentations</p>
-              <p className="text-xl font-semibold">{agent.totalPresentationCount}</p>
-            </div>
-            <div className="border rounded-lg p-4">
-              <p className="text-xs text-muted-foreground mb-1">Viewers</p>
-              <p className="text-xl font-semibold">{agent.totalViewerCount}</p>
-            </div>
-            <div className="border rounded-lg p-4">
-              <p className="text-xs text-muted-foreground mb-1">Minutes</p>
-              <p className="text-xl font-semibold">{agent.totalMinutesConsumed}</p>
-            </div>
-            <div className="border rounded-lg p-4">
-              <p className="text-xs text-muted-foreground mb-1">Avg Duration</p>
-              <p className="text-xl font-semibold">{agent.averageSessionDuration.toFixed(1)}m</p>
-            </div>
-          </div>
-
-          <div className="border rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3">Configuration</h3>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Target Website</p>
-                <p className="text-xs">{agent.targetWebsiteUrl}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Voice Provider</p>
-                <p className="text-xs capitalize">
-                  {agent.voiceConfig.provider} - {agent.voiceConfig.voiceId}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Language</p>
-                <p className="text-xs">{agent.voiceConfig.language}</p>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="analytics" className="space-y-3">
-          <div className="border rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3">Analytics</h3>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1.5">Completion Rate</p>
-                <div className="w-full bg-secondary rounded-full h-1.5">
-                  <div
-                    className="bg-primary h-1.5 rounded-full"
-                    style={{ width: `${agent.completionRate * 100}%` }}
-                  />
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">Presentations</p>
+                  <p className="text-2xl font-semibold">{agent.totalPresentationCount}</p>
                 </div>
-                <p className="text-xs text-foreground mt-1">
-                  {(agent.completionRate * 100).toFixed(1)}%
+              </CardContent>
+            </Card>
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">Viewers</p>
+                  <p className="text-2xl font-semibold">{agent.totalViewerCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">Minutes</p>
+                  <p className="text-2xl font-semibold">{agent.totalMinutesConsumed}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">Avg Duration</p>
+                  <p className="text-2xl font-semibold">{agent.averageSessionDuration.toFixed(1)}m</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="bg-muted/30">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Configuration</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Target Website</p>
+                  <p className="text-xs font-medium">{agent.targetWebsiteUrl}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Voice Provider</p>
+                  <p className="text-xs font-medium capitalize">
+                    {agent.voiceConfig.provider} - {agent.voiceConfig.voiceId}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Language</p>
+                  <p className="text-xs font-medium">{agent.voiceConfig.language}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <Card className="bg-muted/30">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Analytics</CardTitle>
+              <CardDescription className="text-xs">
+                View detailed analytics and performance metrics
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Completion Rate</span>
+                    <span className="font-medium">{(agent.completionRate * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-1.5">
+                    <div
+                      className="bg-primary h-1.5 rounded-full transition-all"
+                      style={{ width: `${agent.completionRate * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Analytics dashboard will be implemented in a future phase
                 </p>
               </div>
-              <p className="text-xs text-foreground">
-                Analytics dashboard will be implemented in a future phase
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sessions" className="space-y-6">
+          <Card className="bg-muted/30">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Presentation Sessions</CardTitle>
+              <CardDescription className="text-xs">
+                View and manage presentation sessions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                Session list will be implemented in a future phase
               </p>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="sessions" className="space-y-3">
-          <div className="border rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3">Presentation Sessions</h3>
-            <p className="text-xs text-foreground">
-              Session list will be implemented in a future phase
-            </p>
-          </div>
+        <TabsContent value="knowledge" className="space-y-6">
+          <Card className="bg-muted/30">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Knowledge Documents</CardTitle>
+              <CardDescription className="text-xs">
+                Manage knowledge sources for this agent
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                Knowledge documents will be implemented in a future phase
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="knowledge" className="space-y-3">
-          <div className="border rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3">Knowledge Documents</h3>
-            <p className="text-xs text-foreground">
-              Knowledge documents will be implemented in a future phase
-            </p>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="settings" className="space-y-3">
-          <div className="border rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-3">Settings</h3>
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Status</p>
-                <Badge variant={getStatusColor(agent.status)} className="text-xs capitalize">
-                  {agent.status}
-                </Badge>
+        <TabsContent value="settings" className="space-y-6">
+          <Card className="bg-muted/30">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Settings</CardTitle>
+              <CardDescription className="text-xs">
+                Agent configuration and metadata
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge variant={getStatusColor(agent.status)} className="text-xs capitalize">
+                    {agent.status}
+                  </Badge>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Visibility</p>
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {agent.visibility}
+                  </Badge>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Created</p>
+                  <p className="text-xs font-medium">
+                    {new Date(agent.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Last Updated</p>
+                  <p className="text-xs font-medium">
+                    {new Date(agent.updatedAt).toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Visibility</p>
-                <Badge variant="outline" className="text-xs capitalize">
-                  {agent.visibility}
-                </Badge>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Created</p>
-                <p className="text-xs">
-                  {new Date(agent.createdAt).toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Last Updated</p>
-                <p className="text-xs">
-                  {new Date(agent.updatedAt).toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

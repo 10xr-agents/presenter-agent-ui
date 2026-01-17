@@ -1,6 +1,7 @@
 "use client"
 
-import { AlertCircle, Loader2, Mail, Plus, X } from "lucide-react"
+import { AlertCircle, Mail, Plus, X } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -154,7 +155,7 @@ export function TeamInviteStep({ onNext, onSkip }: TeamInviteStepProps) {
         <Button type="button" onClick={handleNext} disabled={isLoading}>
           {isLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner className="mr-2 h-4 w-4" />
               Sending...
             </>
           ) : (

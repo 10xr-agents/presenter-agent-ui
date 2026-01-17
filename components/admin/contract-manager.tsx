@@ -1,7 +1,8 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { FileText, Loader2, Plus } from "lucide-react"
+import { FileText, Plus } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -56,7 +57,7 @@ export function ContractManager() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner className="h-8 w-8" />
         <p className="ml-2 text-lg">Loading contracts...</p>
       </div>
     )

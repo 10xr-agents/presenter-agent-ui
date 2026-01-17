@@ -79,7 +79,7 @@ export function ScreenAgentCard({
   }
 
   return (
-    <div className="border rounded-lg p-4 space-y-3 transition-colors hover:bg-muted/30">
+    <div className="border rounded-lg bg-muted/30 p-4 space-y-3 transition-colors hover:bg-muted/50">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <Link href={`/screen-agents/${id}`} className="block group">

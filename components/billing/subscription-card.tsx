@@ -4,7 +4,8 @@ import { Check } from "lucide-react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import { trackEvent } from "@/lib/analytics/client"
 
 interface Plan {
@@ -67,29 +68,32 @@ export function SubscriptionCard({ currentPlan }: { currentPlan?: string }) {
       {plans.map((plan) => (
         <Card
           key={plan.id}
-          className={`bg-muted/30 ${plan.popular ? "border-primary" : ""}`}
+          className={`bg-muted/30 transition-colors hover:bg-muted/50 ${plan.popular ? "border-primary ring-1 ring-primary/20" : ""}`}
         >
-          <CardContent className="pt-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">{plan.name}</CardTitle>
+              {plan.popular && (
+                <Badge variant="default" className="text-xs">
+                  Popular
+                </Badge>
+              )}
+            </div>
+            <CardDescription className="text-xs">
+              {plan.price !== "Custom" ? `${plan.price} per month` : "Contact sales"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
-              {/* Header - Resend style: compact */}
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">{plan.name}</h3>
-                {plan.popular && (
-                  <Badge variant="default" className="text-xs">
-                    Popular
-                  </Badge>
-                )}
-              </div>
-
-              {/* Price - Resend style: smaller */}
+              {/* Price */}
               <div>
-                <span className="text-xl font-semibold">{plan.price}</span>
+                <span className="text-2xl font-semibold">{plan.price}</span>
                 {plan.price !== "Custom" && (
                   <span className="text-xs text-muted-foreground ml-1">/month</span>
                 )}
               </div>
 
-              {/* Features - Resend style: compact list */}
+              {/* Features */}
               <ul className="space-y-2">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-center gap-2">
@@ -99,7 +103,7 @@ export function SubscriptionCard({ currentPlan }: { currentPlan?: string }) {
                 ))}
               </ul>
 
-              {/* Button - Resend style: compact */}
+              {/* Button */}
               <Button
                 size="sm"
                 variant={plan.popular ? "default" : "outline"}
@@ -107,13 +111,18 @@ export function SubscriptionCard({ currentPlan }: { currentPlan?: string }) {
                 disabled={loading === plan.id || currentPlan === plan.id}
                 className="w-full"
               >
-                {loading === plan.id
-                  ? "Loading..."
-                  : currentPlan === plan.id
-                    ? "Current Plan"
-                    : plan.price === "Custom"
-                      ? "Contact Sales"
-                      : "Subscribe"}
+                {loading === plan.id ? (
+                  <>
+                    <Spinner className="mr-2 h-3.5 w-3.5" />
+                    Processing...
+                  </>
+                ) : currentPlan === plan.id ? (
+                  "Current Plan"
+                ) : plan.price === "Custom" ? (
+                  "Contact Sales"
+                ) : (
+                  "Subscribe"
+                )}
               </Button>
             </div>
           </CardContent>

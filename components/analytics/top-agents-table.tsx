@@ -1,7 +1,7 @@
 "use client"
 
 import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface TopAgent {
   id: string
@@ -42,13 +42,13 @@ export function TopAgentsTable({ agents }: TopAgentsTableProps) {
 
   return (
     <Card className="bg-muted/30">
-      <CardContent className="pt-6">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold">Top Agents</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Most active screen agents by session count
-          </p>
-        </div>
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Top Agents</CardTitle>
+        <CardDescription className="text-xs">
+          Most active screen agents by session count
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         <AdvancedTable
           data={agents}
           columns={columns}

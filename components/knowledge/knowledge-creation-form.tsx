@@ -1,21 +1,42 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
+import { AlertCircle, CheckCircle2, FileText, Globe, Upload, Video, X, Music, File } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import {
-  KnowledgeDescriptionField,
-  KnowledgeNameField,
   KnowledgePathRestrictions,
-  KnowledgeUrlField,
 } from "@/components/knowledge/knowledge-form-fields"
-import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
+import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
+
+type AssetType = "file" | "documentation" | "video"
+
+interface FileAsset {
+  id: string
+  type: "file"
+  file: File
+  name: string
+  size: number
+}
+
+interface UrlAsset {
+  id: string
+  type: "documentation" | "video"
+  url: string
+  name: string
+}
+
+type Asset = FileAsset | UrlAsset
 
 interface KnowledgeCreationFormProps {
   organizationId: string
@@ -24,6 +45,8 @@ interface KnowledgeCreationFormProps {
 export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormProps) {
   const router = useRouter()
   const [websiteUrl, setWebsiteUrl] = useState("")
+  const [sourceName, setSourceName] = useState("")
+  const [assets, setAssets] = useState<Asset[]>([])
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [skipAuthentication, setSkipAuthentication] = useState(true)
@@ -33,36 +56,157 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
   const [excludePaths, setExcludePaths] = useState("")
   const [maxPages, setMaxPages] = useState<number | "">(100)
   const [maxDepth, setMaxDepth] = useState<number | "">(10)
+  const [extractCodeBlocks, setExtractCodeBlocks] = useState(false)
+  const [extractThumbnails, setExtractThumbnails] = useState(false)
+  const [newDocUrl, setNewDocUrl] = useState("")
+  const [newVideoUrl, setNewVideoUrl] = useState("")
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [docUrlError, setDocUrlError] = useState<string | null>(null)
+  const [videoUrlError, setVideoUrlError] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createdKnowledgeId, setCreatedKnowledgeId] = useState<string | null>(null)
 
   const validateUrl = (url: string): boolean => {
     if (!url.trim()) {
-      setUrlError("Website URL is required")
       return false
     }
-
     try {
       const urlObj = new URL(url)
-      if (!["http:", "https:"].includes(urlObj.protocol)) {
-        setUrlError("URL must start with http:// or https://")
-        return false
-      }
-      setUrlError(null)
-      return true
+      return ["http:", "https:"].includes(urlObj.protocol)
     } catch {
-      setUrlError("Please enter a valid URL (e.g., https://example.com)")
       return false
     }
   }
 
+  const validateFile = (file: File): boolean => {
+    const allowedDocTypes = [".md", ".pdf", ".txt", ".html", ".doc", ".docx"]
+    const allowedVideoTypes = [".mp4", ".mov", ".avi", ".webm", ".mkv"]
+    const allowedAudioTypes = [".mp3", ".wav", ".m4a", ".ogg"]
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf("."))
+    
+    const isDoc = allowedDocTypes.includes(fileExtension)
+    const isVideo = allowedVideoTypes.includes(fileExtension)
+    const isAudio = allowedAudioTypes.includes(fileExtension)
+
+    if (!isDoc && !isVideo && !isAudio) {
+      setFileError(`Invalid file type. Allowed: documents (${allowedDocTypes.join(", ")}), videos (${allowedVideoTypes.join(", ")}), audio (${allowedAudioTypes.join(", ")})`)
+      return false
+    }
+
+    const maxSize = isVideo ? 500 * 1024 * 1024 : 50 * 1024 * 1024 // 500MB for videos, 50MB for others
+    if (file.size > maxSize) {
+      setFileError(`File size exceeds limit (max: ${maxSize / 1024 / 1024}MB)`)
+      return false
+    }
+
+    setFileError(null)
+    return true
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    files.forEach((file) => {
+      if (validateFile(file)) {
+        const asset: FileAsset = {
+          id: `${Date.now()}-${Math.random()}`,
+          type: "file",
+          file,
+          name: file.name,
+          size: file.size,
+        }
+        setAssets((prev) => [...prev, asset])
+      }
+    })
+    // Reset input to allow same file to be selected again
+    e.target.value = ""
+  }
+
+  const handleAddDocUrl = () => {
+    if (!newDocUrl.trim()) {
+      setDocUrlError("Documentation URL is required")
+      return
+    }
+    if (!validateUrl(newDocUrl)) {
+      setDocUrlError("Please enter a valid URL (e.g., https://example.com/docs)")
+      return
+    }
+    const asset: UrlAsset = {
+      id: `${Date.now()}-${Math.random()}`,
+      type: "documentation",
+      url: newDocUrl.trim(),
+      name: new URL(newDocUrl.trim()).hostname,
+    }
+    setAssets((prev) => [...prev, asset])
+    setNewDocUrl("")
+    setDocUrlError(null)
+  }
+
+  const handleAddVideoUrl = () => {
+    if (!newVideoUrl.trim()) {
+      setVideoUrlError("Video URL is required")
+      return
+    }
+    if (!validateUrl(newVideoUrl)) {
+      setVideoUrlError("Please enter a valid URL (e.g., https://example.com/video)")
+      return
+    }
+    const asset: UrlAsset = {
+      id: `${Date.now()}-${Math.random()}`,
+      type: "video",
+      url: newVideoUrl.trim(),
+      name: new URL(newVideoUrl.trim()).hostname,
+    }
+    setAssets((prev) => [...prev, asset])
+    setNewVideoUrl("")
+    setVideoUrlError(null)
+  }
+
+  const handleRemoveAsset = (id: string) => {
+    setAssets((prev) => prev.filter((asset) => asset.id !== id))
+  }
+
+  const getAssetIcon = (asset: Asset) => {
+    if (asset.type === "file") {
+      const extension = asset.file.name.toLowerCase().substring(asset.file.name.lastIndexOf("."))
+      if ([".mp4", ".mov", ".avi", ".webm", ".mkv"].includes(extension)) {
+        return <Video className="h-3.5 w-3.5" />
+      }
+      if ([".mp3", ".wav", ".m4a", ".ogg"].includes(extension)) {
+        return <Music className="h-3.5 w-3.5" />
+      }
+      return <File className="h-3.5 w-3.5" />
+    }
+    if (asset.type === "documentation") {
+      return <FileText className="h-3.5 w-3.5" />
+    }
+    return <Video className="h-3.5 w-3.5" />
+  }
+
+  const getAssetTypeLabel = (asset: Asset) => {
+    if (asset.type === "file") {
+      const extension = asset.file.name.toLowerCase().substring(asset.file.name.lastIndexOf("."))
+      if ([".mp4", ".mov", ".avi", ".webm", ".mkv"].includes(extension)) {
+        return "Video File"
+      }
+      if ([".mp3", ".wav", ".m4a", ".ogg"].includes(extension)) {
+        return "Audio File"
+      }
+      return "Document"
+    }
+    if (asset.type === "documentation") {
+      return "Documentation URL"
+    }
+    return "Video URL"
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validate website URL
     if (!validateUrl(websiteUrl)) {
+      setUrlError("Please enter a valid website URL (e.g., https://example.com)")
       return
     }
 
@@ -70,21 +214,17 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
     setError(null)
 
     try {
-      // Prepare request payload
-      const payload = {
-        websiteUrl: websiteUrl.trim(),
-        organizationId,
-        maxPages: typeof maxPages === "number" ? maxPages : 100,
-        maxDepth: typeof maxDepth === "number" ? maxDepth : 10,
-        strategy: "BFS" as const,
+      // Step 1: Create primary knowledge source with website URL
+      const websitePayload = {
+        source_type: "website" as const,
+        source_url: websiteUrl.trim(),
+        source_name: sourceName.trim() || websiteUrl.trim(),
         name: name.trim() || undefined,
         description: description.trim() || undefined,
-        includePaths: includePaths
-          ? includePaths.split(",").map((p) => p.trim()).filter(Boolean)
-          : undefined,
-        excludePaths: excludePaths
-          ? excludePaths.split(",").map((p) => p.trim()).filter(Boolean)
-          : undefined,
+        options: {
+          max_pages: typeof maxPages === "number" ? maxPages : 100,
+          max_depth: typeof maxDepth === "number" ? maxDepth : 10,
+        },
         websiteCredentials: !skipAuthentication && username.trim() && password.trim()
           ? {
               username: username.trim(),
@@ -93,27 +233,92 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
           : undefined,
       }
 
-      const response = await fetch("/api/website-knowledge", {
+      const websiteResponse = await fetch("/api/knowledge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(websitePayload),
       })
 
-      if (!response.ok) {
-        const errorData = (await response.json()) as { error?: string }
-        throw new Error(errorData.error || "Failed to create knowledge")
+      if (!websiteResponse.ok) {
+        const errorData = (await websiteResponse.json()) as { error?: string }
+        throw new Error(errorData.error || "Failed to create website knowledge")
       }
 
-      const result = (await response.json()) as { data?: { id: string } }
-      if (result.data?.id) {
-        setCreatedKnowledgeId(result.data.id)
-        // Redirect after a short delay to allow user to see success state
-        setTimeout(() => {
-          router.push(`/knowledge/${result.data?.id}`)
-        }, 2000)
-      } else {
+      const websiteResult = (await websiteResponse.json()) as { data?: { id: string; jobId?: string | null; workflowId?: string | null } }
+      const primaryKnowledgeId = websiteResult.data?.id
+      if (!primaryKnowledgeId) {
         throw new Error("No knowledge ID returned from server")
       }
+
+      // Step 2: Create additional knowledge sources for each asset
+      const assetPromises = assets.map(async (asset) => {
+        if (asset.type === "file") {
+          // File upload - use FormData
+          const formData = new FormData()
+          const fileExtension = asset.file.name.toLowerCase().substring(asset.file.name.lastIndexOf("."))
+          const isVideo = [".mp4", ".mov", ".avi", ".webm", ".mkv"].includes(fileExtension)
+          formData.append("source_type", isVideo ? "video" : "documentation")
+          formData.append("source_name", asset.file.name)
+          formData.append("file", asset.file)
+          if (name.trim()) formData.append("name", `${name.trim()} - ${asset.file.name}`)
+          if (description.trim()) formData.append("description", description.trim())
+
+          const fileResponse = await fetch("/api/knowledge", {
+            method: "POST",
+            body: formData,
+          })
+
+          if (!fileResponse.ok) {
+            const errorData = (await fileResponse.json()) as { error?: string }
+            throw new Error(`Failed to upload ${asset.file.name}: ${errorData.error || "Unknown error"}`)
+          }
+
+          return await fileResponse.json()
+        } else {
+          // URL-based asset
+          const urlPayload = {
+            source_type: asset.type,
+            source_url: asset.url,
+            source_name: asset.name,
+            name: name.trim() ? `${name.trim()} - ${asset.name}` : undefined,
+            description: description.trim() || undefined,
+            options: {
+              ...(asset.type === "documentation" && {
+                extract_code_blocks: extractCodeBlocks,
+              }),
+              ...(asset.type === "video" && {
+                extract_thumbnails: extractThumbnails,
+              }),
+            },
+          }
+
+          const urlResponse = await fetch("/api/knowledge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(urlPayload),
+          })
+
+          if (!urlResponse.ok) {
+            const errorData = (await urlResponse.json()) as { error?: string }
+            throw new Error(`Failed to create ${asset.type} knowledge: ${errorData.error || "Unknown error"}`)
+          }
+
+          return await urlResponse.json()
+        }
+      })
+
+      // Wait for all asset uploads to complete
+      if (assetPromises.length > 0) {
+        await Promise.allSettled(assetPromises)
+      }
+
+      // Set the primary knowledge ID for progress tracking
+      setCreatedKnowledgeId(primaryKnowledgeId)
+
+      // Redirect after a short delay
+      setTimeout(() => {
+        router.push(`/knowledge/${primaryKnowledgeId}`)
+      }, 2000)
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to create knowledge"
       setError(errorMessage)
@@ -126,122 +331,378 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
 
   if (createdKnowledgeId) {
     return (
-      <div className="space-y-4 border rounded-lg p-6">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
-          Knowledge created successfully
-        </div>
-        <p className="text-xs text-foreground">
-          Website exploration has started. The Browser Automation Service is now extracting knowledge from your website.
-        </p>
-        <WebsiteKnowledgeProgress
-          knowledgeId={createdKnowledgeId}
-          onComplete={() => {
-            router.push(`/knowledge/${createdKnowledgeId}`)
-          }}
-        />
-        <p className="text-xs text-foreground opacity-85">
-          You'll be redirected to the knowledge detail page shortly to view progress and results.
-        </p>
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              Knowledge created successfully
+            </div>
+            <p className="text-xs text-foreground">
+              Website exploration has started. {assets.length > 0 && `Processing ${assets.length} additional asset${assets.length !== 1 ? "s" : ""}.`}
+            </p>
+            <KnowledgeProgress
+              knowledgeId={createdKnowledgeId}
+              jobId={null}
+              workflowId={null}
+              onComplete={() => {
+                router.push(`/knowledge/${createdKnowledgeId}`)
+              }}
+            />
+            <p className="text-xs text-foreground opacity-85">
+              You'll be redirected to the knowledge detail page shortly to view progress and results.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Section 1: Name & Description */}
       <div className="space-y-4">
-        <KnowledgeUrlField
-          value={websiteUrl}
-          onChange={(value) => {
-            setWebsiteUrl(value)
-            if (value.trim()) {
-              validateUrl(value)
-            } else {
-              setUrlError(null)
-            }
-          }}
-          onBlur={() => validateUrl(websiteUrl)}
-          error={urlError}
-          required
-        />
-
-        <KnowledgeNameField value={name} onChange={setName} />
-
-        <KnowledgeDescriptionField value={description} onChange={setDescription} />
-      </div>
-
-      <div className="space-y-3 border-t pt-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <h3 className="text-sm font-semibold">Authentication</h3>
-            <p className="text-xs text-foreground">
-              Optional. Most websites can be processed without credentials.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setSkipAuthentication(!skipAuthentication)}
-            className="shrink-0"
-          >
-            {skipAuthentication ? "Add Credentials" : "Skip"}
-          </Button>
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold">Basic Information</h3>
+          <p className="text-xs text-foreground opacity-85">
+            Provide a name and description for this knowledge source
+          </p>
         </div>
 
-        {!skipAuthentication && (
-          <div className="space-y-3">
-            <Alert className="bg-muted/50 border-muted py-2">
-              <AlertDescription className="text-xs text-foreground">
-                Credentials are encrypted and stored securely. 2FA/OTP is not supported.
-              </AlertDescription>
-            </Alert>
+        <div className="space-y-1.5">
+          <Label htmlFor="name" className="text-xs text-muted-foreground">
+            Name
+          </Label>
+          <Input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My Knowledge Source"
+            className="h-9"
+          />
+          <p className="text-xs text-foreground opacity-85">
+            A friendly name for this knowledge source
+          </p>
+        </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="username" className="text-xs text-muted-foreground">
-                Username or Email
-              </Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="demo@example.com"
-                className="h-9"
-              />
-            </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="description" className="text-xs text-muted-foreground">
+            Description
+          </Label>
+          <textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Brief description of this knowledge source"
+            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            rows={3}
+          />
+          <p className="text-xs text-foreground opacity-85">
+            Optional description to help identify this knowledge source
+          </p>
+        </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
-              <PasswordInput
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                className="h-9"
-              />
+        <div className="space-y-1.5">
+          <Label htmlFor="sourceName" className="text-xs text-muted-foreground">
+            Source Name
+          </Label>
+          <Input
+            id="sourceName"
+            type="text"
+            value={sourceName}
+            onChange={(e) => setSourceName(e.target.value)}
+            placeholder="Optional: Custom name for this source"
+            className="h-9"
+          />
+          <p className="text-xs text-foreground opacity-85">
+            Optional internal identifier for this source
+          </p>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Section 2: Website & Authentication */}
+      <div className="space-y-4">
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold">Website Source</h3>
+          <p className="text-xs text-foreground opacity-85">
+            The primary website to extract knowledge from (required)
+          </p>
+        </div>
+
+        {/* Website URL */}
+        <div className="space-y-1.5">
+          <Label htmlFor="websiteUrl" className="text-xs text-muted-foreground">
+            Website URL <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="websiteUrl"
+            type="url"
+            value={websiteUrl}
+            onChange={(e) => {
+              setWebsiteUrl(e.target.value)
+              if (e.target.value.trim()) {
+                if (!validateUrl(e.target.value)) {
+                  setUrlError("Please enter a valid URL (e.g., https://example.com)")
+                } else {
+                  setUrlError(null)
+                }
+              } else {
+                setUrlError(null)
+              }
+            }}
+            onBlur={() => {
+              if (!validateUrl(websiteUrl)) {
+                setUrlError("Please enter a valid website URL")
+              }
+            }}
+            placeholder="https://example.com"
+            required
+            className={`h-9 ${urlError ? "border-destructive" : ""}`}
+          />
+          {urlError ? (
+            <p className="text-xs text-destructive">{urlError}</p>
+          ) : (
+            <p className="text-xs text-foreground opacity-85">
+              The website to extract knowledge from
+            </p>
+          )}
+        </div>
+
+        {/* Authentication (Website Only) */}
+        <div className="space-y-3 border-t pt-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <h4 className="text-sm font-semibold">Authentication</h4>
               <p className="text-xs text-foreground opacity-85">
-                2FA/OTP not supported.
+                Optional. Most websites can be processed without credentials.
               </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSkipAuthentication(!skipAuthentication)}
+              className="shrink-0"
+            >
+              {skipAuthentication ? "Add Credentials" : "Skip"}
+            </Button>
+          </div>
+
+          {!skipAuthentication && (
+            <div className="space-y-3">
+              <Alert className="bg-muted/50 border-muted py-2">
+                <AlertDescription className="text-xs text-foreground">
+                  Credentials are encrypted and stored securely. 2FA/OTP is not supported.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="username" className="text-xs text-muted-foreground">
+                  Username or Email
+                </Label>
+                <Input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="demo@example.com"
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
+                <PasswordInput
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="h-9"
+                />
+                <p className="text-xs text-foreground opacity-85">
+                  2FA/OTP not supported.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Section 3: Additional Assets */}
+      <div className="space-y-4">
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold">Additional Assets</h3>
+          <p className="text-xs text-foreground opacity-85">
+            Upload files or add documentation/video URLs to include with this knowledge source
+          </p>
+        </div>
+
+        {/* File Upload */}
+        <div className="space-y-1.5">
+          <Label htmlFor="fileUpload" className="text-xs text-muted-foreground">
+            Upload Files
+          </Label>
+          <Input
+            id="fileUpload"
+            type="file"
+            multiple
+            accept=".md,.pdf,.txt,.html,.doc,.docx,.mp4,.mov,.avi,.webm,.mkv,.mp3,.wav,.m4a,.ogg"
+            onChange={handleFileUpload}
+            className="h-9"
+          />
+          {fileError && (
+            <p className="text-xs text-destructive">{fileError}</p>
+          )}
+          <p className="text-xs text-foreground opacity-85">
+            Supported: Documents (.md, .pdf, .txt, .html, .doc, .docx), Videos (.mp4, .mov, .avi, .webm, .mkv), Audio (.mp3, .wav, .m4a, .ogg)
+          </p>
+        </div>
+
+        {/* Documentation URL */}
+        <div className="space-y-1.5">
+          <Label htmlFor="docUrl" className="text-xs text-muted-foreground">
+            Documentation URL
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id="docUrl"
+              type="url"
+              value={newDocUrl}
+              onChange={(e) => {
+                setNewDocUrl(e.target.value)
+                setDocUrlError(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  handleAddDocUrl()
+                }
+              }}
+              placeholder="https://docs.example.com"
+              className={`h-9 flex-1 ${docUrlError ? "border-destructive" : ""}`}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddDocUrl}
+              disabled={!newDocUrl.trim()}
+            >
+              Add
+            </Button>
+          </div>
+          {docUrlError && (
+            <p className="text-xs text-destructive">{docUrlError}</p>
+          )}
+        </div>
+
+        {/* Video URL */}
+        <div className="space-y-1.5">
+          <Label htmlFor="videoUrl" className="text-xs text-muted-foreground">
+            Video URL
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id="videoUrl"
+              type="url"
+              value={newVideoUrl}
+              onChange={(e) => {
+                setNewVideoUrl(e.target.value)
+                setVideoUrlError(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  handleAddVideoUrl()
+                }
+              }}
+              placeholder="https://example.com/video"
+              className={`h-9 flex-1 ${videoUrlError ? "border-destructive" : ""}`}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddVideoUrl}
+              disabled={!newVideoUrl.trim()}
+            >
+              Add
+            </Button>
+          </div>
+          {videoUrlError && (
+            <p className="text-xs text-destructive">{videoUrlError}</p>
+          )}
+        </div>
+
+        {/* Assets List */}
+        {assets.length > 0 && (
+          <div className="space-y-2 border-t pt-3">
+            <Label className="text-xs text-muted-foreground">
+              Added Assets ({assets.length})
+            </Label>
+            <div className="space-y-2">
+              {assets.map((asset) => (
+                <div
+                  key={asset.id}
+                  className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-md border"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {getAssetIcon(asset)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-medium truncate">
+                          {asset.type === "file" ? asset.file.name : asset.url}
+                        </p>
+                        <Badge variant="secondary" className="text-xs shrink-0">
+                          {getAssetTypeLabel(asset)}
+                        </Badge>
+                      </div>
+                      {asset.type === "file" && (
+                        <p className="text-xs text-muted-foreground">
+                          {(asset.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveAsset(asset.id)}
+                    className="h-7 w-7 p-0 shrink-0"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
         )}
       </div>
 
-      <div className="border-t pt-4">
+      <Separator />
+
+      {/* Advanced Options */}
+      <div>
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="advanced" className="border-none">
             <AccordionTrigger>
               <div className="flex-1 text-left space-y-0.5">
-                <div>Advanced Options</div>
+                <div className="text-sm font-semibold">Advanced Options</div>
                 <div className="text-xs font-normal opacity-85">
-                  Depth, page limits, and path restrictions
+                  Depth, page limits, path restrictions, and extraction options
                 </div>
               </div>
             </AccordionTrigger>
             <AccordionContent>
               <div className="pt-2 space-y-4">
-                <div className="space-y-3">
+                {/* Website-specific options */}
+                <div className="space-y-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="maxPages" className="text-xs text-muted-foreground">
                       Max Pages
@@ -287,13 +748,53 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
                   </div>
                 </div>
 
-                <div className="border-t pt-3">
+                <Separator />
+
+                <div>
                   <KnowledgePathRestrictions
                     includePaths={includePaths}
                     excludePaths={excludePaths}
                     onIncludePathsChange={setIncludePaths}
                     onExcludePathsChange={setExcludePaths}
                   />
+                </div>
+
+                <Separator />
+
+                {/* Documentation-specific options */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="extractCodeBlocks"
+                      checked={extractCodeBlocks}
+                      onCheckedChange={(checked) => setExtractCodeBlocks(checked === true)}
+                    />
+                    <Label htmlFor="extractCodeBlocks" className="text-xs text-foreground cursor-pointer">
+                      Extract code blocks from documentation
+                    </Label>
+                  </div>
+                  <p className="text-xs text-foreground opacity-85">
+                    Extract and index code blocks from documentation URLs
+                  </p>
+                </div>
+
+                <Separator />
+
+                {/* Video-specific options */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="extractThumbnails"
+                      checked={extractThumbnails}
+                      onCheckedChange={(checked) => setExtractThumbnails(checked === true)}
+                    />
+                    <Label htmlFor="extractThumbnails" className="text-xs text-foreground cursor-pointer">
+                      Extract thumbnails from videos
+                    </Label>
+                  </div>
+                  <p className="text-xs text-foreground opacity-85">
+                    Extract and index video thumbnails
+                  </p>
                 </div>
               </div>
             </AccordionContent>
@@ -309,14 +810,14 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
               <p className="font-medium">Failed to create knowledge</p>
               <p>{error}</p>
               <p className="opacity-85">
-                Please check your website URL and try again. If the issue persists, verify the Browser Automation Service is running.
+                Please check your website URL and try again. If the issue persists, verify the services are running.
               </p>
             </div>
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 pt-2">
         <Button
           type="button"
           variant="outline"
@@ -329,7 +830,7 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
         <Button type="submit" disabled={!isValid || isCreating} size="sm">
           {isCreating ? (
             <>
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              <Spinner className="mr-2 h-3.5 w-3.5" />
               Creating...
             </>
           ) : (

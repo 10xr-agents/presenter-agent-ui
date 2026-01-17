@@ -14,8 +14,10 @@ import { cn } from "@/lib/utils"
 interface KnowledgeConfigurationProps {
   knowledge: {
     id: string
-    websiteUrl: string
-    websiteDomain: string
+    sourceType: "documentation" | "website" | "video" | "file"
+    sourceUrl?: string
+    sourceName: string
+    fileName?: string
     maxPages?: number
     maxDepth?: number
     strategy?: "BFS" | "DFS"
@@ -52,7 +54,7 @@ export function KnowledgeConfiguration({
     setError(null)
 
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledge.id}`, {
+      const response = await fetch(`/api/knowledge/${knowledge.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -142,7 +144,7 @@ export function KnowledgeConfiguration({
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder={`${knowledge.websiteDomain} - Website Knowledge`}
+                placeholder={knowledge.name || knowledge.sourceName}
                 className="h-9 text-sm"
               />
             </div>
@@ -167,7 +169,7 @@ export function KnowledgeConfiguration({
             <Label className="text-xs text-foreground opacity-85">Source</Label>
             <div className="flex items-center gap-2 text-xs text-foreground opacity-85">
               <Globe className="h-3.5 w-3.5" />
-              <span className="font-medium">{knowledge.websiteUrl}</span>
+              <span className="font-medium">{knowledge.sourceUrl || knowledge.fileName || knowledge.sourceName}</span>
             </div>
             <p className="text-xs text-foreground opacity-60">
               Source URL cannot be changed. Create a new Knowledge entry for a different URL.
@@ -316,7 +318,7 @@ export function KnowledgeConfiguration({
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs">
               <span className="text-foreground opacity-60">Name:</span>
-              <span className="font-medium">{knowledge.name || `${knowledge.websiteDomain} - Website Knowledge`}</span>
+              <span className="font-medium">{knowledge.name || knowledge.sourceName}</span>
             </div>
             {knowledge.description && (
               <div className="text-xs text-foreground opacity-85">{knowledge.description}</div>
@@ -327,8 +329,12 @@ export function KnowledgeConfiguration({
           <div className="space-y-1 border-t pt-2">
             <div className="text-xs text-foreground opacity-60">Source</div>
             <div className="flex items-center gap-2 text-xs">
-              <Globe className="h-3.5 w-3.5 text-foreground opacity-60" />
-              <span className="font-medium">{knowledge.websiteUrl}</span>
+              {knowledge.sourceType === "website" || knowledge.sourceType === "documentation" || knowledge.sourceType === "video" ? (
+                <Globe className="h-3.5 w-3.5 text-foreground opacity-60" />
+              ) : (
+                <Settings className="h-3.5 w-3.5 text-foreground opacity-60" />
+              )}
+              <span className="font-medium">{knowledge.sourceUrl || knowledge.fileName || knowledge.sourceName}</span>
             </div>
           </div>
 

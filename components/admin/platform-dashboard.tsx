@@ -1,6 +1,7 @@
 "use client"
 
-import { Building2, DollarSign, Loader2, TrendingUp, Users } from "lucide-react"
+import { Building2, DollarSign, TrendingUp, Users } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,7 +42,7 @@ export function PlatformAdminDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner className="h-8 w-8" />
         <p className="ml-2 text-lg">Loading dashboard...</p>
       </div>
     )

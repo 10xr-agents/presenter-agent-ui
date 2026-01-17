@@ -1,11 +1,11 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { AutoReloadSettings } from "@/components/billing/auto-reload-settings"
 import { BalanceCard } from "@/components/billing/balance-card"
 import { SubscriptionCard } from "@/components/billing/subscription-card"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import type { TenantState } from "@/lib/utils/tenant-state"
 
 interface BillingContentProps {
@@ -58,7 +58,7 @@ export function BillingContent({ organizationId, tenantState }: BillingContentPr
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Spinner className="h-5 w-5 text-muted-foreground" />
       </div>
     )
   }
@@ -66,8 +66,11 @@ export function BillingContent({ organizationId, tenantState }: BillingContentPr
   if (!data) {
     return (
       <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground">Unable to load billing information</p>
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Billing Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">Unable to load billing information</p>
         </CardContent>
       </Card>
     )
@@ -95,17 +98,19 @@ export function BillingContent({ organizationId, tenantState }: BillingContentPr
         />
       </div>
 
-      {/* Subscription - Resend style: compact section */}
+      {/* Subscription */}
       {data.subscription && (
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold">Current Subscription</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
+        <Card className="bg-muted/30">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">Current Subscription</CardTitle>
+            <CardDescription className="text-xs">
               Manage your subscription plan and billing cycle
-            </p>
-          </div>
-          <SubscriptionCard currentPlan={data.subscription.planId} />
-        </div>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SubscriptionCard currentPlan={data.subscription.planId} />
+          </CardContent>
+        </Card>
       )}
     </div>
   )

@@ -1,11 +1,12 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardSkeleton } from "@/components/ui/skeleton-loaders"
+import { Spinner } from "@/components/ui/spinner"
 import { ActivityFeed } from "./activity-feed"
 import { CostChart } from "./charts/cost-chart"
 import { UsageChart } from "./charts/usage-chart"
@@ -93,13 +94,13 @@ export function Dashboard({ organizationId }: DashboardProps) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-        <p className="text-sm font-medium text-destructive">Unable to load analytics</p>
-        <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+      <Alert variant="destructive">
+        <AlertTitle className="text-sm font-semibold">Unable to load analytics</AlertTitle>
+        <AlertDescription className="text-xs mt-1">{error}</AlertDescription>
         <Button onClick={fetchData} className="mt-3" variant="outline" size="sm">
           Retry
         </Button>
-      </div>
+      </Alert>
     )
   }
 

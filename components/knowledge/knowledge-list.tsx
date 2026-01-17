@@ -1,6 +1,6 @@
 "use client"
 
-import { Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { Globe, Plus, RefreshCw, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -20,13 +20,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { KnowledgeSearchFilters } from "@/components/knowledge/knowledge-search-filters"
 import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
 import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 interface WebsiteKnowledge {
   id: string
   websiteUrl: string
   websiteDomain: string
-  status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
   explorationJobId: string | null
   pagesStored?: number
   linksStored?: number
@@ -65,7 +67,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
         params.set("status", statusFilter)
       }
 
-      const response = await fetch(`/api/website-knowledge?${params.toString()}`)
+      const response = await fetch(`/api/knowledge?${params.toString()}`)
       if (!response.ok) {
         throw new Error("Failed to fetch knowledge")
       }
@@ -99,7 +101,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
 
     setIsDeleting(true)
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledgeToDelete}`, {
+      const response = await fetch(`/api/knowledge/${knowledgeToDelete}`, {
         method: "DELETE",
       })
 
@@ -121,7 +123,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
   const handleResync = async (knowledgeId: string) => {
     setResyncingIds((prev) => new Set(prev).add(knowledgeId))
     try {
-      const response = await fetch(`/api/website-knowledge/${knowledgeId}/resync`, {
+      const response = await fetch(`/api/knowledge/${knowledgeId}/resync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -186,23 +188,27 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
           ))}
         </div>
       ) : filteredKnowledge.length === 0 ? (
-        <div className="border rounded-lg p-12 text-center">
-          <Globe className="mx-auto h-8 w-8 text-foreground opacity-60 mb-2" />
-          <h3 className="text-sm font-semibold mb-1">No knowledge found</h3>
-          <p className="text-xs text-foreground opacity-85 mb-4">
-            {knowledgeList.length === 0
-              ? "Create your first knowledge source to get started"
-              : "No knowledge matches your filters"}
-          </p>
-          {knowledgeList.length === 0 && (
-            <Button asChild size="sm">
-              <Link href="/knowledge/new">
-                <Plus className="mr-2 h-3.5 w-3.5" />
-                Create Knowledge
-              </Link>
-            </Button>
-          )}
-        </div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Globe className="h-5 w-5" />
+            </EmptyMedia>
+            <EmptyTitle className="text-sm font-semibold">No knowledge found</EmptyTitle>
+            <EmptyDescription className="text-xs">
+              {knowledgeList.length === 0
+                ? "Create your first knowledge source to get started"
+                : "No knowledge matches your filters"}
+            </EmptyDescription>
+            {knowledgeList.length === 0 && (
+              <Button asChild size="sm" className="mt-2">
+                <Link href="/knowledge/new">
+                  <Plus className="mr-2 h-3.5 w-3.5" />
+                  Create Knowledge
+                </Link>
+              </Button>
+            )}
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {filteredKnowledge.map((knowledge) => (
@@ -232,7 +238,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
               </div>
 
                   {/* Progress for in-progress items */}
-                  {["pending", "exploring"].includes(knowledge.status) && knowledge.explorationJobId && (
+                  {["pending", "queued", "running"].includes(knowledge.status) && knowledge.explorationJobId && (
                     <WebsiteKnowledgeProgress
                       knowledgeId={knowledge.id}
                       onComplete={() => fetchKnowledge()}
@@ -262,12 +268,12 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleResync(knowledge.id)}
-                  disabled={resyncingIds.has(knowledge.id) || ["pending", "exploring"].includes(knowledge.status)}
+                  disabled={resyncingIds.has(knowledge.id) || ["pending", "queued", "running"].includes(knowledge.status)}
                   className="h-7 text-xs flex-1"
                 >
                   {resyncingIds.has(knowledge.id) ? (
                     <>
-                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      <Spinner className="mr-1 h-3 w-3" />
                       Syncing...
                     </>
                   ) : (
@@ -309,7 +315,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
             >
               {isDeleting ? (
                 <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
                   Deleting...
                 </>
               ) : (

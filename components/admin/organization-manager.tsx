@@ -1,7 +1,8 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { DollarSign, ExternalLink, Layers, Loader2, Search, Users } from "lucide-react"
+import { DollarSign, ExternalLink, Layers, Search, Users } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -76,7 +77,7 @@ export function OrganizationManager() {
   if (loading && organizations.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner className="h-8 w-8" />
         <p className="ml-2 text-lg">Loading organizations...</p>
       </div>
     )

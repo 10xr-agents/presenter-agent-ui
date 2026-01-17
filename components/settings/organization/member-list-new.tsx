@@ -1,7 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
-import { Loader2, Mail, MoreVertical, Shield, Trash2, User, UserPlus } from "lucide-react"
+import { Mail, MoreVertical, Shield, Trash2, User, UserPlus } from "lucide-react"
 import { useEffect, useState } from "react"
 import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
 import { Alert, AlertDescription } from "@/components/ui/alert"

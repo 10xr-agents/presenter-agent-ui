@@ -1,6 +1,7 @@
 "use client"
 
-import { FileText, Loader2, Upload, X } from "lucide-react"
+import { FileText, Upload, X } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -205,7 +206,7 @@ export function KnowledgeSourcesStep({
             <Label className="text-sm font-medium">Uploaded Files</Label>
             {processingCount > 0 && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Spinner className="h-3 w-3" />
                 {processingCount} processing
               </span>
             )}
@@ -226,7 +227,7 @@ export function KnowledgeSourcesStep({
                   <span className="truncate">{file.name}</span>
                   {file.status === "processing" && (
                     <span className="text-muted-foreground flex items-center gap-1 flex-shrink-0">
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Spinner className="h-3 w-3" />
                     </span>
                   )}
                   {file.status === "ready" && (
@@ -272,7 +273,7 @@ export function KnowledgeSourcesStep({
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                <Spinner className="mr-2 h-3.5 w-3.5" />
                 Creating...
               </>
             ) : (

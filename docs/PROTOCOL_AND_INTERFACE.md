@@ -3,15 +3,17 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Communication Architecture](#communication-architecture)
-3. [Redis Integration](#redis-integration)
-4. [REST API](#rest-api)
+2. [Quick Start](#quick-start)
+3. [Communication Architecture](#communication-architecture)
+4. [MongoDB Persistence](#mongodb-persistence)
+5. [Redis Integration](#redis-integration)
+6. [REST API](#rest-api)
    - [OpenAPI/Swagger Specification](#openapiswagger-specification)
-5. [MCP Protocol](#mcp-protocol)
-6. [WebSocket Interface](#websocket-interface)
-7. [LiveKit Integration](#livekit-integration)
-8. [Event Types](#event-types)
-9. [Integration Examples](#integration-examples)
+7. [MCP Protocol](#mcp-protocol)
+8. [WebSocket Interface](#websocket-interface)
+9. [LiveKit Integration](#livekit-integration)
+10. [Event Types](#event-types)
+11. [Integration Examples](#integration-examples)
 
 ---
 
@@ -19,11 +21,71 @@
 
 This document describes all communication protocols and interfaces for interacting with the Browser Automation Service. The service supports multiple communication channels:
 
-- **Redis (BullMQ + Pub/Sub)**: For commands and high-frequency events
+- **Redis (RQ + Pub/Sub)**: For jobs and high-frequency events
+- **MongoDB**: For persistent data storage (all collections prefixed with `brwsr_auto_svc_`)
 - **REST API**: HTTP endpoints for tool execution and knowledge retrieval
 - **MCP Protocol**: Model Context Protocol for standardized tool access
 - **WebSocket**: Real-time event streaming (fallback to Redis Pub/Sub)
 - **LiveKit**: Video streaming and real-time data channels
+
+**Note**: For MongoDB persistence details, see `dev-docs/MONGODB_PERSISTENCE.md`.
+
+**Quick Start**: See `dev-docs/START_SERVER.md` for instructions on starting the server.
+
+---
+
+## Quick Start
+
+### Starting the Server
+
+```bash
+# 1. Install dependencies
+uv sync
+
+# 2. Start Redis (optional but recommended)
+redis-server  # Or ensure Redis is running on localhost:6379
+
+# 3. Start the server
+uv run python navigator/start_server.py
+```
+
+The server will start on `http://localhost:8000` with:
+- **REST API**: `http://localhost:8000`
+- **WebSocket**: `ws://localhost:8000/mcp/events/{room_name}`
+- **Health Check**: `http://localhost:8000/health`
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+
+### Prerequisites
+
+- **Python >= 3.11**
+- **Redis** (optional, for RQ and Redis Pub/Sub)
+- **MongoDB** (optional, for persistent data storage - falls back to in-memory if unavailable)
+- **Chromium** (install with `uvx browser-use install`)
+
+### Environment Variables
+
+Create a `.env` file (optional):
+
+```bash
+# Optional: LLM API Keys
+OPENAI_API_KEY=your_key
+ANTHROPIC_API_KEY=your_key
+
+# Optional: LiveKit (for video streaming)
+LIVEKIT_URL=wss://livekit.example.com
+LIVEKIT_API_KEY=your_key
+LIVEKIT_API_SECRET=your_secret
+
+# Optional: Redis (if not using default)
+REDIS_URL=redis://localhost:6379
+
+# Optional: MongoDB (for persistent data storage)
+MONGODB_URL=mongodb://localhost:27017
+MONGODB_DATABASE=browser_automation_service
+```
+
+**For detailed setup instructions, see**: `dev-docs/START_SERVER.md`
 
 ---
 
@@ -47,9 +109,9 @@ Using the wrong technology for each will cause performance issues at scale.
 
 #### 1. Agent → Browser Service (Commands)
 
-**Use: BullMQ (or Redis List)**
+**Use: RQ (Redis Queue)**
 
-**Why BullMQ?**
+**Why RQ?**
 - ✅ **Reliability**: Commands must not be lost. If Browser Service is restarting or busy, commands sit in the queue until processed.
 - ✅ **Retry Logic**: Failed commands can be retried automatically.
 - ✅ **Job Management**: Track job status (queued → active → completed/failed).
@@ -62,25 +124,37 @@ Using the wrong technology for each will cause performance issues at scale.
 
 **Implementation:**
 ```python
-# LiveKit Agent (Producer)
-from bullmq import Queue
+# API Server (Knowledge Retrieval Jobs)
+from rq import Queue, Retry
+from redis import Redis
 import time
 
-command_queue = Queue("browser_commands") 
+# IMPORTANT: RQ requires decode_responses=False because it stores binary data (pickled objects) in Redis
+# RQ handles encoding/decoding internally
+redis_conn = Redis.from_url("redis://localhost:6379", decode_responses=False)
+knowledge_queue = Queue("knowledge-retrieval", connection=redis_conn)
 
-async def send_navigation(session_id, url):
-    await command_queue.add(
-        "navigate", 
-        {"url": url, "session_id": session_id},
-        job_id=f"{session_id}_{int(time.time())}"  # Prevent duplicates
+def start_knowledge_job(start_url, max_pages=None):
+    job_id = f"knowledge_{int(time.time())}"
+    job = knowledge_queue.enqueue(
+        'navigator.knowledge.job_queue:process_knowledge_job',
+        {
+            'start_url': start_url,
+            'max_pages': max_pages,
+            'job_id': job_id,
+        },
+        job_id=job_id,
+        retry=Retry(max=3, interval=60),
+        job_timeout='1h',
     )
+    return job.id
 ```
 
 ---
 
 #### 2. Browser Service → Agent (Events)
 
-**Use: Redis Pub/Sub** (NOT BullMQ)
+**Use: Redis Pub/Sub** (NOT RQ)
 
 **Why Redis Pub/Sub?**
 - ✅ **Speed**: Sub-millisecond latency for real-time events.
@@ -88,8 +162,8 @@ async def send_navigation(session_id, url):
 - ✅ **Lightweight**: No persistence overhead - events are fire-and-forget.
 - ✅ **High Throughput**: Can handle millions of events per second.
 
-**Why NOT BullMQ?**
-- ❌ BullMQ creates a Redis key for every job. If you treat every event as a job, you flood Redis with millions of keys.
+**Why NOT RQ for Events?**
+- ❌ Queue systems create a Redis key for every job. If you treat every event as a job, you flood Redis with millions of keys.
 - ❌ Persistence overhead for ephemeral events ("mouse moved" events don't need to be stored).
 - ❌ State management overhead (queued → active → completed) is unnecessary for real-time events.
 - ❌ If an agent misses a "hover" event from 500ms ago, it doesn't matter - no need to queue it.
@@ -181,16 +255,52 @@ async def handle_result_ready(event_data):
 
 | Communication Type | Direction | Technology | Why? |
 |-------------------|-----------|------------|------|
-| **Commands** (Navigate, Click, Type) | Agent → Browser | **BullMQ** | Needs persistence & retry if browser is busy. |
+| **Jobs** (Knowledge Retrieval) | API → Worker | **RQ** | Needs persistence & retry for long-running tasks. |
 | **Real-time Events** (Page loaded, DOM updated, Mouse moved) | Browser → Agent | **Redis Pub/Sub** | Needs <5ms latency. No persistence needed. |
 | **Heavy Results** (Scraped data, Screenshots) | Browser → Agent | **Redis/S3 + Pub/Sub** | Store data, notify agent of location via Pub/Sub. |
 
 ### Benefits
 
 - **Fast Event Loop**: Pub/Sub keeps real-time events fast (<5ms latency)
-- **Reliable Commands**: BullMQ ensures automation tasks never get lost
+- **Reliable Jobs**: RQ ensures knowledge retrieval tasks never get lost with retry and persistence
 - **Scalable**: Handles thousands of concurrent sessions efficiently
 - **Cost-Effective**: Redis handles both use cases with different patterns
+
+---
+
+## MongoDB Persistence
+
+### MongoDB Configuration
+
+**Default Connection**: `mongodb://localhost:27017`  
+**Default Database**: `browser_automation_service`
+
+**Environment Variables**:
+```bash
+MONGODB_URL=mongodb://localhost:27017  # Optional: Custom MongoDB URL
+MONGODB_DATABASE=browser_automation_service  # Optional: Database name
+```
+
+### MongoDB Collections
+
+All collections use the standardized prefix `brwsr_auto_svc_`:
+
+- **`brwsr_auto_svc_pages`**: Knowledge retrieval pages (content, metadata)
+- **`brwsr_auto_svc_links`**: Link relationships between pages
+- **`brwsr_auto_svc_embeddings`**: Vector embeddings for semantic search
+- **`brwsr_auto_svc_sessions`**: Presentation flow session state
+- **`brwsr_auto_svc_jobs`**: Knowledge retrieval job state and metadata
+
+### Storage Components
+
+All storage components use MongoDB with graceful in-memory fallback:
+
+- **KnowledgeStorage**: Pages and links storage
+- **VectorStore**: Embedding storage and similarity search
+- **SessionStore**: Session persistence with TTL
+- **JobRegistry**: Job state tracking
+
+**For complete MongoDB persistence documentation, see**: `dev-docs/MONGODB_PERSISTENCE.md`
 
 ---
 
@@ -296,7 +406,7 @@ async for message in pubsub.listen():
 
 ---
 
-### BullMQ Queues
+### RQ Queues
 
 #### Browser Commands Queue
 
@@ -323,24 +433,9 @@ async for message in pubsub.listen():
 
 **Example Usage**:
 ```python
-from bullmq import Queue
-
-queue = Queue("browser_commands")
-
-# Add command
-await queue.add(
-    "navigate",
-    {
-        "url": "https://example.com",
-        "session_id": "session_123",
-        "room_name": "room_456"
-    },
-    {
-        "jobId": "navigate_session_123_1234567890",
-        "removeOnComplete": True,
-        "attempts": 3
-    }
-)
+# Note: This section describes the general queue pattern.
+# For knowledge retrieval, we use RQ (see Knowledge Retrieval Queue section below).
+# For browser action commands, see MCP/REST API integration.
 ```
 
 ---
@@ -358,25 +453,83 @@ await queue.add(
   "max_pages": 100,
   "max_depth": 3,
   "strategy": "BFS",
-  "job_id": "string"
+  "job_id": "string",
+  "include_paths": ["/docs/*"],
+  "exclude_paths": ["/admin/*", "/api/*"],
+  "authentication": {
+    "username": "demo@example.com",
+    "password": "secure-password"
+  }
 }
 ```
 
 **Job Options**:
-- `removeOnComplete`: `false` (keep completed jobs for inspection)
-- `removeOnFail`: `false` (keep failed jobs for debugging)
-- `jobId`: Job ID for tracking
+- `retry`: Retry configuration (max=3, interval=60 seconds)
+- `job_timeout`: Maximum job execution time (e.g., '1h' for 1 hour)
+- `job_id`: Job ID for tracking
+- `authentication`: Optional authentication credentials (username/password) - never logged or persisted
+
+**Worker Management**:
+- Workers are automatically managed by the JobManager (no manual startup needed)
+- Auto-scaling: Workers scale up/down based on queue length
+- Health monitoring: Dead workers are automatically restarted
+- Worker logs are forwarded to the main console with `[Worker-{id}]` prefix
+- Stuck job monitor: Jobs stuck in 'queued' status for >2 minutes are automatically marked as failed
+- `authentication`: Optional authentication credentials (username/password) - never logged or persisted
+
+**Worker Management**:
+- Workers are automatically managed by the JobManager (no manual startup needed)
+- Auto-scaling: Workers scale up/down based on queue length
+- Health monitoring: Dead workers are automatically restarted
+- Worker logs are forwarded to the main console with `[Worker-{id}]` prefix
+- Stuck job monitor: Jobs stuck in 'queued' status for >2 minutes are automatically marked as failed
 
 **Example Usage**:
 ```python
+from rq import Queue, Retry
+from redis import Redis
+
+# IMPORTANT: RQ requires decode_responses=False because it stores binary data (pickled objects) in Redis
+# RQ handles encoding/decoding internally
+redis_conn = Redis.from_url("redis://localhost:6379", decode_responses=False)
+queue = Queue("knowledge-retrieval", connection=redis_conn)
+
+# Add knowledge retrieval job
+job = queue.enqueue(
+    'navigator.knowledge.job_queue:process_knowledge_job',
+    {
+        "start_url": "https://example.com",
+        "max_pages": 100,
+        "max_depth": 3,
+        "strategy": "BFS",
+        "job_id": "knowledge_job_123"
+    },
+    job_id="knowledge_job_123",
+    retry=Retry(max=3, interval=60),
+    job_timeout='1h',
+)
 from navigator.knowledge.job_queue import add_exploration_job
 
+# With authentication (optional)
 job_id = await add_exploration_job(
     start_url="https://example.com",
     max_pages=100,
     max_depth=3,
     strategy="BFS",
-    job_id=None  # Auto-generated if None
+    job_id=None,  # Auto-generated if None
+    authentication={
+        "username": "demo@example.com",
+        "password": "secure-password"
+    }  # Optional: credentials never logged or persisted
+)
+
+# Without authentication (backward compatible)
+job_id = await add_exploration_job(
+    start_url="https://example.com",
+    max_pages=100,
+    max_depth=3,
+    strategy="BFS",
+    job_id=None
 )
 ```
 
@@ -588,16 +741,47 @@ swagger-cli bundle dev-docs/openapi.yaml -o openapi-bundled.yaml
   "max_pages": 100,
   "max_depth": 3,
   "strategy": "BFS",
-  "job_id": "optional-job-id"
+  "job_id": "optional-job-id",
+  "include_paths": ["/docs/*"],
+  "exclude_paths": ["/admin/*", "/api/*"],
+  "authentication": {
+    "username": "demo@example.com",
+    "password": "secure-password"
+  }
 }
 ```
+
+**Request Fields:**
+- `start_url` (string, required): Starting URL for exploration
+- `max_pages` (integer, optional): Maximum number of pages to explore
+- `max_depth` (integer, optional, default: 3): Maximum exploration depth
+- `strategy` (string, optional, default: "BFS"): Exploration strategy ("BFS" or "DFS")
+- `job_id` (string, optional): Optional job ID (auto-generated if not provided)
+- `include_paths` (array of strings, optional): Path patterns to include (e.g., `["/docs/*", "/api/v1/*"]`)
+- `exclude_paths` (array of strings, optional): Path patterns to exclude (e.g., `["/admin/*", "/api/*"]`)
+- `authentication` (object, optional): Authentication credentials for protected websites
+  - `username` (string, required if authentication provided): Username or email for login
+  - `password` (string, required if authentication provided): Password for login
+
+**Authentication Flow:**
+When `authentication` is provided, the service will:
+1. Navigate to `start_url`
+2. Detect login form (username/password fields)
+3. Fill in credentials and submit form
+4. Verify authentication success
+5. Maintain session (cookies/headers) throughout exploration
+
+**Security:**
+- Passwords are never logged (only username is logged)
+- Credentials are never persisted (not stored in MongoDB)
+- Credentials are cleared from memory after job completion
 
 **Response:**
 ```json
 {
   "job_id": "generated-job-id",
   "status": "queued",
-  "message": "Job queued via BullMQ. Use /api/knowledge/explore/status/{job_id} to check progress."
+  "message": "Job queued via RQ. Use /api/knowledge/explore/status/{job_id} to check progress. Workers are automatically managed by JobManager (no manual worker startup needed)"
 }
 ```
 
@@ -1139,6 +1323,31 @@ The Browser Automation Service exposes capabilities as MCP tools, allowing exter
     "job_id": {
       "type": "string",
       "description": "Optional job ID (auto-generated if not provided)"
+    },
+    "include_paths": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Path patterns to include (e.g., ['/docs/*', '/api/v1/*'])"
+    },
+    "exclude_paths": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Path patterns to exclude (e.g., ['/admin/*', '/api/*'])"
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Optional authentication credentials for protected websites (never logged or persisted)",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Username or email for login"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password for login"
+        }
+      },
+      "required": ["username", "password"]
     }
   },
   "required": ["start_url"]
@@ -1848,14 +2057,24 @@ class KnowledgeRetrievalClient:
         self.session = httpx.AsyncClient(base_url=api_url)
         self.redis = Redis(host='localhost', port=6379)
     
-    async def start_exploration(self, start_url: str, **kwargs):
-        """Start knowledge retrieval job"""
+    async def start_exploration(self, start_url: str, authentication: dict | None = None, **kwargs):
+        """Start knowledge retrieval job
+        
+        Args:
+            start_url: Starting URL for exploration
+            authentication: Optional authentication dict with 'username' and 'password' (never logged or persisted)
+            **kwargs: Additional exploration parameters (max_pages, max_depth, strategy, etc.)
+        """
+        request_data = {
+            "start_url": start_url,
+            **kwargs
+        }
+        if authentication:
+            request_data["authentication"] = authentication
+        
         response = await self.session.post(
             "/api/knowledge/explore/start",
-            json={
-                "start_url": start_url,
-                **kwargs
-            }
+            json=request_data
         )
         return response.json()
     
@@ -1904,47 +2123,44 @@ class KnowledgeRetrievalClient:
 
 ---
 
-### Using BullMQ for Commands
+### Using RQ for Knowledge Retrieval Jobs
 
 ```python
-from bullmq import Queue
-import time
+from rq import Queue, Retry
+from redis import Redis
+from uuid_extensions import uuid7str
 
-# Create queue
-command_queue = Queue("browser_commands")
+# Create queue connection
+# IMPORTANT: RQ requires decode_responses=False because it stores binary data (pickled objects) in Redis
+# RQ handles encoding/decoding internally
+redis_conn = Redis.from_url("redis://localhost:6379", decode_responses=False)
+knowledge_queue = Queue("knowledge-retrieval", connection=redis_conn)
 
-# Send navigation command
-async def navigate(session_id: str, url: str):
-    await command_queue.add(
-        "navigate",
+# Start knowledge retrieval job
+def start_exploration(start_url: str, max_pages: int | None = None):
+    job_id = uuid7str()
+    job = knowledge_queue.enqueue(
+        'navigator.knowledge.job_queue:process_knowledge_job',
         {
-            "url": url,
-            "session_id": session_id,
-            "room_name": f"room_{session_id}"
+            "start_url": start_url,
+            "max_pages": max_pages,
+            "max_depth": 3,
+            "strategy": "BFS",
+            "job_id": job_id
         },
-        {
-            "jobId": f"navigate_{session_id}_{int(time.time())}",
-            "removeOnComplete": True,
-            "attempts": 3
-        }
+        job_id=job_id,
+        retry=Retry(max=3, interval=60),
+        job_timeout='1h',
     )
+    return job.id
 
-# Send click command
-async def click(session_id: str, index: int):
-    await command_queue.add(
-        "click",
-        {
-            "index": index,
-            "session_id": session_id,
-            "room_name": f"room_{session_id}"
-        },
-        {
-            "jobId": f"click_{session_id}_{int(time.time())}",
-            "removeOnComplete": True,
-            "attempts": 3
-        }
-    )
+# Check job status
+def get_job_status(job_id: str):
+    from navigator.knowledge.job_queue import get_job_status as get_queue_job_status
+    return get_queue_job_status(job_id)
 ```
+
+**Note**: For browser action commands (click, navigate, etc.), use the MCP/REST API endpoints instead of direct queue access.
 
 ---
 
@@ -2072,10 +2288,10 @@ async def send_event():
 - Events logged but not published
 - Commands queued in-memory (lost on restart)
 
-**BullMQ Connection Failure**:
-- Service falls back to in-memory queue
-- Jobs processed in-memory (lost on restart)
-- Warning logged
+**RQ Connection Failure**:
+- Service logs error when queue unavailable
+- Jobs cannot be queued (returns error to caller)
+- RQ workers cannot process jobs without Redis
 
 **LiveKit Connection Failure**:
 - Browser session continues without streaming
@@ -2084,10 +2300,11 @@ async def send_event():
 
 ### Retry Logic
 
-**BullMQ Commands**:
-- Automatic retry (3 attempts by default)
-- Exponential backoff between retries
-- Failed jobs kept for inspection
+**RQ Knowledge Retrieval Jobs**:
+- Automatic retry (3 attempts by default, configurable)
+- Fixed interval between retries (60 seconds default)
+- Failed jobs stored in Redis for inspection
+- Job status queryable via `get_job_status()`
 
 **HTTP Requests**:
 - Client-side retry recommended
@@ -2105,12 +2322,16 @@ async def send_event():
 - **Fan-Out**: Multiple subscribers per channel
 - **No Persistence**: Events are fire-and-forget
 
-### BullMQ
+### RQ (Redis Queue)
 
 - **Latency**: ~1-5ms for job queuing
 - **Throughput**: Thousands of jobs per second
 - **Persistence**: Jobs stored in Redis
-- **Retry**: Automatic retry with backoff
+- **Retry**: Automatic retry with configurable interval (max=3, interval=60s)
+- **Workers**: Auto-scaling worker processes managed by JobManager (no manual startup needed)
+- **Worker Management**: Automatic spawning, health monitoring, and scaling based on queue length
+- **Job Timeout**: 2 minutes for stuck jobs (automatically marked as failed if not picked up)
+- **Redis Configuration**: **IMPORTANT** - RQ requires `decode_responses=False` because it stores binary data (pickled objects) in Redis. RQ handles encoding/decoding internally.
 
 ### WebSocket
 
@@ -2121,5 +2342,67 @@ async def send_event():
 
 ---
 
-*Last Updated: 2025-01-12*
-*Version: 1.0.0*
+---
+
+## RQ Worker Management
+
+### Auto-Scaling Worker Manager
+
+The system includes an **automatic worker manager** that:
+- **Automatically spawns RQ workers** when the server starts
+- **Dynamically scales workers** up and down based on queue length
+- **Monitors worker health** and automatically restarts dead workers
+- **Forwards worker logs** to the main console with proper log levels
+- **Requires no manual worker startup** - everything is automatic
+
+### Worker Configuration
+
+Workers are configured via `JobManager` with the following defaults:
+- **Min Workers**: 1 (always keep at least 1 worker running)
+- **Max Workers**: 5 (can scale up to 5 workers for high load)
+- **Scale Up Threshold**: 5 jobs in queue triggers scale-up
+- **Scale Down Threshold**: 0 jobs triggers scale-down
+- **Health Check Interval**: 60 seconds
+- **Worker Timeout**: 300 seconds (5 minutes) before considering worker unresponsive
+
+### Redis Connection Requirements
+
+**CRITICAL**: RQ requires `decode_responses=False` for Redis connections because:
+- RQ stores binary data (pickled Python objects) in Redis
+- RQ handles encoding/decoding internally
+- Using `decode_responses=True` will cause `UnicodeDecodeError` when fetching jobs
+
+**Correct Configuration**:
+```python
+from redis import Redis
+from rq import Queue
+
+# ✅ CORRECT: decode_responses=False for RQ
+redis_conn = Redis.from_url("redis://localhost:6379", decode_responses=False)
+queue = Queue("knowledge-retrieval", connection=redis_conn)
+```
+
+**Incorrect Configuration**:
+```python
+# ❌ WRONG: decode_responses=True will cause UnicodeDecodeError
+redis_conn = Redis.from_url("redis://localhost:6379", decode_responses=True)  # DON'T DO THIS
+```
+
+### Worker Logs
+
+Worker logs are automatically forwarded to the main console with:
+- **Prefix**: `[Worker-{id}]` for identification
+- **Log Levels**: Properly parsed from worker output (INFO, WARNING, ERROR, DEBUG)
+- **Real-time**: Logs appear immediately as workers process jobs
+
+### Stuck Job Monitor
+
+The system includes a **stuck job monitor** that:
+- Checks for stuck jobs every 30 seconds
+- Marks jobs as failed if they remain in 'queued' status for >2 minutes
+- Prevents jobs from being stuck indefinitely when workers fail
+
+---
+
+*Last Updated: 2026-01-13*
+*Version: 1.1.0*

@@ -1,6 +1,7 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, Loader2, TestTube } from "lucide-react"
+import { AlertCircle, CheckCircle2, TestTube } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -232,7 +233,7 @@ export function WebsiteCaptureStep({
             disabled={!isValid || isTestingConnection}
           >
             {isTestingConnection ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Spinner className="h-3.5 w-3.5" />
             ) : (
               <TestTube className="h-3.5 w-3.5" />
             )}
@@ -389,7 +390,7 @@ export function WebsiteCaptureStep({
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                <Spinner className="mr-2 h-3.5 w-3.5" />
                 Creating...
               </>
             ) : (

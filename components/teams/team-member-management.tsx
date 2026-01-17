@@ -1,6 +1,7 @@
 "use client"
 
-import { Loader2, Plus, Trash2, UserPlus } from "lucide-react"
+import { Plus, Trash2, UserPlus } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -183,7 +184,7 @@ export function TeamMemberManagement({ teamId }: TeamMemberManagementProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Spinner className="h-8 w-8 text-primary" />
       </div>
     )
   }
@@ -314,7 +315,7 @@ export function TeamMemberManagement({ teamId }: TeamMemberManagementProps) {
             <Button onClick={handleAddMember} disabled={addingMember}>
               {addingMember ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner className="mr-2 h-4 w-4" />
                   Adding...
                 </>
               ) : (

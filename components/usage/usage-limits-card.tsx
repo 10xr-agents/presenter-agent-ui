@@ -1,6 +1,7 @@
 "use client"
 
-import { AlertCircle, Clock, Cpu, Loader2, TrendingUp } from "lucide-react"
+import { AlertCircle, Clock, Cpu, TrendingUp } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -68,7 +69,7 @@ export function UsageLimitsCard({ organizationId, initialData }: UsageLimitsCard
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Spinner className="h-6 w-6 text-muted-foreground" />
           </div>
         </CardContent>
       </Card>

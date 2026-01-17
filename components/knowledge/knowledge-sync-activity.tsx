@@ -6,29 +6,37 @@ import { cn } from "@/lib/utils"
 
 interface SyncActivity {
   id: string
-  status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
   triggerType: "initial" | "resync"
   startedAt: string
   completedAt?: string
+  phase?: string
+  progress?: number
   pagesProcessed?: number
   linksProcessed?: number
   errorCount?: number
+  errorMessages?: string[] // Renamed from 'errors' to avoid Mongoose reserved pathname
+  warnings?: string[]
 }
 
 interface KnowledgeSyncActivityProps {
   knowledgeId: string
-  currentStatus: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+  currentStatus: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
   startedAt?: string
   completedAt?: string
   pagesStored?: number
   linksStored?: number
-  explorationErrors?: Array<{ url: string; error: string }>
+  extractionErrors?: Array<{ message: string; phase?: string; timestamp?: string }>
   syncHistory?: Array<{
     jobId: string
-    status: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+    status: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
     triggerType: "initial" | "resync"
     startedAt: string | Date
     completedAt?: string | Date
+    phase?: string
+    progress?: number
+    errorMessages?: string[] // Renamed from 'errors' to avoid Mongoose reserved pathname
+    warnings?: string[]
     pagesProcessed?: number
     linksProcessed?: number
     errorCount?: number
@@ -44,7 +52,7 @@ export function KnowledgeSyncActivity({
   completedAt,
   pagesStored,
   linksStored,
-  explorationErrors,
+  extractionErrors,
   syncHistory,
   createdAt,
   className,
@@ -61,9 +69,13 @@ export function KnowledgeSyncActivity({
             ? sync.completedAt
             : sync.completedAt.toISOString()
           : undefined,
+        phase: sync.phase,
+        progress: sync.progress,
         pagesProcessed: sync.pagesProcessed,
         linksProcessed: sync.linksProcessed,
         errorCount: sync.errorCount,
+        errorMessages: sync.errorMessages, // Renamed from 'errors' to avoid Mongoose reserved pathname
+        warnings: sync.warnings,
       }))
     : [
         // Fallback: build from current state if no history exists (for backward compatibility)
@@ -75,7 +87,7 @@ export function KnowledgeSyncActivity({
           completedAt: completedAt,
           pagesProcessed: pagesStored,
           linksProcessed: linksStored,
-          errorCount: explorationErrors?.length || 0,
+          errorCount: extractionErrors?.length || 0,
         },
       ]
   
@@ -93,7 +105,7 @@ export function KnowledgeSyncActivity({
       case "failed":
         return <XCircle className="h-3.5 w-3.5 text-destructive" />
       case "pending":
-      case "exploring":
+      case "running":
         return <Clock className="h-3.5 w-3.5 text-foreground opacity-60" />
       case "cancelled":
         return <XCircle className="h-3.5 w-3.5 text-foreground opacity-60" />
@@ -110,7 +122,7 @@ export function KnowledgeSyncActivity({
         return "Failed"
       case "pending":
         return "Pending"
-      case "exploring":
+      case "running":
         return "In Progress"
       case "cancelled":
         return "Cancelled"
@@ -130,7 +142,7 @@ export function KnowledgeSyncActivity({
   // Calculate summary metrics
   const completedSyncs = syncActivities.filter((a) => a.status === "completed")
   const failedSyncs = syncActivities.filter((a) => a.status === "failed")
-  const activeSyncs = syncActivities.filter((a) => ["pending", "exploring"].includes(a.status))
+  const activeSyncs = syncActivities.filter((a) => ["pending", "queued", "running"].includes(a.status))
   const successRate = syncActivities.length > 0
     ? Math.round((completedSyncs.length / syncActivities.length) * 100)
     : 0
@@ -140,23 +152,16 @@ export function KnowledgeSyncActivity({
     : null
 
   return (
-    <div className={cn("space-y-3", className)}>
-      <div className="flex items-center justify-between">
+    <div className={cn("space-y-4", className)}>
+      {/* Summary Header */}
+      <div className="flex items-center justify-between pb-2 border-b">
         <h3 className="text-sm font-semibold">Sync Activity</h3>
-        <span className="text-xs text-foreground opacity-85">
-          {syncActivities.length} {syncActivities.length === 1 ? "sync" : "syncs"}
-        </span>
-      </div>
-
-      {/* Summary Metrics */}
-      {syncActivities.length > 1 && (
-        <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
-          <div className="text-xs font-semibold mb-2">Summary</div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
+        {syncActivities.length > 1 && (
+          <div className="flex items-center gap-4 text-xs">
             {lastSuccessfulSync && (
               <div>
                 <span className="text-foreground opacity-60">Last successful:</span>{" "}
-                <span className="font-medium">
+                <span className="font-medium text-foreground">
                   {format(new Date(lastSuccessfulSync.completedAt || lastSuccessfulSync.startedAt), "MMM d, yyyy")}
                 </span>
               </div>
@@ -173,114 +178,173 @@ export function KnowledgeSyncActivity({
                 ({completedSyncs.length}/{syncActivities.length})
               </span>
             </div>
-            {activeSyncs.length > 0 && (
-              <div className="col-span-2">
-                <span className="text-foreground opacity-60">Currently active:</span>{" "}
-                <span className="font-medium text-foreground">
-                  {activeSyncs.length} sync{activeSyncs.length !== 1 ? "s" : ""} in progress
-                </span>
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="space-y-2">
+      {/* Audit Log - List-based, not cards */}
+      <div className="space-y-0">
         {syncActivities.map((activity, index) => {
-          const isActive = ["pending", "exploring"].includes(activity.status)
+          const isActive = ["pending", "queued", "running"].includes(activity.status)
+          const duration = activity.completedAt 
+            ? new Date(activity.completedAt).getTime() - new Date(activity.startedAt).getTime()
+            : null
+          const minutes = duration ? Math.floor(duration / 60000) : null
+          const seconds = duration ? Math.floor((duration % 60000) / 1000) : null
+          
           return (
-          <div
-            key={activity.id}
-            className={cn(
-              "border rounded-lg p-3 space-y-2",
-              isActive && "border-primary/50 bg-primary/5"
-            )}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                {getStatusIcon(activity.status)}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold">
+            <div
+              key={activity.id}
+              className={cn(
+                "py-3 border-b last:border-b-0",
+                isActive && "bg-primary/5"
+              )}
+            >
+              <div className="grid grid-cols-12 gap-4 items-start">
+                {/* Status Icon & Trigger */}
+                <div className="col-span-3 flex items-center gap-2 min-w-0">
+                  {getStatusIcon(activity.status)}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-foreground truncate">
                       {getTriggerLabel(activity.triggerType)}
-                    </span>
+                    </div>
                     {isActive && (
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-                        Live
-                      </span>
+                      <div className="text-xs text-primary font-medium mt-0.5">Live</div>
                     )}
-                    <span
-                      className={cn(
-                        "text-xs px-1.5 py-0.5 rounded",
-                        activity.status === "completed"
-                          ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300"
-                          : activity.status === "failed"
-                          ? "bg-destructive/10 text-destructive"
-                          : "bg-muted text-foreground opacity-85"
-                      )}
-                    >
-                      {getStatusLabel(activity.status)}
-                    </span>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="space-y-1.5 text-xs text-foreground opacity-85">
-              <div className="flex items-center gap-4 flex-wrap">
-                <span>
-                  Started: {format(new Date(activity.startedAt), "MMM d, yyyy 'at' h:mm a")}
-                </span>
-                {activity.completedAt ? (
-                  <>
-                    <span>
-                      Completed: {format(new Date(activity.completedAt), "MMM d, yyyy 'at' h:mm a")}
-                    </span>
-                    {(() => {
-                      const duration = new Date(activity.completedAt).getTime() - new Date(activity.startedAt).getTime()
-                      const minutes = Math.floor(duration / 60000)
-                      const seconds = Math.floor((duration % 60000) / 1000)
-                      return (
-                        <span>
-                          Duration: {minutes > 0 ? `${minutes}m ` : ""}{seconds}s
-                        </span>
-                      )
-                    })()}
-                  </>
-                ) : activity.status === "exploring" ? (
-                  <span className="text-foreground">In progress...</span>
-                ) : activity.status === "pending" ? (
-                  <span className="text-foreground">Queued...</span>
-                ) : null}
-              </div>
+                {/* Status Badge */}
+                <div className="col-span-2">
+                  <span
+                    className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
+                      activity.status === "completed"
+                        ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300"
+                        : activity.status === "failed"
+                        ? "bg-destructive/10 text-destructive"
+                        : "bg-muted text-foreground"
+                    )}
+                  >
+                    {getStatusLabel(activity.status)}
+                  </span>
+                </div>
 
-              {activity.status === "completed" && (
-                <div className="flex items-center gap-4 pt-1">
-                  {activity.pagesProcessed !== undefined && (
-                    <span>
-                      <span className="font-medium">{activity.pagesProcessed}</span> pages processed
-                    </span>
-                  )}
-                  {activity.linksProcessed !== undefined && (
-                    <span>
-                      <span className="font-medium">{activity.linksProcessed}</span> links processed
-                    </span>
-                  )}
-                  {activity.errorCount !== undefined && activity.errorCount > 0 && (
-                    <span className="text-destructive">
-                      <span className="font-medium">{activity.errorCount}</span> errors
-                    </span>
+                {/* Timestamp */}
+                <div className="col-span-3 text-xs text-foreground">
+                  <div className="font-medium">
+                    {format(new Date(activity.startedAt), "MMM d, yyyy 'at' h:mm a")}
+                  </div>
+                  {activity.completedAt && (
+                    <div className="text-foreground opacity-60 mt-0.5">
+                      Completed: {format(new Date(activity.completedAt), "MMM d, h:mm a")}
+                    </div>
                   )}
                 </div>
-              )}
 
-              {activity.status === "failed" && activity.errorCount !== undefined && activity.errorCount > 0 && (
-                <div className="pt-1 text-destructive">
-                  <span className="font-medium">{activity.errorCount}</span> error{activity.errorCount !== 1 ? "s" : ""} encountered
+                {/* Duration */}
+                <div className="col-span-2 text-xs text-foreground">
+                  {duration ? (
+                    <div>
+                      {minutes !== null && minutes > 0 ? `${minutes}m ` : ""}{seconds !== null ? `${seconds}s` : ""}
+                    </div>
+                  ) : activity.status === "running" ? (
+                    <div className="text-foreground">In progress</div>
+                  ) : activity.status === "pending" ? (
+                    <div className="text-foreground opacity-60">Queued</div>
+                  ) : null}
                 </div>
-              )}
+
+                {/* Metrics */}
+                <div className="col-span-2 text-xs text-foreground">
+                  {activity.status === "completed" && (
+                    <div className="space-y-0.5">
+                      {activity.pagesProcessed !== undefined && activity.pagesProcessed > 0 && (
+                        <div>
+                          <span className="font-medium">{activity.pagesProcessed}</span> pages extracted
+                        </div>
+                      )}
+                      {activity.linksProcessed !== undefined && activity.linksProcessed > 0 && (
+                        <div>
+                          <span className="font-medium">{activity.linksProcessed}</span> links extracted
+                        </div>
+                      )}
+                      {activity.pagesProcessed === 0 && activity.linksProcessed === 0 && (
+                        <div className="text-destructive text-xs font-medium">
+                          ⚠️ No knowledge extracted
+                        </div>
+                      )}
+                      {activity.errorCount !== undefined && activity.errorCount > 0 && (
+                        <div className="text-destructive">
+                          <span className="font-medium">{activity.errorCount}</span> error{activity.errorCount !== 1 ? "s" : ""} encountered
+                        </div>
+                      )}
+                      {activity.warnings && activity.warnings.length > 0 && (
+                        <div className="text-yellow-600">
+                          <span className="font-medium">{activity.warnings.length}</span> warning{activity.warnings.length !== 1 ? "s" : ""}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {activity.status === "failed" && (
+                    <div className="space-y-1">
+                      {activity.errorMessages && activity.errorMessages.length > 0 ? (
+                        <div className="text-destructive space-y-0.5">
+                          <div className="font-medium">
+                            {activity.errorMessages.length} error{activity.errorMessages.length !== 1 ? "s" : ""} caused failure
+                          </div>
+                          {activity.errorMessages.slice(0, 2).map((err, idx) => (
+                            <div key={idx} className="text-xs opacity-85 truncate max-w-[200px]">
+                              • {err}
+                            </div>
+                          ))}
+                          {activity.errorMessages.length > 2 && (
+                            <div className="text-xs opacity-60">
+                              +{activity.errorMessages.length - 2} more
+                            </div>
+                          )}
+                        </div>
+                      ) : activity.errorCount !== undefined && activity.errorCount > 0 ? (
+                        <div className="text-destructive">
+                          <span className="font-medium">{activity.errorCount}</span> error{activity.errorCount !== 1 ? "s" : ""} caused failure
+                        </div>
+                      ) : (
+                        <div className="text-destructive">
+                          Extraction failed - no details available
+                        </div>
+                      )}
+                      {activity.pagesProcessed !== undefined && activity.pagesProcessed > 0 && (
+                        <div className="text-muted-foreground text-xs">
+                          {activity.pagesProcessed} pages extracted before failure
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {activity.status === "running" && (
+                    <div className="space-y-0.5">
+                      <div className="text-muted-foreground">
+                        Extraction in progress...
+                      </div>
+                      {activity.phase && (
+                        <div className="text-xs text-muted-foreground capitalize">
+                          {activity.phase.replace(/_/g, " ")}
+                        </div>
+                      )}
+                      {activity.progress !== undefined && (
+                        <div className="text-xs text-muted-foreground">
+                          {Math.round(activity.progress)}% complete
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {activity.status === "queued" && (
+                    <div className="text-muted-foreground">
+                      Waiting to start...
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
           )
         })}
       </div>

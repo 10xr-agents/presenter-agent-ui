@@ -6,7 +6,7 @@ import { KnowledgeListTable } from "@/components/knowledge/knowledge-list-table"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
-import { WebsiteKnowledge } from "@/lib/models/website-knowledge"
+import { KnowledgeSource } from "@/lib/models/knowledge-source"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function KnowledgePage({
@@ -51,35 +51,76 @@ export default async function KnowledgePage({
 
     const query: {
       organizationId: string
-      status?: "pending" | "exploring" | "completed" | "failed" | "cancelled"
+      status?: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"
     } = {
       organizationId: knowledgeOrgId,
     }
 
     if (status !== "all") {
-      query.status = status as "pending" | "exploring" | "completed" | "failed" | "cancelled"
+      // Map old status to new status
+      const statusMap: Record<string, "pending" | "queued" | "running" | "completed" | "failed" | "cancelled"> = {
+        "pending": "pending",
+        "exploring": "running",
+        "completed": "completed",
+        "failed": "failed",
+        "cancelled": "cancelled",
+      }
+      query.status = statusMap[status] || (status as "pending" | "queued" | "running" | "completed" | "failed" | "cancelled")
     }
 
-    const totalCount = await (WebsiteKnowledge as any).countDocuments(query)
+    const totalCount = await (KnowledgeSource as any).countDocuments(query)
     const skip = (page - 1) * limit
     const totalPages = Math.ceil(totalCount / limit)
 
-    const knowledgeList = await (WebsiteKnowledge as any)
+    const knowledgeList = await (KnowledgeSource as any)
       .find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean()
 
+    // Serialize syncHistory to remove _id fields and convert dates
+    const serializeSyncHistory = (syncHistory: unknown) => {
+      if (!Array.isArray(syncHistory)) return []
+      return syncHistory.map((sync: unknown) => {
+        const s = sync as {
+          _id?: unknown
+          jobId?: unknown
+          status?: unknown
+          triggerType?: unknown
+          startedAt?: unknown
+          completedAt?: unknown
+          pagesProcessed?: unknown
+          linksProcessed?: unknown
+          errorCount?: unknown
+        }
+        return {
+          jobId: String(s.jobId || ""),
+          status: String(s.status || "pending"),
+          triggerType: String(s.triggerType || "initial"),
+          startedAt: s.startedAt instanceof Date ? s.startedAt.toISOString() : (s.startedAt ? String(s.startedAt) : new Date().toISOString()),
+          completedAt: s.completedAt instanceof Date ? s.completedAt.toISOString() : (s.completedAt ? String(s.completedAt) : undefined),
+          pagesProcessed: typeof s.pagesProcessed === "number" ? s.pagesProcessed : undefined,
+          linksProcessed: typeof s.linksProcessed === "number" ? s.linksProcessed : undefined,
+          errorCount: typeof s.errorCount === "number" ? s.errorCount : undefined,
+        }
+      })
+    }
+
     initialData = knowledgeList.map((item: unknown) => {
       const knowledge = item as {
         _id: { toString: () => string }
-        websiteUrl: string
-        websiteDomain: string
+        sourceType: string
+        sourceUrl?: string
+        sourceName: string
+        fileName?: string
         status: string
-        explorationJobId: string | null
+        jobId: string | null
+        workflowId: string | null
         pagesStored?: number
         linksStored?: number
+        screensExtracted?: number
+        tasksExtracted?: number
         name?: string
         description?: string
         startedAt?: Date
@@ -90,19 +131,24 @@ export default async function KnowledgePage({
       }
       return {
         id: knowledge._id.toString(),
-        websiteUrl: knowledge.websiteUrl,
-        websiteDomain: knowledge.websiteDomain,
+        sourceType: knowledge.sourceType,
+        sourceUrl: knowledge.sourceUrl,
+        sourceName: knowledge.sourceName,
+        fileName: knowledge.fileName,
         status: knowledge.status,
-        explorationJobId: knowledge.explorationJobId,
+        jobId: knowledge.jobId,
+        workflowId: knowledge.workflowId,
         pagesStored: knowledge.pagesStored,
         linksStored: knowledge.linksStored,
+        screensExtracted: knowledge.screensExtracted,
+        tasksExtracted: knowledge.tasksExtracted,
         name: knowledge.name,
         description: knowledge.description,
         startedAt: knowledge.startedAt?.toISOString(),
         completedAt: knowledge.completedAt?.toISOString(),
         createdAt: knowledge.createdAt.toISOString(),
         updatedAt: knowledge.updatedAt.toISOString(),
-        syncHistory: knowledge.syncHistory,
+        syncHistory: serializeSyncHistory(knowledge.syncHistory),
       }
     })
 
@@ -125,7 +171,7 @@ export default async function KnowledgePage({
         <div>
           <h1 className="text-lg font-semibold">Knowledge</h1>
           <p className="mt-0.5 text-sm text-foreground">
-            Manage website knowledge extracted from your target sites
+            Manage knowledge extracted from websites, documentation, videos, and files
           </p>
         </div>
         <Button asChild size="sm">

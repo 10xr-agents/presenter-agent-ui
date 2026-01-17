@@ -2,10 +2,10 @@
 
 import {
   AlertTriangle,
-  Loader2,
   Trash2,
   X,
 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,7 +76,7 @@ export function ConfirmationDialog({
             >
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner className="mr-2 h-4 w-4" />
                   Processing...
                 </>
               ) : (
@@ -103,7 +103,7 @@ export function ConfirmationDialog({
           <Button onClick={handleConfirm} disabled={loading}>
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner className="mr-2 h-4 w-4" />
                 Processing...
               </>
             ) : (

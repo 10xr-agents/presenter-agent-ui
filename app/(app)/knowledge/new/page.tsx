@@ -26,7 +26,7 @@ export default async function NewKnowledgePage() {
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Create Knowledge</h1>
         <p className="mt-0.5 text-sm text-foreground">
-          Extract and index knowledge from a website
+          Extract and index knowledge from websites, documentation, videos, or files
         </p>
       </div>
       <KnowledgeCreationForm organizationId={knowledgeOrgId} />

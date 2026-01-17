@@ -1,6 +1,7 @@
 "use client"
 
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -186,7 +187,7 @@ export function PasswordForm() {
         <Button type="submit" disabled={loading} size="sm">
           {loading ? (
             <>
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              <Spinner className="mr-2 h-3.5 w-3.5" />
               Updating...
             </>
           ) : (

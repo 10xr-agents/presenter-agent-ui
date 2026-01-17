@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { TenantState } from "@/lib/utils/tenant-state"
 
 interface UsageSettingsProps {
@@ -68,10 +70,14 @@ export function UsageSettings({ tenantState }: UsageSettingsProps) {
   if (loading) {
     return (
       <div className="space-y-6">
-        {[1, 2, 3].map((i) => (
+        {[1, 2, 3, 4].map((i) => (
           <Card key={i} className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="h-20 animate-pulse bg-muted rounded" />
+            <CardHeader>
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-48 mt-2" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-16 w-full" />
             </CardContent>
           </Card>
         ))}
@@ -116,131 +122,165 @@ export function UsageSettings({ tenantState }: UsageSettingsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Screen Agents - Resend style */}
+      {/* Screen Agents */}
       <Card className="bg-muted/30">
-        <CardContent className="pt-6">
+        <CardHeader>
           <div className="flex items-start justify-between">
-            <div className="flex-1 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold mb-1">Screen Agents</h3>
-                <p className="text-xs text-muted-foreground">
-                  Create and manage AI-powered screen presentation agents for your website.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-md border p-2.5">
-                  <span className="text-xs text-muted-foreground">Agents Limit</span>
-                  <span className="text-xs font-medium">
-                    {usage.screenAgents.total} / {usage.screenAgents.limit}
-                  </span>
-                </div>
-              </div>
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">Screen Agents</CardTitle>
+              <CardDescription className="text-xs">
+                Create and manage AI-powered screen presentation agents for your website.
+              </CardDescription>
             </div>
-            <div className="ml-4 flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2">
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium">Free</span>
               <Button variant="outline" size="sm">
                 Upgrade
               </Button>
             </div>
           </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Agents Limit</span>
+                <span className="font-medium">
+                  {usage.screenAgents.total} / {usage.screenAgents.limit}
+                </span>
+              </div>
+              <Progress 
+                value={(usage.screenAgents.total / usage.screenAgents.limit) * 100} 
+                className="h-1.5"
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Sessions - Resend style */}
+      {/* Sessions */}
       <Card className="bg-muted/30">
-        <CardContent className="pt-6">
+        <CardHeader>
           <div className="flex items-start justify-between">
-            <div className="flex-1 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold mb-1">Sessions</h3>
-                <p className="text-xs text-muted-foreground">
-                  Track presentation sessions where viewers interact with your Screen Agents.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-md border p-2.5">
-                  <span className="text-xs text-muted-foreground">Monthly Limit</span>
-                  <span className="text-xs font-medium">
-                    {usage.sessions.monthly.used} / {usage.sessions.monthly.limit}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between rounded-md border p-2.5">
-                  <span className="text-xs text-muted-foreground">Daily Limit</span>
-                  <span className="text-xs font-medium">
-                    {usage.sessions.daily.used} / {usage.sessions.daily.limit}
-                  </span>
-                </div>
-              </div>
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">Sessions</CardTitle>
+              <CardDescription className="text-xs">
+                Track presentation sessions where viewers interact with your Screen Agents.
+              </CardDescription>
             </div>
-            <div className="ml-4 flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2">
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium">Free</span>
               <Button variant="outline" size="sm">
                 Upgrade
               </Button>
             </div>
           </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Monthly Limit</span>
+                <span className="font-medium">
+                  {usage.sessions.monthly.used} / {usage.sessions.monthly.limit}
+                </span>
+              </div>
+              <Progress 
+                value={(usage.sessions.monthly.used / usage.sessions.monthly.limit) * 100} 
+                className="h-1.5"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Daily Limit</span>
+                <span className="font-medium">
+                  {usage.sessions.daily.used} / {usage.sessions.daily.limit}
+                </span>
+              </div>
+              <Progress 
+                value={(usage.sessions.daily.used / usage.sessions.daily.limit) * 100} 
+                className="h-1.5"
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Minutes - Resend style */}
+      {/* Minutes */}
       <Card className="bg-muted/30">
-        <CardContent className="pt-6">
+        <CardHeader>
           <div className="flex items-start justify-between">
-            <div className="flex-1 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold mb-1">Minutes</h3>
-                <p className="text-xs text-muted-foreground">
-                  Total presentation time consumed across all Screen Agent sessions.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-md border p-2.5">
-                  <span className="text-xs text-muted-foreground">Monthly Limit</span>
-                  <span className="text-xs font-medium">
-                    {usage.minutes.monthly.used} / {usage.minutes.monthly.limit}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between rounded-md border p-2.5">
-                  <span className="text-xs text-muted-foreground">Daily Limit</span>
-                  <span className="text-xs font-medium">
-                    {usage.minutes.daily.used} / {usage.minutes.daily.limit}
-                  </span>
-                </div>
-              </div>
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">Minutes</CardTitle>
+              <CardDescription className="text-xs">
+                Total presentation time consumed across all Screen Agent sessions.
+              </CardDescription>
             </div>
-            <div className="ml-4 flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2">
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium">Free</span>
               <Button variant="outline" size="sm">
                 Upgrade
               </Button>
             </div>
           </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Monthly Limit</span>
+                <span className="font-medium">
+                  {usage.minutes.monthly.used} / {usage.minutes.monthly.limit}
+                </span>
+              </div>
+              <Progress 
+                value={(usage.minutes.monthly.used / usage.minutes.monthly.limit) * 100} 
+                className="h-1.5"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Daily Limit</span>
+                <span className="font-medium">
+                  {usage.minutes.daily.used} / {usage.minutes.daily.limit}
+                </span>
+              </div>
+              <Progress 
+                value={(usage.minutes.daily.used / usage.minutes.daily.limit) * 100} 
+                className="h-1.5"
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Team - Resend style */}
+      {/* Team */}
       <Card className="bg-muted/30">
-        <CardContent className="pt-6">
+        <CardHeader>
           <div className="flex items-start justify-between">
-            <div className="flex-1 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold mb-1">Team</h3>
-                <p className="text-xs text-muted-foreground">
-                  Understand the quotas and limits for your team.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-md border p-2.5">
-                  <span className="text-xs text-muted-foreground">Domains</span>
-                  <span className="text-xs font-medium">
-                    {usage.team.domains.used} / {usage.team.domains.limit}
-                  </span>
-                </div>
-              </div>
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">Team</CardTitle>
+              <CardDescription className="text-xs">
+                Understand the quotas and limits for your team.
+              </CardDescription>
             </div>
-            <div className="ml-4 flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2">
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium">Free</span>
             </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Domains</span>
+              <span className="font-medium">
+                {usage.team.domains.used} / {usage.team.domains.limit}
+              </span>
+            </div>
+            <Progress 
+              value={(usage.team.domains.used / usage.team.domains.limit) * 100} 
+              className="h-1.5"
+            />
           </div>
         </CardContent>
       </Card>
@@ -248,18 +288,18 @@ export function UsageSettings({ tenantState }: UsageSettingsProps) {
       {/* Organization Conversion (Normal mode only) */}
       {tenantState === "normal" && (
         <Card className="bg-muted/30">
-          <CardContent className="pt-6">
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold mb-1">Organization Features</h3>
-                <p className="text-xs text-muted-foreground">
-                  Enable teams, advanced permissions, and organization-level features.
-                </p>
-              </div>
-              <Button variant="outline" size="sm" asChild>
-                <a href="/organization/create">Convert to Organization</a>
-              </Button>
+          <CardHeader>
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-semibold">Organization Features</CardTitle>
+              <CardDescription className="text-xs">
+                Enable teams, advanced permissions, and organization-level features.
+              </CardDescription>
             </div>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" size="sm" asChild>
+              <a href="/organization/create">Convert to Organization</a>
+            </Button>
           </CardContent>
         </Card>
       )}

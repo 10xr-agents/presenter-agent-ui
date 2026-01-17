@@ -1,7 +1,8 @@
 "use client"
 
 import { formatDistanceToNow } from "date-fns"
-import { ArrowLeft, DollarSign, Layers, Loader2, Users } from "lucide-react"
+import { ArrowLeft, DollarSign, Layers, Users } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -91,7 +92,7 @@ export function OrganizationDetails({ organizationId }: OrganizationDetailsProps
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner className="h-8 w-8" />
         <p className="ml-2 text-lg">Loading organization details...</p>
       </div>
     )

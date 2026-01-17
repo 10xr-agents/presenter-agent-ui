@@ -76,16 +76,17 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
     })
 
-    // Check if knowledge already exists for this domain
+    // Check if knowledge already exists for this exact URL (not just domain)
+    // Allow multiple entries for the same domain but different URLs
     const existing = await (WebsiteKnowledge as any).findOne({
       organizationId,
-      websiteDomain: domain,
-      status: { $in: ["exploring", "completed"] },
+      websiteUrl: websiteUrl,
+      status: { $in: ["pending", "exploring"] },
     })
 
     if (existing) {
-      console.log("[Website Knowledge] Already exists for domain", {
-        domain,
+      console.log("[Website Knowledge] Already exists for URL", {
+        websiteUrl,
         existingId: existing._id.toString(),
         existingStatus: existing.status,
         organizationId,
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
             websiteDomain: existing.websiteDomain,
             status: existing.status,
             explorationJobId: existing.explorationJobId,
-            message: "Website knowledge already exists for this domain",
+            message: "Website knowledge already exists for this URL and is currently being processed",
           },
         },
         { status: 200 }
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
     let status: "pending" | "exploring" | "failed" = "pending"
 
     try {
-      console.log("[Website Knowledge] Calling browser automation service", {
+      console.log("[Website Knowledge] PIPELINE STEP: Starting browser automation exploration", {
         websiteUrl,
         maxPages: maxPages || 100,
         maxDepth: maxDepth || 10,
@@ -118,6 +119,8 @@ export async function POST(req: NextRequest) {
         includePaths,
         excludePaths,
         hasAuthentication: !!websiteCredentials,
+        organizationId,
+        stage: "exploration_start",
       })
 
       const explorationResponse = await startExploration({
@@ -127,21 +130,51 @@ export async function POST(req: NextRequest) {
         strategy: strategy || "BFS",
         include_paths: includePaths,
         exclude_paths: excludePaths,
-        authentication: websiteCredentials
+        authentication: websiteCredentials &&
+          websiteCredentials.username?.trim() &&
+          websiteCredentials.password?.trim()
           ? {
-              username: websiteCredentials.username,
-              password: websiteCredentials.password,
+              username: websiteCredentials.username.trim(),
+              password: websiteCredentials.password.trim(),
             }
           : undefined,
       })
+      
+      // CRITICAL: Validate exploration response
+      if (!explorationResponse.job_id) {
+        const error = "Browser automation service returned job without job_id"
+        console.error("[Website Knowledge] CRITICAL FAILURE - Invalid exploration response", {
+          websiteUrl,
+          organizationId,
+          error,
+          response: explorationResponse,
+        })
+        Sentry.captureMessage("Browser automation exploration response missing job_id", {
+          level: "error",
+          tags: {
+            operation: "start_exploration",
+            websiteUrl,
+            organizationId,
+            failure_type: "missing_job_id",
+          },
+          extra: {
+            websiteUrl,
+            organizationId,
+            response: explorationResponse,
+          },
+        })
+        throw new Error(error)
+      }
+      
       explorationJobId = explorationResponse.job_id
       status = explorationResponse.status === "queued" ? "pending" : "exploring"
 
-      console.log("[Website Knowledge] Exploration job started", {
+      console.log("[Website Knowledge] PIPELINE STEP: Exploration job started successfully", {
         jobId: explorationJobId,
         status: explorationResponse.status,
         websiteUrl,
         organizationId,
+        stage: "exploration_started",
       })
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -299,6 +332,16 @@ export async function GET(req: NextRequest) {
       .skip(skip)
       .limit(limit)
       .lean()
+
+    console.log("[Website Knowledge] List query", {
+      organizationId,
+      status,
+      query,
+      totalCount,
+      returnedCount: knowledgeList.length,
+      page,
+      limit,
+    })
 
     return NextResponse.json({
       data: knowledgeList.map((item: IWebsiteKnowledge) => ({

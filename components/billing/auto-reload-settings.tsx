@@ -1,11 +1,12 @@
 "use client"
 
-import { AlertCircle, Loader2, Save } from "lucide-react"
+import { AlertCircle, Save } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -77,15 +78,14 @@ export function AutoReloadSettings({
 
   return (
     <Card className="bg-muted/30">
-      <CardContent className="pt-6">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Auto-Reload Settings</CardTitle>
+        <CardDescription className="text-xs">
+          Automatically reload your account when balance drops below threshold
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         <div className="space-y-4">
-          {/* Header - Resend style: compact */}
-          <div>
-            <h3 className="text-sm font-semibold mb-0.5">Auto-Reload Settings</h3>
-            <p className="text-xs text-muted-foreground">
-              Automatically reload your account when balance drops below threshold
-            </p>
-          </div>
 
           {error && (
             <Alert variant="destructive" className="py-2">
@@ -167,7 +167,7 @@ export function AutoReloadSettings({
           <Button onClick={handleSave} disabled={isLoading} size="sm" className="w-full">
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                <Spinner className="mr-2 h-3.5 w-3.5" />
                 Saving...
               </>
             ) : (

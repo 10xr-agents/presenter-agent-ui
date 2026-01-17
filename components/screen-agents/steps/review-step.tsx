@@ -1,6 +1,7 @@
 "use client"
 
-import { CheckCircle2, Loader2 } from "lucide-react"
+import { CheckCircle2 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -188,7 +189,7 @@ export function ReviewStep({
         <Button onClick={handleCreate} disabled={isLoading || !data.name || !data.targetWebsiteUrl || !data.voiceConfig}>
           {isLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner className="mr-2 h-4 w-4" />
               Creating...
             </>
           ) : (

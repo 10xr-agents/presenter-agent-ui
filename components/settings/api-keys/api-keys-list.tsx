@@ -1,7 +1,7 @@
 "use client"
 
 import { format } from "date-fns"
-import { Key, Loader2, Plus , Trash2 } from "lucide-react"
+import { Key, Plus , Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { AdvancedTable, type Column } from "@/components/ui/advanced-table"
 import { Alert, AlertDescription } from "@/components/ui/alert"

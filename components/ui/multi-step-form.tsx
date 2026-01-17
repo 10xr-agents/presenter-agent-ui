@@ -1,6 +1,7 @@
 "use client"
 
-import { Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { ReactNode, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -174,7 +175,7 @@ export function MultiStepForm({
           <Button onClick={handleNext} disabled={loading}>
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner className="mr-2 h-4 w-4" />
                 {isLastStep ? "Submitting..." : "Loading..."}
               </>
             ) : isLastStep ? (

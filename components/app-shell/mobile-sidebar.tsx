@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -67,13 +67,28 @@ const organizationNavigation = [
 
 export function MobileSidebar({ tenantState = "normal" }: MobileSidebarProps) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Combine navigation based on tenant state
   const navigation = [
     ...baseNavigation,
     ...(tenantState === "organization" ? organizationNavigation : []),
   ]
+
+  // Prevent hydration mismatch by only rendering Sheet after mount
+  if (!mounted) {
+    return (
+      <Button variant="ghost" size="icon" className="lg:hidden" disabled>
+        <Menu className="h-5 w-5" />
+        <span className="sr-only">Toggle menu</span>
+      </Button>
+    )
+  }
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

@@ -4,6 +4,8 @@
 
 This project has mandatory code patterns documented in `RULESETS.md`. These rules prevent known build issues and ensure code compatibility with our tech stack.
 
+**⚠️ UI/UX DOCUMENTATION: There is ONLY ONE UI/UX reference document - `docs/UI_UX_REFERENCE.md`. Do NOT create separate audit reports, design docs, or UI/UX documentation files. All UI/UX guidelines, compliance status, and audit information must be consolidated in `docs/UI_UX_REFERENCE.md`.**
+
 ## Quick Reference
 
 Before generating ANY code, check these mandatory patterns:

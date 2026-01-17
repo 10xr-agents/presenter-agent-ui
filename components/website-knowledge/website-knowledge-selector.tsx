@@ -1,6 +1,7 @@
 "use client"
 
-import { CheckCircle2, Globe, Loader2, Plus } from "lucide-react"
+import { CheckCircle2, Globe, Plus } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -168,7 +169,7 @@ export function WebsiteKnowledgeSelector({
             >
               {creatingKnowledge ? (
                 <>
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  <Spinner className="mr-1 h-3 w-3" />
                   Creating...
                 </>
               ) : (
@@ -210,7 +211,7 @@ export function WebsiteKnowledgeSelector({
                   >
                     {creatingKnowledge ? (
                       <>
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        <Spinner className="mr-2 h-3.5 w-3.5" />
                         Creating...
                       </>
                     ) : (

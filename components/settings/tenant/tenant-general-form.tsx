@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Save } from "lucide-react"
+import { Save } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { authClient } from "@/lib/auth/client"
 import { toast } from "@/lib/utils/toast"
@@ -117,65 +118,70 @@ export function TenantGeneralForm() {
   }
 
   return (
-    <Card>
+    <Card className="bg-muted/30">
       <CardHeader>
-        <CardTitle>General Settings</CardTitle>
-        <CardDescription>Manage tenant information and settings</CardDescription>
+        <CardTitle className="text-sm font-semibold">General Settings</CardTitle>
+        <CardDescription className="text-xs">
+          Manage tenant information and settings
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Tenant Name</Label>
+            <Label htmlFor="name" className="text-xs font-medium">Tenant Name</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter tenant name"
               required
+              className="h-9"
             />
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               The display name for your tenant
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="slug">Slug</Label>
+            <Label htmlFor="slug" className="text-xs font-medium">Slug</Label>
             <Input
               id="slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
               placeholder="tenant-slug"
               pattern="[a-z0-9-]+"
+              className="h-9"
             />
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               A URL-friendly identifier for your tenant (optional)
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description" className="text-xs font-medium">Description</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Enter tenant description"
               rows={4}
+              className="text-sm"
             />
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               A brief description of your tenant (optional)
             </p>
           </div>
 
-          <div className="flex justify-end">
-            <Button type="submit" disabled={saving}>
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={saving} size="sm">
               {saving ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
                   Saving...
                 </>
               ) : (
                 <>
-                  <Save className="mr-2 h-4 w-4" />
+                  <Save className="mr-2 h-3.5 w-3.5" />
                   Save Changes
                 </>
               )}

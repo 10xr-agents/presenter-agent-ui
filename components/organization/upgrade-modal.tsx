@@ -1,6 +1,7 @@
 "use client"
 
-import { Building2, CheckCircle2, Loader2, Users, Zap } from "lucide-react"
+import { Building2, CheckCircle2, Users, Zap } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -132,7 +133,7 @@ export function UpgradeModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent>
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <Spinner className="h-8 w-8 text-primary" />
           </div>
         </DialogContent>
       </Dialog>
@@ -245,7 +246,7 @@ export function UpgradeModal({
           <Button onClick={handleUpgrade} disabled={status.loading || !status.canUpgrade}>
             {status.loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner className="mr-2 h-4 w-4" />
                 Upgrading...
               </>
             ) : (

@@ -1,6 +1,7 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, Clock, Loader2, Pause, Play } from "lucide-react"
+import { AlertCircle, CheckCircle2, Clock, Pause, Play } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useRef, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -314,7 +315,7 @@ export function WebsiteKnowledgeProgress({
         return <AlertCircle className="h-3.5 w-3.5 text-destructive" />
       case "running":
       case "queued":
-        return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+        return <Spinner className="h-3.5 w-3.5 text-primary" />
       default:
         return null
     }

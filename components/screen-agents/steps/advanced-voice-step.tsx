@@ -1,6 +1,7 @@
 "use client"
 
-import { ChevronDown, ChevronUp, Loader2, Settings } from "lucide-react"
+import { ChevronDown, ChevronUp, Settings } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -236,7 +237,7 @@ export function AdvancedVoiceStep({
         <Button onClick={handleCreate} disabled={isLoading} size="sm">
           {isLoading ? (
             <>
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              <Spinner className="mr-2 h-3.5 w-3.5" />
               Creating...
             </>
           ) : (

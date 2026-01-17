@@ -1,12 +1,13 @@
 "use client"
 
-import { AlertCircle, CreditCard, Loader2, Plus } from "lucide-react"
+import { AlertCircle, CreditCard, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -96,7 +97,13 @@ export function BalanceCard({
 
   return (
     <Card className="bg-muted/30">
-      <CardContent className="pt-6">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold">Account Balance</CardTitle>
+        <CardDescription className="text-xs">
+          Current balance and payment methods
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         <div className="space-y-4">
           {/* Header - Resend style: compact */}
           <div className="flex items-center justify-between">
@@ -214,7 +221,7 @@ export function BalanceCard({
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      <Spinner className="mr-2 h-3.5 w-3.5" />
                       Processing...
                     </>
                   ) : (
