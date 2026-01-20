@@ -62,7 +62,7 @@ export function ConfirmationDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <div className="flex items-center gap-3">
-              {icon ? <div className="text-destructive">{icon}</div> : <AlertTriangle className="h-5 w-5 text-destructive" />}
+              {icon ? <div className="text-red-600 dark:text-red-400">{icon}</div> : <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />}
               <AlertDialogTitle>{title}</AlertDialogTitle>
             </div>
             <AlertDialogDescription>{description}</AlertDialogDescription>
@@ -72,7 +72,7 @@ export function ConfirmationDialog({
             <AlertDialogAction
               onClick={handleConfirm}
               disabled={loading}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-red-600 dark:bg-red-600 text-white hover:bg-red-700 dark:hover:bg-red-700 focus-visible:ring-red-600 dark:focus-visible:ring-red-500"
             >
               {loading ? (
                 <>

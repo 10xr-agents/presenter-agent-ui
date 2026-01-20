@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, Settings, User } from "lucide-react"
+import { MoreHorizontal, User, Settings, LogOut, Moon } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -9,7 +9,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -17,12 +16,11 @@ import { authClient } from "@/lib/auth/client"
 
 const { signOut, useSession } = authClient
 
-export function UserMenu() {
+export function UserProfileMenu() {
   const router = useRouter()
   const { data: session, isPending } = useSession()
   const [mounted, setMounted] = useState(false)
 
-  // Ensure component only renders client-side content after mount
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -33,10 +31,12 @@ export function UserMenu() {
     router.refresh()
   }
 
-  // Always render the same structure during SSR and initial client render
   if (!mounted || isPending || !session?.user) {
     return (
-      <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
+      <div className="flex items-center gap-2 rounded-md px-2 py-2">
+        <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
+        <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+      </div>
     )
   }
 
@@ -55,32 +55,36 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
-          <Avatar className="h-7 w-7">
+          <Avatar className="h-7 w-7 shrink-0">
             <AvatarImage src={user.image || undefined} alt={user.name || user.email || "User"} />
-            <AvatarFallback>{initials}</AvatarFallback>
+            <AvatarFallback className="text-xs font-medium">{initials}</AvatarFallback>
           </Avatar>
+          <span className="flex-1 truncate text-left text-xs text-muted-foreground">{user.email}</span>
+          <MoreHorizontal className="h-4 w-4 shrink-0 opacity-50" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{user.name || "User"}</p>
-            <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
         <DropdownMenuItem asChild>
           <Link href="/profile" className="flex items-center">
             <User className="mr-2 h-4 w-4" />
-            Profile
+            My profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled>
+          <Moon className="mr-2 h-4 w-4" />
+          Toggle theme
+          <span className="ml-auto text-xs text-muted-foreground">M</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/" className="flex items-center">
+            Homepage
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/settings" className="flex items-center">
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
+          <Link href="/onboarding" className="flex items-center">
+            Onboarding
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

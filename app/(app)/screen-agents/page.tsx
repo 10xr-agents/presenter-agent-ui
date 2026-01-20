@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { ScreenAgentList } from "@/components/screen-agents/screen-agent-list"
+import { PageShell } from "@/components/shell/page-shell"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
 import { listScreenAgents } from "@/lib/screen-agents/manager"
@@ -48,22 +49,19 @@ export default async function ScreenAgentsPage() {
   }))
 
   return (
-    <div className="py-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Screen Agents</h1>
-          <p className="mt-0.5 text-sm text-foreground">
-            Manage your interactive screen presentation agents
-          </p>
-        </div>
+    <PageShell
+      title="Screen Agents"
+      description="Manage your interactive screen presentation agents"
+      action={
         <Button asChild size="sm">
           <Link href="/screen-agents/new">
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create Agent
           </Link>
         </Button>
-      </div>
+      }
+    >
       <ScreenAgentList initialAgents={initialAgents} organizationId={agentsOrgId} />
-    </div>
+    </PageShell>
   )
 }

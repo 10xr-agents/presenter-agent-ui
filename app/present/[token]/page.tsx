@@ -47,7 +47,7 @@ export default async function PresentationPage({ params }: PresentationPageProps
       },
     })
 
-    // Get LiveKit URL (placeholder - should come from env)
+    // Get LiveKit URL from environment variable
     const liveKitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://localhost:7880"
 
     return (

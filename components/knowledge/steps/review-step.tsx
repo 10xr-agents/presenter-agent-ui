@@ -151,9 +151,9 @@ export function ReviewStep({
     fetchKnowledge()
   }, [knowledgeId])
 
-  const handleEdit = (id: string, currentData: Record<string, unknown>) => {
+  const handleEdit = (type: string, id: string, data: Record<string, unknown>) => {
     setEditingId(id)
-    setEditData(currentData)
+    setEditData(data)
   }
 
   const handleSave = async (type: string, id: string) => {

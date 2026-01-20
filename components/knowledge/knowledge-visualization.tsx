@@ -95,6 +95,29 @@ export function KnowledgeVisualization({
   onSave,
   onCancel,
 }: KnowledgeVisualizationProps) {
+  // Type aliases for better type safety
+  type ScreenType = {
+    screen_id?: string
+    name?: string
+    url?: string
+    description?: string
+    [key: string]: unknown
+  }
+  type TaskType = {
+    task_id?: string
+    name?: string
+    description?: string
+    steps?: Array<{ action_id?: string; screen_id?: string; [key: string]: unknown }>
+    [key: string]: unknown
+  }
+  type ActionType = {
+    action_id?: string
+    name?: string
+    type?: string
+    target_screen_id?: string
+    [key: string]: unknown
+  }
+
   const [expandedWorkflows, setExpandedWorkflows] = useState<Set<string>>(new Set())
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set())
   const [selectedScreen, setSelectedScreen] = useState<string | null>(null)
@@ -136,7 +159,7 @@ export function KnowledgeVisualization({
 
   // Build screen map for quick lookup
   const screenMap = useMemo(() => {
-    const map = new Map<string, (typeof knowledgeData.screens)[0]>()
+    const map = new Map<string, ScreenType>()
     knowledgeData.screens?.forEach((screen) => {
       if (screen.screen_id) {
         map.set(screen.screen_id, screen)
@@ -147,7 +170,7 @@ export function KnowledgeVisualization({
 
   // Build action map
   const actionMap = useMemo(() => {
-    const map = new Map<string, (typeof knowledgeData.actions)[0]>()
+    const map = new Map<string, ActionType>()
     knowledgeData.actions?.forEach((action) => {
       if (action.action_id) {
         map.set(action.action_id, action)
@@ -160,7 +183,7 @@ export function KnowledgeVisualization({
   const navigationGraph = useMemo(() => {
     const graph = new Map<
       string,
-      Array<{ action: typeof knowledgeData.actions[0]; targetScreen: typeof knowledgeData.screens[0] }>
+      Array<{ action: ActionType; targetScreen: ScreenType }>
     >()
 
     knowledgeData.transitions?.forEach((transition) => {
@@ -185,7 +208,7 @@ export function KnowledgeVisualization({
               action_id: actionId,
               name: "Unknown Action",
               type: "click",
-            } as typeof knowledgeData.actions[0]),
+            } as ActionType),
           targetScreen,
         })
       }
@@ -200,8 +223,8 @@ export function KnowledgeVisualization({
 
     return knowledgeData.workflows.map((workflow) => {
       const steps: Array<{
-        screen?: (typeof knowledgeData.screens)[0]
-        task?: (typeof knowledgeData.tasks)[0]
+        screen?: ScreenType
+        task?: TaskType
         type: "screen" | "task"
       }> = []
 
@@ -225,8 +248,8 @@ export function KnowledgeVisualization({
   }, [knowledgeData.workflows, knowledgeData.tasks, screenMap])
 
   const getScreenNavigations = (screenId: string): Array<{
-    action: (typeof knowledgeData.actions)[0]
-    targetScreen: (typeof knowledgeData.screens)[0]
+    action: ActionType
+    targetScreen: ScreenType
   }> => {
     return navigationGraph.get(screenId) || []
   }
@@ -510,7 +533,7 @@ export function KnowledgeVisualization({
                 const isExpanded = expandedFeatures.has(featureId)
                 const relatedScreens = feature.related_screens
                   ?.map((screenId) => screenMap.get(screenId))
-                  .filter((screen): screen is typeof knowledgeData.screens[0] => !!screen) || []
+                  .filter((screen): screen is ScreenType => !!screen) || []
 
                 return (
                   <Card key={featureId} className="bg-background">
@@ -655,8 +678,8 @@ export function KnowledgeVisualization({
 
                 // Get incoming navigations (screens that lead to this one)
                 const incomingNavigations: Array<{
-                  sourceScreen: (typeof knowledgeData.screens)[0]
-                  action: (typeof knowledgeData.actions)[0]
+                  sourceScreen: ScreenType
+                  action: ActionType
                 }> = []
                 knowledgeData.transitions?.forEach((transition) => {
                   if (transition.target_screen_id === screenId && transition.source_screen_id) {
@@ -671,7 +694,7 @@ export function KnowledgeVisualization({
                             action_id: transition.trigger_action_id,
                             name: "Unknown Action",
                             type: "click",
-                          } as (typeof knowledgeData.actions)[0]),
+                          } as ActionType),
                       })
                     }
                   }

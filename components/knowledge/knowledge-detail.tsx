@@ -355,37 +355,37 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
     <div className="bg-background">
       {/* Tabs with Actions */}
       <Tabs defaultValue="overview" className="w-full">
-        <div className="border-b">
-          <div className="flex items-center justify-between px-6">
-            <TabsList className="h-9 bg-transparent p-0 border-0">
-              <TabsTrigger 
-                value="overview" 
-                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
-              >
-                Overview
-              </TabsTrigger>
-              <TabsTrigger 
-                value="configuration" 
-                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
-              >
-                Configuration
-              </TabsTrigger>
-              <TabsTrigger 
-                value="contents" 
-                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
-              >
-                Contents
-              </TabsTrigger>
-              <TabsTrigger 
-                value="history" 
-                className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
-              >
-                Activity
-              </TabsTrigger>
-            </TabsList>
-            
-            {/* Primary Actions */}
-            <div className="flex items-center gap-2 py-2">
+        {/* Tabs Header Row with Actions */}
+        <div className="flex items-center justify-between gap-4 mb-8 border-b border-zinc-200 dark:border-zinc-800">
+          <TabsList className="h-9 bg-transparent p-0 border-0 border-b border-zinc-200 dark:border-zinc-800">
+            <TabsTrigger 
+              value="overview" 
+              className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger 
+              value="configuration" 
+              className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+            >
+              Configuration
+            </TabsTrigger>
+            <TabsTrigger 
+              value="contents" 
+              className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+            >
+              Contents
+            </TabsTrigger>
+            <TabsTrigger 
+              value="history" 
+              className="text-xs h-9 px-4 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground"
+            >
+              Activity
+            </TabsTrigger>
+          </TabsList>
+          
+          {/* Primary Actions */}
+          <div className="flex items-center gap-2 py-2">
               {/* Stop and Cancel - Only show for queued/running jobs */}
               {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
                 <>
@@ -453,7 +453,7 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                 )}
               </Button>
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
                 onClick={() => setDeleteDialogOpen(true)}
                 disabled={
@@ -462,7 +462,7 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                   // Disable delete for active jobs - user must cancel first
                   (["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId !== null)
                 }
-                className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                className="h-8 text-xs"
                 title={
                   ["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId
                     ? "Cancel the job before deleting"
@@ -473,12 +473,11 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                 Delete
               </Button>
             </div>
-          </div>
         </div>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="mt-0">
-          <div className="space-y-6 py-6 px-6">
+          <div className="space-y-6">
             {/* Progress for in-progress items */}
             {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
               <Card className="bg-muted/30">
@@ -556,24 +555,22 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
 
         {/* Configuration Tab */}
         <TabsContent value="configuration" className="mt-0">
-          <div className="py-6 px-6">
-            <Card className="bg-muted/30">
-              <CardContent className="pt-6">
-                <KnowledgeConfiguration
-                  knowledge={{
-                    ...knowledge,
-                    organizationId,
-                  }}
-                  onUpdate={handleConfigUpdate}
-                />
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <KnowledgeConfiguration
+                knowledge={{
+                  ...knowledge,
+                  organizationId,
+                }}
+                onUpdate={handleConfigUpdate}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Contents Tab */}
         <TabsContent value="contents" className="mt-0">
-          <div className="space-y-6 py-6 px-6">
+          <div className="space-y-6">
             {knowledge.status === "completed" ? (
               <div className="space-y-4">
                 {/* Job Selection Indicator */}
@@ -672,7 +669,55 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
 
                 {/* Knowledge Visualization - Show in understandable format */}
                 {knowledgeData && (
-                  <KnowledgeVisualization knowledgeData={knowledgeData} isLoading={isLoadingKnowledge} />
+                  <KnowledgeVisualization
+                    knowledgeData={{
+                      screens: knowledgeData.screens as Array<{
+                        screen_id?: string
+                        name?: string
+                        url?: string
+                        description?: string
+                        [key: string]: unknown
+                      }>,
+                      tasks: knowledgeData.tasks as Array<{
+                        task_id?: string
+                        name?: string
+                        description?: string
+                        steps?: Array<{ action_id?: string; screen_id?: string; [key: string]: unknown }>
+                        [key: string]: unknown
+                      }>,
+                      actions: knowledgeData.actions as Array<{
+                        action_id?: string
+                        name?: string
+                        type?: string
+                        target_screen_id?: string
+                        [key: string]: unknown
+                      }>,
+                      transitions: knowledgeData.transitions as Array<{
+                        transition_id?: string
+                        source_screen_id?: string
+                        target_screen_id?: string
+                        trigger_action_id?: string
+                        conditions?: string[]
+                        [key: string]: unknown
+                      }>,
+                      business_functions: knowledgeData.business_functions as Array<{
+                        business_function_id?: string
+                        name?: string
+                        description?: string
+                        related_screens?: string[]
+                        [key: string]: unknown
+                      }>,
+                      workflows: knowledgeData.workflows as Array<{
+                        workflow_id?: string
+                        name?: string
+                        description?: string
+                        steps?: Array<{ screen_id?: string; task_id?: string; [key: string]: unknown }>
+                        [key: string]: unknown
+                      }>,
+                      statistics: knowledgeData.statistics,
+                    }}
+                    isLoading={isLoadingKnowledge}
+                  />
                 )}
 
                 {/* Legacy Pages/Links Tabs - Keep for backward compatibility with website knowledge */}
@@ -862,43 +907,33 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                 )}
               </div>
             ) : (
-              <Card className="bg-muted/30">
-                <CardContent className="pt-6">
-                  <Empty className="border-0 p-0">
-                    <EmptyHeader>
-                      <EmptyTitle className="text-sm font-semibold">No contents available</EmptyTitle>
-                      <EmptyDescription className="text-xs">
-                        Knowledge sync must complete before contents are available.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                </CardContent>
-              </Card>
+              <Empty className="border-dashed border-zinc-200 dark:border-zinc-800 bg-background">
+                <EmptyHeader>
+                  <EmptyTitle className="text-sm font-semibold">No contents available</EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    Knowledge sync must complete before contents are available.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </div>
         </TabsContent>
 
         {/* History Tab */}
         <TabsContent value="history" className="mt-0">
-          <div className="py-6 px-6">
-            <Card className="bg-muted/30">
-              <CardContent className="pt-6">
-                <KnowledgeSyncActivity
-                  knowledgeId={knowledge.id}
-                  currentStatus={knowledge.status}
-                  startedAt={knowledge.startedAt}
-                  completedAt={knowledge.completedAt}
-                  pagesStored={knowledge.pagesStored}
-                  linksStored={knowledge.linksStored}
-                  extractionErrors={knowledge.extractionErrors}
-                  syncHistory={knowledge.syncHistory}
-                  createdAt={knowledge.createdAt}
-                  onJobSelect={setSelectedJobId}
-                  selectedJobId={selectedJobId}
-                />
-              </CardContent>
-            </Card>
-          </div>
+          <KnowledgeSyncActivity
+            knowledgeId={knowledge.id}
+            currentStatus={knowledge.status}
+            startedAt={knowledge.startedAt}
+            completedAt={knowledge.completedAt}
+            pagesStored={knowledge.pagesStored}
+            linksStored={knowledge.linksStored}
+            extractionErrors={knowledge.extractionErrors}
+            syncHistory={knowledge.syncHistory}
+            createdAt={knowledge.createdAt}
+            onJobSelect={setSelectedJobId}
+            selectedJobId={selectedJobId}
+          />
         </TabsContent>
       </Tabs>
 
@@ -931,7 +966,7 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-red-600 dark:bg-red-600 text-white hover:bg-red-700 dark:hover:bg-red-700 focus-visible:ring-red-600 dark:focus-visible:ring-red-500"
             >
               {isDeleting ? (
                 <>

@@ -72,11 +72,36 @@ export function KnowledgeCreationWizard({ organizationId }: KnowledgeCreationWiz
   const processingCompleteRef = useRef(false)
   const [currentStepIndex, setCurrentStepIndex] = useState(0)
 
+  // Step 4 - Processing (wait for completion) - Define before useEffect that uses it
+  const handleProcessingComplete = useCallback(() => {
+    processingCompleteRef.current = true
+    // Auto-advance to review step when processing completes
+    // Small delay to ensure state updates are processed
+    setTimeout(() => {
+      setCurrentStepIndex((prev) => {
+        if (prev === 2) { // Processing step is index 2 (0-based)
+          return 3 // Review step is index 3
+        }
+        return prev
+      })
+    }, 1000) // 1 second delay to allow UI to update
+  }, [])
+
   // Poll for completion status and auto-advance when processing completes
   useEffect(() => {
     if (currentStepIndex !== 2 || !formData.processing.knowledgeId) return // Only poll on processing step
 
+    let lastFetchTime = 0
+    const MIN_FETCH_INTERVAL = 5000 // Minimum 5 seconds between fetches
+
     const checkCompletion = async () => {
+      const now = Date.now()
+      // Throttle: only fetch if enough time has passed since last fetch
+      if (now - lastFetchTime < MIN_FETCH_INTERVAL) {
+        return
+      }
+      lastFetchTime = now
+
       try {
         const response = await fetch(`/api/knowledge/${formData.processing.knowledgeId}`)
         if (response.ok) {
@@ -94,8 +119,8 @@ export function KnowledgeCreationWizard({ organizationId }: KnowledgeCreationWiz
     // Check immediately
     checkCompletion()
     
-    // Then poll every 3 seconds
-    const interval = setInterval(checkCompletion, 3000)
+    // Then poll every 5 seconds (reduced from 3 seconds)
+    const interval = setInterval(checkCompletion, 5000)
     
     return () => clearInterval(interval)
   }, [currentStepIndex, formData.processing.knowledgeId, handleProcessingComplete])
@@ -352,20 +377,6 @@ export function KnowledgeCreationWizard({ organizationId }: KnowledgeCreationWiz
     return true
   }, [formData.processing.knowledgeId, isCreating, handleCreateKnowledge])
 
-  // Step 4 - Processing (wait for completion)
-  const handleProcessingComplete = useCallback(() => {
-    processingCompleteRef.current = true
-    // Auto-advance to review step when processing completes
-    // Small delay to ensure state updates are processed
-    setTimeout(() => {
-      setCurrentStepIndex((prev) => {
-        if (prev === 2) { // Processing step is index 2 (0-based)
-          return 3 // Review step is index 3
-        }
-        return prev
-      })
-    }, 1000) // 1 second delay to allow UI to update
-  }, [])
 
   // Step 5 - Review (no validation)
   const validateStep5 = useCallback((): boolean => {
@@ -503,13 +514,15 @@ export function KnowledgeCreationWizard({ organizationId }: KnowledgeCreationWiz
           <AlertDescription className="text-sm">{error}</AlertDescription>
         </Alert>
       )}
-      <MultiStepForm
-        steps={steps}
-        onComplete={handleComplete}
-        onCancel={() => router.push("/knowledge")}
-        currentStepIndex={currentStepIndex}
-        onStepChange={setCurrentStepIndex}
-      />
+      <div className="space-y-6">
+        <MultiStepForm
+          steps={steps}
+          onComplete={handleComplete}
+          onCancel={() => router.push("/knowledge")}
+          currentStepIndex={currentStepIndex}
+          onStepChange={setCurrentStepIndex}
+        />
+      </div>
     </div>
   )
 }

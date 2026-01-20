@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  Activity,
   BarChart3,
   CreditCard,
   LayoutDashboard,
@@ -13,12 +12,10 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { authClient } from "@/lib/auth/client"
 import { cn } from "@/lib/utils"
 import type { TenantState } from "@/lib/utils/tenant-state"
-
-const { useSession } = authClient
+import { NavUser } from "./nav-user"
+import { TeamSwitcher } from "./team-switcher"
 
 interface AppSidebarProps {
   tenantState?: TenantState
@@ -67,7 +64,6 @@ const organizationNavigation = [
 
 export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
   const pathname = usePathname()
-  const { data: session } = useSession()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -80,19 +76,15 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
     ...(tenantState === "organization" ? organizationNavigation : []),
   ]
 
-  const user = mounted && session?.user ? session.user : null
-  const userInitials = user?.name
-    ? user.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
-    : user?.email?.[0]?.toUpperCase() || "U"
-
   return (
-    <aside className="hidden w-56 border-r bg-background lg:flex lg:flex-col">
-      <nav className="flex flex-1 flex-col gap-0.5 p-3">
+    <aside className="hidden w-64 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 lg:flex lg:flex-col lg:h-screen">
+      {/* SidebarHeader - Team Switcher */}
+      <div className="border-b border-zinc-200 dark:border-zinc-800 p-3">
+        <TeamSwitcher />
+      </div>
+
+      {/* SidebarContent - Navigation */}
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           const Icon = item.icon
@@ -104,8 +96,8 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
               className={cn(
                 "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-accent text-foreground"
-                  : "text-foreground hover:bg-accent hover:text-foreground"
+                  ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100"
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -115,19 +107,10 @@ export function AppSidebar({ tenantState = "normal" }: AppSidebarProps) {
         })}
       </nav>
 
-      {/* User info at bottom - Resend style */}
-      {mounted && user && (
-        <div className="border-t p-3">
-          <div className="flex items-center gap-2">
-            <Avatar className="h-7 w-7 shrink-0">
-              <AvatarImage src={user.image || undefined} alt={user.name || user.email || "User"} />
-              <AvatarFallback className="text-xs font-medium">{userInitials}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium leading-snug">{user.name || "User"}</p>
-              <p className="truncate text-xs text-foreground leading-snug opacity-90">{user.email}</p>
-            </div>
-          </div>
+      {/* SidebarFooter - User Profile with Theme Toggle (Fixed at bottom) */}
+      {mounted && (
+        <div className="border-t border-zinc-200 dark:border-zinc-800 p-3">
+          <NavUser />
         </div>
       )}
     </aside>

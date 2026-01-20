@@ -1,11 +1,10 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { AppHeader } from "@/components/app-shell/app-header"
 import { AppSidebar } from "@/components/app-shell/app-sidebar"
+import { MobileSidebar } from "@/components/app-shell/mobile-sidebar"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { auth } from "@/lib/auth"
 import { isOnboardingComplete } from "@/lib/onboarding/flow"
-import { spacing } from "@/lib/utils/design-system"
 import { getTenantState } from "@/lib/utils/tenant-state"
 
 export default async function AppLayout({
@@ -25,20 +24,26 @@ export default async function AppLayout({
     redirect("/onboarding")
   }
 
-  // Get tenant state for header and sidebar
+  // Get tenant state for sidebar
   const tenantState = await getTenantState(session.user.id)
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <AppHeader tenantState={tenantState} />
-      <div className="flex flex-1 overflow-hidden">
-        <AppSidebar tenantState={tenantState} />
-        <main className="flex-1 overflow-y-auto bg-background">
-          <div className="mx-auto max-w-7xl px-6 py-6">
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </div>
-        </main>
-      </div>
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar - Left Panel */}
+      <AppSidebar tenantState={tenantState} />
+
+      {/* Main Content - Right Panel */}
+      <main className="flex-1 overflow-y-auto bg-background">
+        {/* Mobile menu trigger - shown only on mobile */}
+        <div className="lg:hidden">
+          <MobileSidebar tenantState={tenantState} />
+        </div>
+
+        {/* Content container - centered with max-width constraint */}
+        <div className="mx-auto max-w-[1000px] px-6 py-8">
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </div>
+      </main>
     </div>
   )
 }

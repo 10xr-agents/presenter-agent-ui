@@ -90,10 +90,15 @@ export async function GET(req: NextRequest) {
       ? await (ScreenAgent as any).find({ ownerId: organizationId })
       : await (ScreenAgent as any).find({ organizationId })
 
-    // Calculate total costs (minutes * rate - placeholder)
-    // TODO: Calculate actual costs from usage events
-    const costPerMinute = 0.1 // Placeholder rate
-    const totalCosts = analytics.averageSessionDuration * analytics.totalSessions * costPerMinute
+    // Calculate total costs from actual usage events
+    const { aggregateUsageMetrics } = await import("@/lib/usage/metering")
+    const usageMetrics = await aggregateUsageMetrics(
+      organizationId,
+      startDate,
+      endDate,
+      "presentation_minute"
+    )
+    const totalCosts = usageMetrics.totalCost // Already in dollars
 
     // Get total minutes consumed (from sessions)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -88,10 +88,10 @@ export function ProcessingStep({
     }
 
     fetchStatus()
-    // Poll status every 3 seconds while job is active
+    // Poll status every 5 seconds while job is active (reduced from 3 seconds to reduce API load)
     const interval = setInterval(() => {
       fetchStatus()
-    }, 3000)
+    }, 5000)
 
     return () => clearInterval(interval)
   }, [knowledgeId, currentJobId])

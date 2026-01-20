@@ -1,5 +1,6 @@
 import { headers } from "next/headers"
 import { Dashboard } from "@/components/analytics/dashboard"
+import { PageShell } from "@/components/shell/page-shell"
 import { auth } from "@/lib/auth"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
@@ -20,14 +21,11 @@ export default async function AnalyticsPage() {
   const analyticsOrgId = organizationId || session.user.id
 
   return (
-    <div className="py-6">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold">Analytics</h1>
-        <p className="mt-0.5 text-sm text-foreground">
-          Detailed analytics and insights for your Screen Agents
-        </p>
-      </div>
+    <PageShell
+      title="Analytics"
+      description="Detailed analytics and insights for your Screen Agents"
+    >
       <Dashboard organizationId={analyticsOrgId} />
-    </div>
+    </PageShell>
   )
 }

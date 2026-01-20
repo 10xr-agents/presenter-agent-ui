@@ -5,7 +5,6 @@ import Link from "next/link"
 import type { TenantState } from "@/lib/utils/tenant-state"
 import { MobileSidebar } from "./mobile-sidebar"
 import { OrganizationSwitcher } from "./organization-switcher"
-import { UserMenu } from "./user-menu"
 
 interface AppHeaderProps {
   tenantState?: TenantState
@@ -30,7 +29,7 @@ export function AppHeader({ tenantState = "normal" }: AppHeaderProps) {
           </Link>
         </div>
 
-        {/* Right side - Organization Switcher and User Menu */}
+        {/* Right side - Organization Switcher only (User profile in sidebar) */}
         <div className="flex items-center gap-2">
           {/* Only show organization switcher in organization mode */}
           {tenantState === "organization" && (
@@ -38,7 +37,6 @@ export function AppHeader({ tenantState = "normal" }: AppHeaderProps) {
               <OrganizationSwitcher />
             </div>
           )}
-          <UserMenu />
         </div>
       </div>
     </header>

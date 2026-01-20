@@ -11,12 +11,12 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-red-600 dark:bg-red-600 text-white hover:bg-red-700 dark:hover:bg-red-700 focus-visible:ring-red-600 dark:focus-visible:ring-red-500",
         outline:
-          "border border-border/80 bg-muted/30 text-foreground shadow-sm hover:bg-muted/50 hover:border-border active:bg-muted/60 active:shadow-none",
+          "border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 active:bg-zinc-100 dark:active:bg-zinc-700 active:shadow-none",
         secondary:
-          "bg-secondary text-foreground hover:bg-secondary/80",
-        ghost: "border border-transparent bg-muted/20 text-foreground hover:bg-muted/40 hover:border-border/50 active:bg-muted/50",
+          "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700",
+        ghost: "border border-transparent text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700 active:bg-zinc-200 dark:active:bg-zinc-700",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

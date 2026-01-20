@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { KnowledgeListTable } from "@/components/knowledge/knowledge-list-table"
+import { PageShell } from "@/components/shell/page-shell"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
@@ -166,29 +167,23 @@ export default async function KnowledgePage({
   }
 
   return (
-    <div className="space-y-6 py-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Knowledge</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Manage knowledge extracted from websites, documentation, videos, and files
-          </p>
-        </div>
+    <PageShell
+      title="Knowledge"
+      description="Manage knowledge extracted from websites, documentation, videos, and files"
+      action={
         <Button asChild size="sm">
           <Link href="/knowledge/new">
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create Knowledge
           </Link>
         </Button>
-      </div>
-
-      {/* Knowledge List Table */}
+      }
+    >
       <KnowledgeListTable
         organizationId={knowledgeOrgId}
         initialData={initialData as never}
         initialPagination={initialPagination}
       />
-    </div>
+    </PageShell>
   )
 }

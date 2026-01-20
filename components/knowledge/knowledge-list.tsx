@@ -287,7 +287,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleDelete(knowledge.id)}
-                  className="h-7 text-xs text-destructive hover:text-destructive"
+                  className="h-7 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20"
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -311,7 +311,7 @@ export function KnowledgeList({ organizationId }: KnowledgeListProps) {
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-red-600 dark:bg-red-600 text-white hover:bg-red-700 dark:hover:bg-red-700 focus-visible:ring-red-600 dark:focus-visible:ring-red-500"
             >
               {isDeleting ? (
                 <>

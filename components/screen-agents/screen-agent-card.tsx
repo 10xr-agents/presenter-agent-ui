@@ -122,7 +122,10 @@ export function ScreenAgentCard({
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onDelete} className="text-xs text-destructive">
+            <DropdownMenuItem 
+              onClick={onDelete} 
+              className="text-xs text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/20 cursor-pointer"
+            >
               <Trash2 className="mr-2 h-3.5 w-3.5" />
               Delete
             </DropdownMenuItem>

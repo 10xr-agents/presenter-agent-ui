@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation"
 import { KnowledgeDetail } from "@/components/knowledge/knowledge-detail"
 import { Button } from "@/components/ui/button"
 import { KnowledgeStatusBadge, type KnowledgeStatus } from "@/components/knowledge/knowledge-status-badge"
+import { PageShell } from "@/components/shell/page-shell"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { KnowledgeSource } from "@/lib/models/knowledge-source"
@@ -61,11 +62,13 @@ export default async function KnowledgeDetailPage({
     const knowledge = await (KnowledgeSource as any).findById(id).lean()
 
     if (!knowledge) {
+      // Knowledge not found - show 404 page
       notFound()
     }
 
     // Verify the knowledge belongs to the user's organization
     if (knowledge.organizationId !== knowledgeOrgId) {
+      // Access denied - show 404 (don't reveal existence of resource)
       notFound()
     }
 
@@ -248,67 +251,85 @@ export default async function KnowledgeDetailPage({
     }
 
     return (
-      <div className="space-y-0">
-        {/* Header with Back Navigation */}
-        <div className="border-b bg-background">
-          <div className="space-y-4 py-6 px-6">
-            {/* Back Navigation */}
-            <Button
-              variant="ghost"
-              size="sm"
-              asChild
-              className="h-7 text-xs text-muted-foreground hover:text-foreground hover:bg-accent"
-            >
-              <Link href="/knowledge">
-                <ArrowLeft className="mr-1.5 h-3 w-3" />
-                Knowledge
-              </Link>
-            </Button>
+      <PageShell
+        title=""
+        description=""
+        maxWidth="max-w-[1100px]"
+      >
+        {/* Breadcrumbs */}
+        <div className="mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="h-7 text-xs text-muted-foreground hover:text-foreground hover:bg-accent"
+          >
+            <Link href="/knowledge">
+              <ArrowLeft className="mr-1.5 h-3 w-3" />
+              Back to Knowledge
+            </Link>
+          </Button>
+        </div>
 
-            {/* Primary Header - Name, Status, Source URL */}
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-lg font-semibold truncate">
-                  {knowledgeData.name || knowledgeData.sourceName}
-                </h1>
-                <KnowledgeStatusBadge status={knowledgeData.status} />
-              </div>
-              {knowledgeData.description && (
-                <p className="text-sm text-muted-foreground">
-                  {knowledgeData.description}
-                </p>
-              )}
-              {/* Source URL/File */}
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span>Source:</span>
-                {knowledgeData.sourceUrl ? (
-                  <a
-                    href={knowledgeData.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium hover:text-primary transition-colors truncate max-w-md"
-                  >
-                    {knowledgeData.sourceUrl}
-                  </a>
-                ) : (
-                  <span className="font-medium truncate max-w-md">
-                    {knowledgeData.fileName || knowledgeData.sourceName}
-                  </span>
-                )}
-              </div>
-            </div>
+        {/* Header with Title, Status Badge, and Description */}
+        <div className="space-y-1.5 mb-6">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-lg font-semibold truncate">
+              {knowledgeData.name || knowledgeData.sourceName}
+            </h1>
+            <KnowledgeStatusBadge status={knowledgeData.status} />
+          </div>
+          {knowledgeData.description && (
+            <p className="text-sm text-foreground">
+              {knowledgeData.description}
+            </p>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>Source:</span>
+            {knowledgeData.sourceUrl ? (
+              <a
+                href={knowledgeData.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium hover:text-primary transition-colors truncate max-w-md"
+              >
+                {knowledgeData.sourceUrl}
+              </a>
+            ) : (
+              <span className="font-medium truncate max-w-md">
+                {knowledgeData.fileName || knowledgeData.sourceName}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Main Content - Tabs integrated within page frame */}
+        {/* Main Content - Tabs */}
         <KnowledgeDetail 
           knowledge={knowledgeData} 
           organizationId={knowledgeOrgId}
         />
-      </div>
+      </PageShell>
     )
   } catch (error: unknown) {
-    console.error("Knowledge fetch error:", error)
+    // Only log actual errors (database connection issues, etc.)
+    // notFound() throws NEXT_NOT_FOUND or NEXT_HTTP_ERROR_FALLBACK internally
+    // These are expected and should not be logged as errors
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorString = String(error)
+    
+    // Check if this is a Next.js notFound() call (these are expected, not real errors)
+    const isNotFoundError = 
+      errorMessage.includes("NEXT_NOT_FOUND") || 
+      errorMessage.includes("NEXT_HTTP_ERROR_FALLBACK") ||
+      errorString.includes("NEXT_NOT_FOUND") ||
+      errorString.includes("NEXT_HTTP_ERROR_FALLBACK")
+    
+    if (!isNotFoundError) {
+      // Only log actual unexpected errors
+      console.error("Knowledge fetch error:", error)
+    }
+    
+    // Show 404 page for any errors to avoid exposing system details
     notFound()
   }
 }

@@ -124,18 +124,10 @@ export function ScreenAgentAnalytics({ screenAgentId }: ScreenAgentAnalyticsProp
     return <div>No data available</div>
   }
 
-  // Generate chart data (placeholder)
-  const usageChartData = [
-    { date: "2024-01-01", minutes: 50, sessions: 5 },
-    { date: "2024-01-02", minutes: 75, sessions: 8 },
-    { date: "2024-01-03", minutes: 60, sessions: 6 },
-  ]
-
-  const costChartData = [
-    { date: "2024-01-01", cost: 5 },
-    { date: "2024-01-02", cost: 7.5 },
-    { date: "2024-01-03", cost: 6 },
-  ]
+  // Chart data should come from API - using empty arrays for now
+  // Charts should handle empty data gracefully
+  const usageChartData: Array<{ date: string; minutes: number; sessions: number }> = []
+  const costChartData: Array<{ date: string; cost: number }> = []
 
   // Adapt metrics for DashboardMetrics component
   const dashboardMetrics = {
@@ -193,10 +185,13 @@ export function ScreenAgentAnalytics({ screenAgentId }: ScreenAgentAnalyticsProp
 
       <DashboardMetrics {...dashboardMetrics} />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <UsageChart data={usageChartData} />
-        <CostChart data={costChartData} />
-      </div>
+      {/* Charts - Only show if data is available */}
+      {(usageChartData.length > 0 || costChartData.length > 0) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {usageChartData.length > 0 && <UsageChart data={usageChartData} />}
+          {costChartData.length > 0 && <CostChart data={costChartData} />}
+        </div>
+      )}
 
       {data.analytics.topQuestions.length > 0 && (
         <Card>

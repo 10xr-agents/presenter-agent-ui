@@ -1,8 +1,9 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, Clock } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { AlertCircle, CheckCircle2, Clock, RefreshCw } from "lucide-react"
+import { useCallback, useEffect, useState, useRef } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { getWorkflowStatus, type WorkflowStatusResponse } from "@/lib/knowledge-extraction/client"
@@ -30,14 +31,38 @@ export function KnowledgeProgress({
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatusResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isFetching, setIsFetching] = useState(false)
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0)
+  const [isPollingPaused, setIsPollingPaused] = useState(false)
+  const lastFetchTimeRef = useRef<number>(0)
+  const MAX_CONSECUTIVE_ERRORS = 3 // Stop polling after 3 consecutive errors
 
   // Fetch workflow status from knowledge extraction API
-  const fetchWorkflowStatus = useCallback(async () => {
+  const fetchWorkflowStatus = useCallback(async (isManualRetry = false) => {
     if (!jobId) return
 
+    // Prevent concurrent fetches and throttle rapid calls
+    const now = Date.now()
+    const MIN_FETCH_INTERVAL = 3000 // Minimum 3 seconds between fetches
+    if (isFetching || (!isManualRetry && now - lastFetchTimeRef.current < MIN_FETCH_INTERVAL)) {
+      return
+    }
+
+    // If polling is paused and this isn't a manual retry, don't fetch
+    if (isPollingPaused && !isManualRetry) {
+      return
+    }
+
     try {
+      setIsFetching(true)
       setIsLoading(true)
-      setError(null)
+      // Clear error on manual retry
+      if (isManualRetry) {
+        setError(null)
+        setConsecutiveErrors(0)
+        setIsPollingPaused(false)
+      }
+      lastFetchTimeRef.current = now
 
       const status = await getWorkflowStatus(jobId)
 
@@ -50,7 +75,11 @@ export function KnowledgeProgress({
         progress: status.progress,
       })
 
+      // Reset error count on successful fetch
+      setConsecutiveErrors(0)
+      setIsPollingPaused(false)
       setWorkflowStatus(status)
+      setError(null) // Clear any previous errors
 
       // Handle completion
       if (status.status === "completed") {
@@ -58,6 +87,7 @@ export function KnowledgeProgress({
           knowledgeId,
           jobId,
         })
+        setIsPollingPaused(true) // Stop polling
         onComplete?.()
       } else if (status.status === "failed") {
         console.error("[Knowledge Progress] Workflow failed", {
@@ -69,12 +99,14 @@ export function KnowledgeProgress({
           ? status.errors[0] 
           : "Knowledge extraction failed"
         setError(errorMessage)
+        setIsPollingPaused(true) // Stop polling on workflow failure
         onError?.(errorMessage)
       } else if (status.status === "cancelled") {
         console.log("[Knowledge Progress] Workflow cancelled", {
           knowledgeId,
           jobId,
         })
+        setIsPollingPaused(true) // Stop polling
       }
     } catch (err: unknown) {
       // Extract error details with better handling
@@ -110,33 +142,52 @@ export function KnowledgeProgress({
       }
       
       console.error("[Knowledge Progress] Error fetching workflow status", errorDetails)
+      
+      // Increment consecutive error count
+      const newErrorCount = consecutiveErrors + 1
+      setConsecutiveErrors(newErrorCount)
       setError(errorMessage)
+      
+      // Pause polling after MAX_CONSECUTIVE_ERRORS consecutive errors
+      if (newErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+        setIsPollingPaused(true)
+        console.warn("[Knowledge Progress] Stopping automatic polling due to consecutive errors", {
+          consecutiveErrors: newErrorCount,
+        })
+      }
+      
       onError?.(errorMessage)
     } finally {
       setIsLoading(false)
+      setIsFetching(false)
     }
-  }, [jobId, knowledgeId, workflowId, onComplete, onError])
+  }, [jobId, knowledgeId, workflowId, onComplete, onError, isFetching, consecutiveErrors, isPollingPaused])
 
   // Initial fetch
   useEffect(() => {
     if (!jobId) return
-    fetchWorkflowStatus()
+    fetchWorkflowStatus(false) // Initial fetch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId])
 
-  // Polling for active workflows
+  // Polling for active workflows - throttled to prevent excessive API calls
+  // Only polls when workflow is active and polling is not paused
   useEffect(() => {
     if (!jobId || !workflowStatus) return
     if (!["queued", "running"].includes(workflowStatus.status)) {
       return
     }
+    if (isPollingPaused) {
+      return // Don't poll when paused (e.g., after errors)
+    }
 
+    // Use a longer interval to reduce API call frequency
     const interval = setInterval(() => {
-      fetchWorkflowStatus()
-    }, 3000) // Poll every 3 seconds
+      fetchWorkflowStatus(false) // Automatic poll
+    }, 5000) // Poll every 5 seconds (reduced from 3 seconds)
 
     return () => clearInterval(interval)
-  }, [jobId, workflowStatus?.status, fetchWorkflowStatus])
+  }, [jobId, workflowStatus?.status, fetchWorkflowStatus, isPollingPaused])
 
   const getStatusIcon = () => {
     if (!workflowStatus) return null
@@ -216,6 +267,42 @@ export function KnowledgeProgress({
             <AlertCircle className="h-3.5 w-3.5 text-destructive" />
             <span className="font-medium text-destructive">Cancelled</span>
           </div>
+        </div>
+      )
+    }
+    
+    // Show error with retry button if we have an error and polling is paused
+    if (error && isPollingPaused) {
+      return (
+        <div className={cn("space-y-2", className)}>
+          <div className="flex items-center gap-2 text-xs">
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+            <span className="font-medium text-destructive">Error</span>
+          </div>
+          <Alert variant="destructive" className="py-2">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-xs space-y-2">
+              <div>{error}</div>
+              {consecutiveErrors >= MAX_CONSECUTIVE_ERRORS && (
+                <div className="pt-1 border-t border-destructive/20">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Automatic status checks have been paused after {consecutiveErrors} consecutive errors.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchWorkflowStatus(true)}
+                    disabled={isFetching}
+                    className="h-7 text-xs"
+                  >
+                    <RefreshCw className={cn("mr-1.5 h-3 w-3", isFetching && "animate-spin")} />
+                    Retry
+                  </Button>
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
         </div>
       )
     }
@@ -353,10 +440,31 @@ export function KnowledgeProgress({
         </Alert>
       )}
 
-      {/* Errors */}
-      {error && (
+      {/* Fetch Error Display - with retry button */}
+      {error && isPollingPaused && (
         <Alert variant="destructive" className="py-2">
-          <AlertDescription className="text-xs">{error}</AlertDescription>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-xs space-y-2">
+            <div>{error}</div>
+            {consecutiveErrors >= MAX_CONSECUTIVE_ERRORS && (
+              <div className="pt-1 border-t border-destructive/20">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Automatic status checks have been paused after {consecutiveErrors} consecutive errors.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchWorkflowStatus(true)}
+                  disabled={isFetching}
+                  className="h-7 text-xs"
+                >
+                  <RefreshCw className={cn("mr-1.5 h-3 w-3", isFetching && "animate-spin")} />
+                  Retry
+                </Button>
+              </div>
+            )}
+          </AlertDescription>
         </Alert>
       )}
     </div>

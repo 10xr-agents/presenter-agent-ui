@@ -662,7 +662,7 @@ export function KnowledgeListTable({
                               // Disable delete for active jobs - user must cancel first
                               (["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId !== null)
                             }
-                            className="text-xs text-destructive focus:text-destructive"
+                            className="text-xs text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/20 cursor-pointer"
                           >
                             {isDeleting ? (
                               <>
@@ -727,7 +727,7 @@ export function KnowledgeListTable({
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deletingId !== null}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-red-600 dark:bg-red-600 text-white hover:bg-red-700 dark:hover:bg-red-700 focus-visible:ring-red-600 dark:focus-visible:ring-red-500"
             >
               {deletingId ? (
                 <>

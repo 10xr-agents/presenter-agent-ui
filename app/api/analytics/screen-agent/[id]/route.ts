@@ -55,8 +55,18 @@ export async function GET(
       return sum + minutes
     }, 0)
 
-    // Calculate costs (placeholder)
-    const costPerMinute = 0.1 // Placeholder rate
+    // Calculate costs from actual usage events
+    const { aggregateUsageMetrics } = await import("@/lib/usage/metering")
+    const agentOrgId = screenAgent.organizationId || session.user.id
+    const usageMetrics = await aggregateUsageMetrics(
+      agentOrgId,
+      startDate,
+      endDate,
+      "presentation_minute"
+    )
+    const costPerMinute = usageMetrics.totalQuantity > 0 
+      ? usageMetrics.totalCost / usageMetrics.totalQuantity 
+      : 0
     const totalCosts = totalMinutes * costPerMinute
 
     // Get unique viewers

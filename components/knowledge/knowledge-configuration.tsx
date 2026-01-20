@@ -313,83 +313,78 @@ export function KnowledgeConfiguration({
           </Alert>
         </div>
       ) : (
-        <div className="space-y-3">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
           {/* Basic Information */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-foreground opacity-60">Name:</span>
-              <span className="font-medium">{knowledge.name || knowledge.sourceName}</span>
-            </div>
-            {knowledge.description && (
-              <div className="text-xs text-foreground opacity-85">{knowledge.description}</div>
-            )}
+          <div>
+            <dt className="text-muted-foreground">Name</dt>
+            <dd className="mt-0.5 font-medium">{knowledge.name || knowledge.sourceName}</dd>
           </div>
+          {knowledge.description && (
+            <div className="col-span-2">
+              <dt className="text-muted-foreground">Description</dt>
+              <dd className="mt-0.5 text-foreground">{knowledge.description}</dd>
+            </div>
+          )}
 
           {/* Source */}
-          <div className="space-y-1 border-t pt-2">
-            <div className="text-xs text-foreground opacity-60">Source</div>
-            <div className="flex items-center gap-2 text-xs">
+          <div className="col-span-2">
+            <dt className="text-muted-foreground">Source</dt>
+            <dd className="mt-0.5 flex items-center gap-2 font-medium">
               {knowledge.sourceType === "website" || knowledge.sourceType === "documentation" || knowledge.sourceType === "video" ? (
                 <Globe className="h-3.5 w-3.5 text-foreground opacity-60" />
               ) : (
                 <Settings className="h-3.5 w-3.5 text-foreground opacity-60" />
               )}
-              <span className="font-medium">{knowledge.sourceUrl || knowledge.fileName || knowledge.sourceName}</span>
-            </div>
+              <span>{knowledge.sourceUrl || knowledge.fileName || knowledge.sourceName}</span>
+            </dd>
           </div>
 
           {/* Crawl Configuration */}
-          <div className="space-y-2 border-t pt-2">
-            <div className="text-xs text-foreground opacity-60">Crawl Settings</div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-foreground opacity-60">Strategy:</span>{" "}
-                <span className="font-medium">{knowledge.strategy || "BFS"}</span>
-              </div>
-              <div>
-                <span className="text-foreground opacity-60">Max Pages:</span>{" "}
-                <span className="font-medium">{knowledge.maxPages || 100}</span>
-              </div>
-              <div>
-                <span className="text-foreground opacity-60">Max Depth:</span>{" "}
-                <span className="font-medium">{knowledge.maxDepth || 10}</span>
-              </div>
-            </div>
+          <div>
+            <dt className="text-muted-foreground">Strategy</dt>
+            <dd className="mt-0.5 font-medium">{knowledge.strategy || "BFS"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Max Pages</dt>
+            <dd className="mt-0.5 font-medium">{knowledge.maxPages || 100}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Max Depth</dt>
+            <dd className="mt-0.5 font-medium">{knowledge.maxDepth || 10}</dd>
           </div>
 
           {/* Advanced Options */}
           {(knowledge.includePaths && knowledge.includePaths.length > 0) ||
           (knowledge.excludePaths && knowledge.excludePaths.length > 0) ? (
-            <div className="space-y-2 border-t pt-2">
-              <div className="text-xs text-foreground opacity-60">Path Restrictions</div>
+            <>
               {knowledge.includePaths && knowledge.includePaths.length > 0 && (
-                <div className="text-xs">
-                  <span className="text-foreground opacity-60">Include:</span>{" "}
-                  <span className="font-medium font-mono">
+                <div className="col-span-2">
+                  <dt className="text-muted-foreground">Include Paths</dt>
+                  <dd className="mt-0.5 font-medium font-mono text-xs">
                     {knowledge.includePaths.join(", ")}
-                  </span>
+                  </dd>
                 </div>
               )}
               {knowledge.excludePaths && knowledge.excludePaths.length > 0 && (
-                <div className="text-xs">
-                  <span className="text-foreground opacity-60">Exclude:</span>{" "}
-                  <span className="font-medium font-mono">
+                <div className="col-span-2">
+                  <dt className="text-muted-foreground">Exclude Paths</dt>
+                  <dd className="mt-0.5 font-medium font-mono text-xs">
                     {knowledge.excludePaths.join(", ")}
-                  </span>
+                  </dd>
                 </div>
               )}
-            </div>
+            </>
           ) : null}
 
           {/* Authentication */}
-          <div className="space-y-1 border-t pt-2">
-            <div className="text-xs text-foreground opacity-60">Authentication</div>
-            <div className="flex items-center gap-2 text-xs">
+          <div className="col-span-2">
+            <dt className="text-muted-foreground">Authentication</dt>
+            <dd className="mt-0.5 flex items-center gap-2">
               <Lock className="h-3.5 w-3.5 text-foreground opacity-60" />
               <span>Not configured</span>
-            </div>
+            </dd>
           </div>
-        </div>
+        </dl>
       )}
     </div>
   )

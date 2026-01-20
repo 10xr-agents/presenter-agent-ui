@@ -1,6 +1,10 @@
+import { ArrowLeft } from "lucide-react"
 import { headers } from "next/headers"
+import Link from "next/link"
 import { redirect } from "next/navigation"
 import { KnowledgeCreationWizard } from "@/components/knowledge/knowledge-creation-wizard"
+import { PageShell } from "@/components/shell/page-shell"
+import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
@@ -22,14 +26,29 @@ export default async function NewKnowledgePage() {
   const knowledgeOrgId = tenantState === "normal" ? session.user.id : (organizationId || session.user.id)
 
   return (
-    <div className="py-6">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold">Create Knowledge</h1>
-        <p className="mt-0.5 text-sm text-foreground">
-          Extract and index knowledge from websites, documentation, videos, or files
-        </p>
+    <PageShell
+      title="Create Knowledge"
+      description="Extract and index knowledge from websites, documentation, videos, or files"
+    >
+      <div className="space-y-6">
+        {/* Breadcrumbs */}
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="h-7 text-xs text-muted-foreground hover:text-foreground hover:bg-accent"
+          >
+            <Link href="/knowledge">
+              <ArrowLeft className="mr-1.5 h-3 w-3" />
+              Knowledge
+            </Link>
+          </Button>
+        </div>
+
+        {/* Wizard Content */}
+        <KnowledgeCreationWizard organizationId={knowledgeOrgId} />
       </div>
-      <KnowledgeCreationWizard organizationId={knowledgeOrgId} />
-    </div>
+    </PageShell>
   )
 }

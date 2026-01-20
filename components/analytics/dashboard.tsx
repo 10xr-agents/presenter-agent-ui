@@ -110,18 +110,10 @@ export function Dashboard({ organizationId }: DashboardProps) {
     )
   }
 
-  // Generate chart data (placeholder - would need actual time-series data from API)
-  const usageChartData = [
-    { date: "2024-01-01", minutes: 100, sessions: 10 },
-    { date: "2024-01-02", minutes: 150, sessions: 15 },
-    { date: "2024-01-03", minutes: 120, sessions: 12 },
-  ]
-
-  const costChartData = [
-    { date: "2024-01-01", cost: 10 },
-    { date: "2024-01-02", cost: 15 },
-    { date: "2024-01-03", cost: 12 },
-  ]
+  // Use empty arrays if chart data is not available from API
+  // Charts should handle empty data gracefully
+  const usageChartData: Array<{ date: string; minutes: number; sessions: number }> = []
+  const costChartData: Array<{ date: string; cost: number }> = []
 
   return (
     <div className="space-y-6">
@@ -134,11 +126,13 @@ export function Dashboard({ organizationId }: DashboardProps) {
       {/* Metrics - Resend style: subtle cards */}
       <DashboardMetrics {...data.metrics} />
 
-      {/* Charts */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <UsageChart data={usageChartData} />
-        <CostChart data={costChartData} />
-      </div>
+      {/* Charts - Only show if data is available */}
+      {(usageChartData.length > 0 || costChartData.length > 0) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {usageChartData.length > 0 && <UsageChart data={usageChartData} />}
+          {costChartData.length > 0 && <CostChart data={costChartData} />}
+        </div>
+      )}
 
       {/* Tables */}
       <div className="grid gap-4 md:grid-cols-2">

@@ -141,7 +141,7 @@ export function ScreenAgentTable({
                   setAgentToDelete(row._id)
                   setDeleteDialogOpen(true)
                 }}
-                className="text-destructive"
+                className="text-red-600 dark:text-red-400 focus:text-red-700 dark:focus:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/20 cursor-pointer"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete

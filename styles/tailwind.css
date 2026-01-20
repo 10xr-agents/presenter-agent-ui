@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
 /* ============================================================================
    Screen Agent Platform
    Brand Theme based on brand guidelines (brand/brand.md)
@@ -76,7 +78,8 @@
      ========================================================================== */
 
   /* Font families - Using Next.js font CSS variables */
-  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  /* Note: Update app/layout.tsx to use Inter instead of Poppins for Resend aesthetic */
+  --font-sans: var(--font-inter, var(--font-poppins)), ui-sans-serif, system-ui, sans-serif;
   --font-accent: var(--font-sofia), ui-sans-serif, sans-serif;
 
   /* Font sizes matching brand guidelines */
@@ -87,53 +90,60 @@
   --text-body-lg: 1.125rem; /* 18px */
   --text-body: 1rem;    /* 16px */
   --text-small: 0.875rem; /* 14px */
-  --text-caption: 0.75rem; /* 12px */
+  --text-caption: 0.75rem;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar); /* 12px */
 }
 
 /* =============================================================================
    CSS Variables - Light Mode (Default)
-   Primary: Cornflower Blue (#568AFF) → HSL: 220 100% 67%
-   Secondary: Green-Blue (#0665BA) → HSL: 207 95% 38%
-   Rich Black (#001320) → HSL: 207 100% 6%
+   Resend.com-inspired Zinc-based industrial design
+   Soft, warm grays with subtle contrast
    ============================================================================= */
 
 :root {
-  /* Background & Foreground */
-  --background: 0 0% 100%;
-  --foreground: 207 100% 6%;  /* Rich Black */
+  /* Background & Foreground - Zinc-based soft palette */
+  --background: 240 5% 98%;  /* Very subtle off-white (Zinc-50 equivalent) - reduces eye strain */
+  --foreground: 240 10% 3.9%;  /* Deep zinc for text - warm, readable */
 
-  /* Cards & Popovers */
-  --card: 0 0% 100%;
-  --card-foreground: 207 100% 6%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 207 100% 6%;
+  /* Cards & Popovers - Pure white to pop against subtle background */
+  --card: 0 0% 100%;  /* Pure white - creates depth and contrast */
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;  /* Pure white - creates depth and contrast */
+  --popover-foreground: 240 10% 3.9%;
 
-  /* Primary: Cornflower Blue */
+  /* Primary: Cornflower Blue (keeping brand color) */
   --primary: 220 100% 67%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary: Lighter blue tint */
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 207 95% 8%;  /* Slightly lighter for better contrast on secondary backgrounds */
+  /* Secondary: Zinc-based subtle gray */
+  --secondary: 240 4.8% 95.9%;  /* Zinc-100 equivalent */
+  --secondary-foreground: 240 5.9% 10%;  /* Zinc-900 equivalent */
 
-  /* Muted - Readable but distinguishable for appropriate use cases (labels, placeholders, helper text, metadata) */
-  --muted: 210 40% 96%;
-  --muted-foreground: 207 40% 35%;  /* Readable but clearly secondary - for labels, placeholders, helper text, metadata only */
+  /* Muted - Zinc-based for labels, placeholders, helper text, metadata */
+  --muted: 240 4.8% 95.9%;  /* Zinc-100 equivalent */
+  --muted-foreground: 240 3.8% 46.1%;  /* Zinc-500 equivalent - readable but clearly secondary */
 
-  /* Accent: French Sky Blue */
+  /* Accent: French Sky Blue (keeping brand color) */
   --accent: 212 98% 70%;
-  --accent-foreground: 207 100% 6%;
+  --accent-foreground: 240 10% 3.9%;
 
   /* Destructive */
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  /* Borders & Inputs */
-  --border: 210 30% 90%;
-  --input: 210 30% 90%;
+  /* Borders & Inputs - Lighter, subtle Zinc borders */
+  --border: 240 5.9% 90%;  /* Zinc-200 equivalent - subtle, not harsh */
+  --input: 240 5.9% 90%;  /* Zinc-200 equivalent */
   --ring: 220 100% 67%;  /* Cornflower Blue */
 
-  /* Radius */
+  /* Radius - Standard middle ground (Resend-style) */
   --radius: 0.5rem;
 
   /* Chart colors - Brand aligned */
@@ -143,57 +153,59 @@
   --chart-4: 173 58% 39%;
   --chart-5: 43 74% 66%;
 
-  /* Sidebar (for chat interface) */
-  --sidebar-background: 207 100% 6%;  /* Rich Black */
-  --sidebar-foreground: 0 0% 100%;
+  /* Sidebar (for chat interface) - Zinc-based */
+  --sidebar-background: 240 10% 3.9%;  /* Deep zinc */
+  --sidebar-foreground: 0 0% 98%;
   --sidebar-primary: 220 100% 67%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 207 50% 15%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-border: 207 50% 15%;
+  --sidebar-accent: 240 5.3% 26.1%;  /* Zinc-700 equivalent */
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 240 5.3% 26.1%;  /* Zinc-700 equivalent */
   --sidebar-ring: 220 100% 67%;
+  --sidebar: hsl(240 5% 98%);
 }
 
 /* =============================================================================
    CSS Variables - Dark Mode
-   Background: Rich Black (#001320)
+   Resend.com-inspired Zinc-based industrial design
+   NO PITCH BLACK - Deep Zinc tones for comfortable viewing
    ============================================================================= */
 
 .dark {
-  /* Background & Foreground */
-  --background: 207 100% 6%;  /* Rich Black */
-  --foreground: 0 0% 98%;
+  /* Background & Foreground - Deep Zinc (NOT pitch black #000000) */
+  --background: 240 10% 3.9%;  /* Deep Zinc-950 equivalent - warm, not harsh */
+  --foreground: 0 0% 98%;  /* Off-white for text */
 
-  /* Cards & Popovers */
-  --card: 207 80% 8%;
+  /* Cards & Popovers - Slightly lighter Zinc for depth */
+  --card: 240 10% 6%;  /* Zinc-950 with slight lift - creates depth without borders */
   --card-foreground: 0 0% 98%;
-  --popover: 207 80% 8%;
+  --popover: 240 10% 6%;  /* Zinc-950 with slight lift - creates depth without borders */
   --popover-foreground: 0 0% 98%;
 
-  /* Primary: Cornflower Blue */
+  /* Primary: Cornflower Blue (keeping brand color) */
   --primary: 220 100% 67%;
-  --primary-foreground: 207 100% 6%;
+  --primary-foreground: 240 10% 3.9%;
 
-  /* Secondary */
-  --secondary: 207 50% 15%;
+  /* Secondary - Zinc-based */
+  --secondary: 240 3.7% 15.9%;  /* Zinc-800 equivalent */
   --secondary-foreground: 0 0% 98%;
 
-  /* Muted - Readable but distinguishable for appropriate use cases (labels, placeholders, helper text, metadata) */
-  --muted: 207 50% 15%;
-  --muted-foreground: 210 20% 70%;  /* Readable but clearly secondary - for labels, placeholders, helper text, metadata only */
+  /* Muted - Zinc-based for labels, placeholders, helper text, metadata */
+  --muted: 240 3.7% 15.9%;  /* Zinc-800 equivalent */
+  --muted-foreground: 240 5% 64.9%;  /* Zinc-400 equivalent - readable but clearly secondary */
 
-  /* Accent: French Sky Blue */
+  /* Accent: French Sky Blue (keeping brand color) */
   --accent: 212 98% 70%;
-  --accent-foreground: 207 100% 6%;
+  --accent-foreground: 240 10% 3.9%;
 
   /* Destructive */
   --destructive: 0 62% 30%;
   --destructive-foreground: 0 0% 98%;
 
-  /* Borders & Inputs */
-  --border: 207 50% 15%;
-  --input: 207 50% 15%;
-  --ring: 220 100% 67%;
+  /* Borders & Inputs - Zinc-based subtle borders */
+  --border: 240 3.7% 15.9%;  /* Zinc-800 equivalent - low contrast, subtle */
+  --input: 240 3.7% 15.9%;  /* Zinc-800 equivalent */
+  --ring: 220 100% 67%;  /* Cornflower Blue */
 
   /* Chart colors - Brand aligned */
   --chart-1: 220 100% 67%;
@@ -202,15 +214,16 @@
   --chart-4: 280 65% 60%;
   --chart-5: 340 75% 55%;
 
-  /* Sidebar (for chat interface) */
-  --sidebar-background: 207 100% 4%;
+  /* Sidebar (for chat interface) - Zinc-based */
+  --sidebar-background: 240 10% 3.9%;  /* Deep Zinc */
   --sidebar-foreground: 0 0% 98%;
   --sidebar-primary: 220 100% 67%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 207 50% 12%;
+  --sidebar-accent: 240 3.7% 15.9%;  /* Zinc-800 equivalent */
   --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-border: 207 50% 12%;
+  --sidebar-border: 240 3.7% 15.9%;  /* Zinc-800 equivalent */
   --sidebar-ring: 220 100% 67%;
+  --sidebar: hsl(240 10% 3.9%);
 }
 
 /* =============================================================================
@@ -355,5 +368,14 @@
   .input-brand:focus {
     --tw-ring-color: #568AFF;
     border-color: #568AFF;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }

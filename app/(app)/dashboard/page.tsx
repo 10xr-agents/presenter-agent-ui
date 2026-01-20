@@ -1,6 +1,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { OverviewDashboard } from "@/components/dashboard/overview-dashboard"
+import { PageShell } from "@/components/shell/page-shell"
 import { auth } from "@/lib/auth"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
@@ -41,14 +42,11 @@ export default async function DashboardPage() {
   const dashboardOrgId = tenantState === "normal" ? session.user.id : (organizationId || session.user.id)
 
   return (
-    <div className="py-6">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold">Dashboard</h1>
-        <p className="mt-0.5 text-sm text-foreground">
-          Overview of your Screen Agents and activity
-        </p>
-      </div>
+    <PageShell
+      title="Dashboard"
+      description="Overview of your Screen Agents and activity"
+    >
       <OverviewDashboard organizationId={dashboardOrgId} tenantState={tenantState} />
-    </div>
+    </PageShell>
   )
 }

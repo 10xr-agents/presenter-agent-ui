@@ -1,15 +1,15 @@
 "use client"
 
-import { LogOut, Settings, User } from "lucide-react"
+import { LogOut, Moon, MoreHorizontal, Settings, Sun, User } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -17,12 +17,12 @@ import { authClient } from "@/lib/auth/client"
 
 const { signOut, useSession } = authClient
 
-export function UserMenu() {
+export function NavUser() {
   const router = useRouter()
   const { data: session, isPending } = useSession()
+  const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
-  // Ensure component only renders client-side content after mount
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -33,10 +33,16 @@ export function UserMenu() {
     router.refresh()
   }
 
-  // Always render the same structure during SSR and initial client render
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
+
   if (!mounted || isPending || !session?.user) {
     return (
-      <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
+      <div className="flex items-center gap-2 rounded-md px-2 py-2">
+        <div className="h-8 w-8 rounded-full bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+        <div className="h-4 w-32 bg-zinc-200 dark:bg-zinc-800 animate-pulse rounded" />
+      </div>
     )
   }
 
@@ -55,26 +61,30 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
         >
-          <Avatar className="h-7 w-7">
+          <Avatar className="h-8 w-8 shrink-0">
             <AvatarImage src={user.image || undefined} alt={user.name || user.email || "User"} />
-            <AvatarFallback>{initials}</AvatarFallback>
+            <AvatarFallback className="text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
+              {initials}
+            </AvatarFallback>
           </Avatar>
+          <div className="flex flex-1 flex-col items-start text-left">
+            <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[120px]">
+              {user.name || "User"}
+            </span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">
+              {user.email}
+            </span>
+          </div>
+          <MoreHorizontal className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{user.name || "User"}</p>
-            <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/profile" className="flex items-center">
             <User className="mr-2 h-4 w-4" />
-            Profile
+            My profile
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
@@ -82,6 +92,18 @@ export function UserMenu() {
             <Settings className="mr-2 h-4 w-4" />
             Settings
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem 
+          onClick={toggleTheme}
+          className="cursor-pointer"
+        >
+          {theme === "dark" ? (
+            <Sun className="mr-2 h-4 w-4" />
+          ) : (
+            <Moon className="mr-2 h-4 w-4" />
+          )}
+          Toggle theme
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem 
