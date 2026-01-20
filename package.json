@@ -28,6 +28,8 @@
     "coupling-graph": "npx madge --extensions js,jsx,ts,tsx,css,md,mdx ./ --exclude '.next|tailwind.config.js|reset.d.ts|prettier.config.js|postcss.config.js|playwright.config.ts|next.config.js|next-env.d.ts|instrumentation.ts|e2e/|README.md|.storybook/|.eslintrc.js' --image graph.svg"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.971.0",
+    "@aws-sdk/s3-request-presigner": "^3.971.0",
     "@hookform/resolvers": "^5.2.2",
     "@next/bundle-analyzer": "^16.0.10",
     "@prisma/client": "^6.19.1",
@@ -51,6 +53,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@rrweb/types": "2.0.0-alpha.18",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/git": "^10.0.1",
@@ -84,6 +87,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "resend": "^6.6.0",
+    "rrweb": "2.0.0-alpha.4",
     "sonner": "^2.0.7",
     "stripe": "^17.3.1",
     "tailwind-merge": "^3.4.0",
@@ -158,5 +162,5 @@
   "engines": {
     "node": ">=20.9.0"
   },
-  "packageManager": "pnpm@10.0.0"
+  "packageManager": "pnpm@10.28.0"
 }

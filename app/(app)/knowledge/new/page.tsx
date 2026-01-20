@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { KnowledgeCreationForm } from "@/components/knowledge/knowledge-creation-form"
+import { KnowledgeCreationWizard } from "@/components/knowledge/knowledge-creation-wizard"
 import { auth } from "@/lib/auth"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
@@ -29,7 +29,7 @@ export default async function NewKnowledgePage() {
           Extract and index knowledge from websites, documentation, videos, or files
         </p>
       </div>
-      <KnowledgeCreationForm organizationId={knowledgeOrgId} />
+      <KnowledgeCreationWizard organizationId={knowledgeOrgId} />
     </div>
   )
 }

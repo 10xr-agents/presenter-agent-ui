@@ -249,56 +249,52 @@ export default async function KnowledgeDetailPage({
 
     return (
       <div className="space-y-0">
-        {/* Integrated Header with Back Navigation */}
+        {/* Header with Back Navigation */}
         <div className="border-b bg-background">
-          <div className="py-4">
-            {/* Back Navigation - Integrated */}
-            <div className="mb-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="h-7 text-xs text-foreground hover:text-foreground hover:bg-accent"
-              >
-                <Link href="/knowledge">
-                  <ArrowLeft className="mr-1.5 h-3 w-3" />
-                  Knowledge
-                </Link>
-              </Button>
-            </div>
+          <div className="space-y-4 py-6 px-6">
+            {/* Back Navigation */}
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className="h-7 text-xs text-muted-foreground hover:text-foreground hover:bg-accent"
+            >
+              <Link href="/knowledge">
+                <ArrowLeft className="mr-1.5 h-3 w-3" />
+                Knowledge
+              </Link>
+            </Button>
 
             {/* Primary Header - Name, Status, Source URL */}
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1.5 flex-1 min-w-0">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-lg font-semibold truncate">
-                    {knowledgeData.name || knowledgeData.sourceName}
-                  </h1>
-                  <KnowledgeStatusBadge status={knowledgeData.status} />
-                </div>
-                {knowledgeData.description && (
-                  <p className="text-sm text-foreground">
-                    {knowledgeData.description}
-                  </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-lg font-semibold truncate">
+                  {knowledgeData.name || knowledgeData.sourceName}
+                </h1>
+                <KnowledgeStatusBadge status={knowledgeData.status} />
+              </div>
+              {knowledgeData.description && (
+                <p className="text-sm text-muted-foreground">
+                  {knowledgeData.description}
+                </p>
+              )}
+              {/* Source URL/File */}
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Source:</span>
+                {knowledgeData.sourceUrl ? (
+                  <a
+                    href={knowledgeData.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium hover:text-primary transition-colors truncate max-w-md"
+                  >
+                    {knowledgeData.sourceUrl}
+                  </a>
+                ) : (
+                  <span className="font-medium truncate max-w-md">
+                    {knowledgeData.fileName || knowledgeData.sourceName}
+                  </span>
                 )}
-                {/* Source URL/File - Always visible in header */}
-                <div className="flex items-center gap-1.5 text-xs text-foreground">
-                  <span className="opacity-60">Source:</span>
-                  {knowledgeData.sourceUrl ? (
-                    <a
-                      href={knowledgeData.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium hover:text-primary transition-colors truncate max-w-md"
-                    >
-                      {knowledgeData.sourceUrl}
-                    </a>
-                  ) : (
-                    <span className="font-medium truncate max-w-md">
-                      {knowledgeData.fileName || knowledgeData.sourceName}
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
           </div>

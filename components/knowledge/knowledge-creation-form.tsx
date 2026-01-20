@@ -18,25 +18,7 @@ import {
   KnowledgePathRestrictions,
 } from "@/components/knowledge/knowledge-form-fields"
 import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
-
-type AssetType = "file" | "documentation" | "video"
-
-interface FileAsset {
-  id: string
-  type: "file"
-  file: File
-  name: string
-  size: number
-}
-
-interface UrlAsset {
-  id: string
-  type: "documentation" | "video"
-  url: string
-  name: string
-}
-
-type Asset = FileAsset | UrlAsset
+import type { AssetType, FileAsset, UrlAsset, Asset } from "@/components/knowledge/knowledge-types"
 
 interface KnowledgeCreationFormProps {
   organizationId: string
@@ -49,6 +31,7 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
   const [assets, setAssets] = useState<Asset[]>([])
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [loginUrl, setLoginUrl] = useState("")
   const [skipAuthentication, setSkipAuthentication] = useState(true)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -59,14 +42,14 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
   const [extractCodeBlocks, setExtractCodeBlocks] = useState(false)
   const [extractThumbnails, setExtractThumbnails] = useState(false)
   const [newDocUrl, setNewDocUrl] = useState("")
-  const [newVideoUrl, setNewVideoUrl] = useState("")
   const [urlError, setUrlError] = useState<string | null>(null)
   const [docUrlError, setDocUrlError] = useState<string | null>(null)
-  const [videoUrlError, setVideoUrlError] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createdKnowledgeId, setCreatedKnowledgeId] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [uploadStatus, setUploadStatus] = useState<Record<string, "uploading" | "success" | "error">>({})
 
   const validateUrl = (url: string): boolean => {
     if (!url.trim()) {
@@ -143,25 +126,6 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
     setDocUrlError(null)
   }
 
-  const handleAddVideoUrl = () => {
-    if (!newVideoUrl.trim()) {
-      setVideoUrlError("Video URL is required")
-      return
-    }
-    if (!validateUrl(newVideoUrl)) {
-      setVideoUrlError("Please enter a valid URL (e.g., https://example.com/video)")
-      return
-    }
-    const asset: UrlAsset = {
-      id: `${Date.now()}-${Math.random()}`,
-      type: "video",
-      url: newVideoUrl.trim(),
-      name: new URL(newVideoUrl.trim()).hostname,
-    }
-    setAssets((prev) => [...prev, asset])
-    setNewVideoUrl("")
-    setVideoUrlError(null)
-  }
 
   const handleRemoveAsset = (id: string) => {
     setAssets((prev) => prev.filter((asset) => asset.id !== id))
@@ -224,6 +188,17 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
         options: {
           max_pages: typeof maxPages === "number" ? maxPages : 100,
           max_depth: typeof maxDepth === "number" ? maxDepth : 10,
+          ...(!skipAuthentication && username.trim() && password.trim()
+            ? {
+                credentials: {
+                  username: username.trim(),
+                  password: password.trim(),
+                  ...(loginUrl.trim() && validateUrl(loginUrl.trim())
+                    ? { login_url: loginUrl.trim() }
+                    : {}),
+                },
+              }
+            : {}),
         },
         websiteCredentials: !skipAuthentication && username.trim() && password.trim()
           ? {
@@ -250,32 +225,186 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
         throw new Error("No knowledge ID returned from server")
       }
 
-      // Step 2: Create additional knowledge sources for each asset
-      const assetPromises = assets.map(async (asset) => {
-        if (asset.type === "file") {
-          // File upload - use FormData
-          const formData = new FormData()
-          const fileExtension = asset.file.name.toLowerCase().substring(asset.file.name.lastIndexOf("."))
-          const isVideo = [".mp4", ".mov", ".avi", ".webm", ".mkv"].includes(fileExtension)
-          formData.append("source_type", isVideo ? "video" : "documentation")
-          formData.append("source_name", asset.file.name)
-          formData.append("file", asset.file)
-          if (name.trim()) formData.append("name", `${name.trim()} - ${asset.file.name}`)
-          if (description.trim()) formData.append("description", description.trim())
+      // Step 2: Handle additional assets
+      // Separate files from URLs
+      const fileAssets = assets.filter((asset): asset is FileAsset => asset.type === "file")
+      const urlAssets = assets.filter((asset): asset is UrlAsset => asset.type !== "file")
 
-          const fileResponse = await fetch("/api/knowledge", {
-            method: "POST",
-            body: formData,
-          })
+      // Batch upload multiple files to S3, then send as single multi-file ingestion request
+      if (fileAssets.length > 0) {
+        // Generate knowledge ID for batch upload
+        const mongoose = await import("mongoose")
+        const batchKnowledgeId = new mongoose.Types.ObjectId().toString()
 
-          if (!fileResponse.ok) {
-            const errorData = (await fileResponse.json()) as { error?: string }
-            throw new Error(`Failed to upload ${asset.file.name}: ${errorData.error || "Unknown error"}`)
+        // Upload all files to S3 first
+        const fileUploadPromises = fileAssets.map(async (asset) => {
+          setUploadStatus((prev) => ({ ...prev, [asset.id]: "uploading" }))
+          setUploadProgress((prev) => ({ ...prev, [asset.id]: 0 }))
+
+          try {
+            const formData = new FormData()
+            formData.append("file", asset.file)
+            formData.append("source_type", "documentation") // Will be determined by backend from file extension
+            formData.append("knowledge_id", batchKnowledgeId)
+
+            // Simulate progress
+            const fileSizeMB = asset.size / 1024 / 1024
+            const estimatedTime = Math.max(1000, fileSizeMB * 200)
+            const progressSteps = Math.ceil(estimatedTime / 200)
+            let progressStep = 0
+
+            const progressInterval = setInterval(() => {
+              progressStep++
+              const progress = Math.min(90, (progressStep / progressSteps) * 90)
+              setUploadProgress((prev) => ({ ...prev, [asset.id]: Math.round(progress) }))
+              if (progressStep >= progressSteps) {
+                clearInterval(progressInterval)
+              }
+            }, 200)
+
+            const uploadResponse = await fetch("/api/knowledge/upload-to-s3", {
+              method: "POST",
+              body: formData,
+            })
+
+            clearInterval(progressInterval)
+            setUploadProgress((prev) => ({ ...prev, [asset.id]: 100 }))
+
+            if (!uploadResponse.ok) {
+              const errorData = (await uploadResponse.json()) as { error?: string }
+              setUploadStatus((prev) => ({ ...prev, [asset.id]: "error" }))
+              throw new Error(`Failed to upload ${asset.file.name}: ${errorData.error || "Unknown error"}`)
+            }
+
+            setUploadStatus((prev) => ({ ...prev, [asset.id]: "success" }))
+            const uploadResult = (await uploadResponse.json()) as {
+              data?: {
+                s3Reference: {
+                  bucket: string
+                  key: string
+                  region?: string
+                  endpoint?: string
+                  url?: string
+                  presigned_url?: string
+                  expires_at?: string
+                }
+                fileMetadata: {
+                  filename: string
+                  size: number
+                  content_type: string
+                  uploaded_at: string
+                }
+                presignedUrl?: string
+                presignedUrlExpiresAt?: string
+              }
+            }
+
+            // Ensure presigned URL is included in s3Reference
+            const s3Ref = uploadResult.data?.s3Reference
+            if (s3Ref && !s3Ref.presigned_url) {
+              // If presigned_url not in s3Reference, use the separate presignedUrl field or generate one
+              if (uploadResult.data?.presignedUrl) {
+                s3Ref.presigned_url = uploadResult.data.presignedUrl
+                s3Ref.expires_at = uploadResult.data.presignedUrlExpiresAt
+              } else {
+                // Generate presigned URL if missing
+                try {
+                  const presignedResponse = await fetch(
+                    `/api/knowledge/generate-presigned-url?key=${encodeURIComponent(s3Ref.key)}`
+                  )
+                  if (presignedResponse.ok) {
+                    const presignedData = (await presignedResponse.json()) as { url: string; expiresAt: string }
+                    s3Ref.presigned_url = presignedData.url
+                    s3Ref.expires_at = presignedData.expiresAt
+                  }
+                } catch (error: unknown) {
+                  console.error("Failed to generate presigned URL", error)
+                }
+              }
+            }
+
+            return {
+              asset,
+              s3Reference: s3Ref,
+              fileMetadata: uploadResult.data?.fileMetadata,
+            }
+          } catch (error: unknown) {
+            setUploadStatus((prev) => ({ ...prev, [asset.id]: "error" }))
+            throw error
+          }
+        })
+
+        const uploadResults = await Promise.all(fileUploadPromises)
+
+        // Filter out failed uploads
+        const successfulUploads = uploadResults.filter(
+          (r) => r.s3Reference && r.fileMetadata
+        ) as Array<{
+          asset: FileAsset
+          s3Reference: NonNullable<(typeof uploadResults)[0]["s3Reference"]>
+          fileMetadata: NonNullable<(typeof uploadResults)[0]["fileMetadata"]>
+        }>
+
+        if (successfulUploads.length === 0) {
+          throw new Error("No files were successfully uploaded")
+        }
+
+        // If multiple files, use multi-file ingestion API
+        if (successfulUploads.length > 1) {
+          const s3References = successfulUploads.map((r) => r.s3Reference)
+          const fileMetadataList = successfulUploads.map((r) => r.fileMetadata)
+
+          const multiFilePayload = {
+            source_type: "file" as const,
+            source_name: name.trim() || `Batch Upload (${successfulUploads.length} files)`,
+            s3_references: s3References,
+            file_metadata_list: fileMetadataList,
+            name: name.trim() || undefined,
+            description: description.trim() || undefined,
           }
 
-          return await fileResponse.json()
-        } else {
-          // URL-based asset
+          const multiFileResponse = await fetch("/api/knowledge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(multiFilePayload),
+          })
+
+          if (!multiFileResponse.ok) {
+            const errorData = (await multiFileResponse.json()) as { error?: string }
+            throw new Error(`Failed to create multi-file knowledge: ${errorData.error || "Unknown error"}`)
+          }
+        } else if (successfulUploads.length === 1) {
+          // Single file - use single file flow
+          const result = successfulUploads[0]!
+          if (!result) {
+            throw new Error("Failed to get upload result")
+          }
+
+          const singleFilePayload = {
+            source_type: "file" as const,
+            source_name: result.asset.file.name,
+            s3_reference: result.s3Reference,
+            file_metadata: result.fileMetadata,
+            name: name.trim() ? `${name.trim()} - ${result.asset.file.name}` : undefined,
+            description: description.trim() || undefined,
+          }
+
+          const singleFileResponse = await fetch("/api/knowledge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(singleFilePayload),
+          })
+
+          if (!singleFileResponse.ok) {
+            const errorData = (await singleFileResponse.json()) as { error?: string }
+            throw new Error(`Failed to create file knowledge: ${errorData.error || "Unknown error"}`)
+          }
+        }
+      }
+
+      // Handle URL-based assets (documentation/video URLs)
+      if (urlAssets.length > 0) {
+        const urlPromises = urlAssets.map(async (asset) => {
           const urlPayload = {
             source_type: asset.type,
             source_url: asset.url,
@@ -285,9 +414,6 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
             options: {
               ...(asset.type === "documentation" && {
                 extract_code_blocks: extractCodeBlocks,
-              }),
-              ...(asset.type === "video" && {
-                extract_thumbnails: extractThumbnails,
               }),
             },
           }
@@ -304,12 +430,9 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
           }
 
           return await urlResponse.json()
-        }
-      })
+        })
 
-      // Wait for all asset uploads to complete
-      if (assetPromises.length > 0) {
-        await Promise.allSettled(assetPromises)
+        await Promise.allSettled(urlPromises)
       }
 
       // Set the primary knowledge ID for progress tracking
@@ -526,6 +649,23 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
                   2FA/OTP not supported.
                 </p>
               </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="loginUrl" className="text-xs text-muted-foreground">
+                  Login URL (Optional)
+                </Label>
+                <Input
+                  id="loginUrl"
+                  type="url"
+                  value={loginUrl}
+                  onChange={(e) => setLoginUrl(e.target.value)}
+                  placeholder="https://example.com/login"
+                  className="h-9"
+                />
+                <p className="text-xs text-foreground opacity-85">
+                  Optional. If not provided, the crawler will auto-detect the login page.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -538,7 +678,7 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
         <div className="space-y-0.5">
           <h3 className="text-sm font-semibold">Additional Assets</h3>
           <p className="text-xs text-foreground opacity-85">
-            Upload files or add documentation/video URLs to include with this knowledge source
+            Upload files or add documentation URLs to include with this knowledge source
           </p>
         </div>
 
@@ -601,44 +741,6 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
           )}
         </div>
 
-        {/* Video URL */}
-        <div className="space-y-1.5">
-          <Label htmlFor="videoUrl" className="text-xs text-muted-foreground">
-            Video URL
-          </Label>
-          <div className="flex gap-2">
-            <Input
-              id="videoUrl"
-              type="url"
-              value={newVideoUrl}
-              onChange={(e) => {
-                setNewVideoUrl(e.target.value)
-                setVideoUrlError(null)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  handleAddVideoUrl()
-                }
-              }}
-              placeholder="https://example.com/video"
-              className={`h-9 flex-1 ${videoUrlError ? "border-destructive" : ""}`}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAddVideoUrl}
-              disabled={!newVideoUrl.trim()}
-            >
-              Add
-            </Button>
-          </div>
-          {videoUrlError && (
-            <p className="text-xs text-destructive">{videoUrlError}</p>
-          )}
-        </div>
-
         {/* Assets List */}
         {assets.length > 0 && (
           <div className="space-y-2 border-t pt-3">
@@ -663,8 +765,41 @@ export function KnowledgeCreationForm({ organizationId }: KnowledgeCreationFormP
                         </Badge>
                       </div>
                       {asset.type === "file" && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            {(asset.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                          {uploadStatus[asset.id] === "uploading" && (
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">Uploading to S3...</span>
+                                <span className="text-muted-foreground">{uploadProgress[asset.id] || 0}%</span>
+                              </div>
+                              <div className="h-1 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-primary transition-all duration-300"
+                                  style={{ width: `${uploadProgress[asset.id] || 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          {uploadStatus[asset.id] === "success" && (
+                            <p className="text-xs text-green-600 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Uploaded to S3
+                            </p>
+                          )}
+                          {uploadStatus[asset.id] === "error" && (
+                            <p className="text-xs text-destructive flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              Upload failed
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {asset.type !== "file" && (
                         <p className="text-xs text-muted-foreground">
-                          {(asset.size / 1024 / 1024).toFixed(2)} MB
+                          URL
                         </p>
                       )}
                     </div>

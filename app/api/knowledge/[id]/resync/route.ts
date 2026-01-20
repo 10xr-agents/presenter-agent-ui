@@ -5,7 +5,8 @@ import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { KnowledgeSource } from "@/lib/models/knowledge-source"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
-import { startIngestion, type SourceType } from "@/lib/knowledge-extraction/client"
+import { startIngestion } from "@/lib/knowledge-extraction/client"
+import { generatePresignedUrl } from "@/lib/storage/s3-client"
 
 /**
  * POST /api/knowledge/[id]/resync - Re-sync an existing knowledge source
@@ -55,10 +56,18 @@ export async function POST(
       )
     }
 
-    // Only allow resync for URL-based sources (not file uploads)
-    if (knowledge.sourceType === "file" || !knowledge.sourceUrl) {
+    // For file-based sources, require S3 reference
+    if (knowledge.sourceType === "file") {
+      if (!knowledge.s3Reference || !knowledge.s3Reference.bucket || !knowledge.s3Reference.key) {
+        return NextResponse.json(
+          { error: "File-based knowledge sources require S3 reference for resync" },
+          { status: 400 }
+        )
+      }
+    } else if (!knowledge.sourceUrl) {
+      // For URL-based sources, require sourceUrl
       return NextResponse.json(
-        { error: "Re-sync is only available for URL-based knowledge sources" },
+        { error: "URL-based knowledge sources require sourceUrl for resync" },
         { status: 400 }
       )
     }
@@ -71,25 +80,145 @@ export async function POST(
     })
 
     try {
-      // Prepare ingestion request
-      const ingestionRequest = {
-        source_type: knowledge.sourceType as SourceType,
-        source_url: knowledge.sourceUrl,
-        source_name: knowledge.sourceName,
-        options: {
-          ...(knowledge.sourceType === "website" && knowledge.options?.maxPages ? { max_pages: knowledge.options.maxPages } : {}),
-          ...(knowledge.sourceType === "website" && knowledge.options?.maxDepth ? { max_depth: knowledge.options.maxDepth } : {}),
-          ...(knowledge.sourceType === "documentation" && knowledge.options?.extractCodeBlocks !== undefined
-            ? { extract_code_blocks: knowledge.options.extractCodeBlocks }
-            : {}),
-          ...(knowledge.sourceType === "video" && knowledge.options?.extractThumbnails !== undefined
-            ? { extract_thumbnails: knowledge.options.extractThumbnails }
-            : {}),
-        },
+      let ingestionResponse
+
+      // NEW FORMAT: Two-phase knowledge extraction requires website_url
+      // Use sourceUrl as website_url (always present in new format, may be present in old format)
+      if (!knowledge.sourceUrl) {
+        return NextResponse.json(
+          { error: "Cannot resync: knowledge source must have sourceUrl (website_url)" },
+          { status: 400 }
+        )
       }
 
-      // Call knowledge extraction API
-      const ingestionResponse = await startIngestion(ingestionRequest)
+      const websiteUrl = knowledge.sourceUrl
+
+      // Check if we have file references (Phase 1)
+      const hasS3Reference = knowledge.s3Reference && knowledge.s3Reference.bucket && knowledge.s3Reference.key
+      const hasFileMetadata = knowledge.fileMetadata
+
+      // Prepare new two-phase ingestion request
+      const ingestionRequest: {
+        website_url: string
+        website_name?: string
+        s3_references?: Array<{
+          bucket: string
+          key: string
+          region?: string
+          endpoint?: string
+          presigned_url: string
+          expires_at: string
+        }>
+        file_metadata_list?: Array<{
+          filename: string
+          size: number
+          content_type: string
+          uploaded_at: string
+        }>
+        credentials?: {
+          username: string
+          password: string
+          login_url?: string
+        }
+        options?: {
+          max_pages?: number
+          max_depth?: number
+          extract_code_blocks?: boolean
+          extract_thumbnails?: boolean
+        }
+        knowledge_id: string
+      } = {
+        website_url: websiteUrl,
+        ...(knowledge.sourceName ? { website_name: knowledge.sourceName } : {}),
+        ...(hasS3Reference && hasFileMetadata
+          ? (async () => {
+              // Generate new presigned URL for resync
+              const { url: presignedUrl, expiresAt } = await generatePresignedUrl(
+                knowledge.s3Reference!.key,
+                3600
+              )
+              return {
+                s3_references: [
+                  {
+                    bucket: knowledge.s3Reference!.bucket,
+                    key: knowledge.s3Reference!.key,
+                    ...(knowledge.s3Reference!.region ? { region: knowledge.s3Reference!.region } : {}),
+                    ...(knowledge.s3Reference!.endpoint ? { endpoint: knowledge.s3Reference!.endpoint } : {}),
+                    presigned_url: presignedUrl,
+                    expires_at: expiresAt.toISOString(),
+                  },
+                ],
+                file_metadata_list: [
+                  {
+                    filename: knowledge.fileMetadata!.originalFilename,
+                    size: knowledge.fileMetadata!.size,
+                    content_type: knowledge.fileMetadata!.contentType,
+                    uploaded_at:
+                      knowledge.fileMetadata!.uploadedAt instanceof Date
+                        ? knowledge.fileMetadata!.uploadedAt.toISOString()
+                        : new Date(knowledge.fileMetadata!.uploadedAt).toISOString(),
+                  },
+                ],
+              }
+            })()
+          : {}),
+        ...(knowledge.websiteCredentials &&
+        knowledge.websiteCredentials.username &&
+        knowledge.websiteCredentials.password
+          ? {
+              credentials: {
+                username: String(knowledge.websiteCredentials.username),
+                password: String(knowledge.websiteCredentials.password),
+              },
+            }
+          : {}),
+        ...(knowledge.options
+          ? {
+              options: {
+                ...(knowledge.options.maxPages ? { max_pages: knowledge.options.maxPages } : {}),
+                ...(knowledge.options.maxDepth ? { max_depth: knowledge.options.maxDepth } : {}),
+                ...(knowledge.options.extractCodeBlocks !== undefined
+                  ? { extract_code_blocks: knowledge.options.extractCodeBlocks }
+                  : {}),
+                ...(knowledge.options.extractThumbnails !== undefined
+                  ? { extract_thumbnails: knowledge.options.extractThumbnails }
+                  : {}),
+              },
+            }
+          : {}),
+        knowledge_id: id,
+      }
+
+      // If we have file references, generate presigned URL first
+      if (hasS3Reference && hasFileMetadata) {
+        const { url: presignedUrl, expiresAt } = await generatePresignedUrl(
+          knowledge.s3Reference!.key,
+          3600
+        )
+        ingestionRequest.s3_references = [
+          {
+            bucket: knowledge.s3Reference!.bucket,
+            key: knowledge.s3Reference!.key,
+            ...(knowledge.s3Reference!.region ? { region: knowledge.s3Reference!.region } : {}),
+            ...(knowledge.s3Reference!.endpoint ? { endpoint: knowledge.s3Reference!.endpoint } : {}),
+            presigned_url: presignedUrl,
+            expires_at: expiresAt.toISOString(),
+          },
+        ]
+        ingestionRequest.file_metadata_list = [
+          {
+            filename: knowledge.fileMetadata!.originalFilename,
+            size: knowledge.fileMetadata!.size,
+            content_type: knowledge.fileMetadata!.contentType,
+            uploaded_at:
+              knowledge.fileMetadata!.uploadedAt instanceof Date
+                ? knowledge.fileMetadata!.uploadedAt.toISOString()
+                : new Date(knowledge.fileMetadata!.uploadedAt).toISOString(),
+          },
+        ]
+      }
+
+      ingestionResponse = await startIngestion(ingestionRequest)
 
       // Update knowledge source record
       const docToUpdate = await (KnowledgeSource as any).findById(id)

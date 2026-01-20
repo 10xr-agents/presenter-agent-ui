@@ -1,3 +1,5 @@
+import { env } from "@/env.mjs"
+
 // Lazy import to allow Better Auth CLI to read config without Prisma client
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let PrismaClient: any
@@ -18,7 +20,7 @@ try {
     globalForPrisma.prisma ??
     new PrismaClient({
       log: process.env.NODE_ENV === "development" 
-        ? (process.env.PRISMA_LOG_QUERIES === "true" ? ["query", "error", "warn"] : ["error", "warn"])
+        ? (env.PRISMA_LOG_QUERIES === "true" ? ["query", "error", "warn"] : ["error", "warn"])
         : ["error"],
     })
 

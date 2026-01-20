@@ -14,6 +14,21 @@ export interface IKnowledgeSource extends mongoose.Document {
   fileSize?: number // For file uploads
   fileType?: string // MIME type for file uploads
   
+  // S3 storage reference (for file-based sources)
+  s3Reference?: {
+    bucket: string
+    key: string
+    region?: string
+    endpoint?: string
+    url?: string // Public URL if available
+  }
+  fileMetadata?: {
+    originalFilename: string
+    size: number
+    contentType: string
+    uploadedAt: Date
+  }
+  
   // Job tracking (new knowledge extraction API)
   jobId: string | null // Job ID from Knowledge Extraction Service
   workflowId: string | null // Temporal workflow ID
@@ -72,6 +87,7 @@ export interface IKnowledgeSource extends mongoose.Document {
   description?: string
   tags?: string[]
   
+  
   // Usage tracking
   timesReferenced: number
   lastReferencedAt?: Date
@@ -99,6 +115,21 @@ const KnowledgeSourceSchema = new Schema<IKnowledgeSource>(
     fileName: String,
     fileSize: Number,
     fileType: String,
+    
+    // S3 storage reference
+    s3Reference: {
+      bucket: String,
+      key: String,
+      region: String,
+      endpoint: String,
+      url: String,
+    },
+    fileMetadata: {
+      originalFilename: String,
+      size: Number,
+      contentType: String,
+      uploadedAt: Date,
+    },
     
     // Job tracking
     jobId: { type: String, default: null, index: true },
@@ -171,6 +202,7 @@ const KnowledgeSourceSchema = new Schema<IKnowledgeSource>(
     name: String,
     description: String,
     tags: [String],
+    
     
     // Usage tracking
     timesReferenced: { type: Number, default: 0 },

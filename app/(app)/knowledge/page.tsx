@@ -166,11 +166,12 @@ export default async function KnowledgePage({
   }
 
   return (
-    <div className="py-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="space-y-6 py-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Knowledge</h1>
-          <p className="mt-0.5 text-sm text-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Manage knowledge extracted from websites, documentation, videos, and files
           </p>
         </div>
@@ -181,6 +182,8 @@ export default async function KnowledgePage({
           </Link>
         </Button>
       </div>
+
+      {/* Knowledge List Table */}
       <KnowledgeListTable
         organizationId={knowledgeOrgId}
         initialData={initialData as never}

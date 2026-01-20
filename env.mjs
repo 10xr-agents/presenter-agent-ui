@@ -47,6 +47,19 @@ export const env = createEnv({
     FEATURE_FLAGS_ENABLED: z.string().optional(),
     // Browser Automation Service
     BROWSER_AUTOMATION_SERVICE_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
+    // S3 Storage (DigitalOcean Spaces or AWS S3)
+    // Provider is automatically determined by NODE_ENV:
+    // - NODE_ENV=development → uses DigitalOcean Spaces
+    // - NODE_ENV=production → uses AWS S3
+    // Can be overridden by explicitly setting S3_PROVIDER
+    // Region is automatically derived from endpoint (DigitalOcean) or defaults to us-east-1 (AWS)
+    // Can be overridden by explicitly setting S3_REGION
+    S3_PROVIDER: z.enum(["aws", "digitalocean"]).optional(),
+    S3_REGION: z.string().optional(),
+    S3_BUCKET: z.string().optional(),
+    S3_ENDPOINT: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
@@ -90,7 +103,12 @@ export const env = createEnv({
     PRISMA_LOG_QUERIES: process.env.PRISMA_LOG_QUERIES,
     // Browser Automation Service
     BROWSER_AUTOMATION_SERVICE_URL: process.env.BROWSER_AUTOMATION_SERVICE_URL,
-    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
-    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    // S3 Storage
+    S3_PROVIDER: process.env.S3_PROVIDER,
+    S3_REGION: process.env.S3_REGION,
+    S3_BUCKET: process.env.S3_BUCKET,
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+    S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
   },
 })

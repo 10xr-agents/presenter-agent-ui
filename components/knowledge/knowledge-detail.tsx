@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +32,7 @@ import { KnowledgeSyncActivity } from "@/components/knowledge/knowledge-sync-act
 import { KnowledgeConfiguration } from "@/components/knowledge/knowledge-configuration"
 import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
 import { KnowledgeValidationStatus } from "@/components/knowledge/knowledge-validation-status"
+import { KnowledgeVisualization } from "@/components/knowledge/knowledge-visualization"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
@@ -134,11 +136,25 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
   const [isResyncing, setIsResyncing] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [isCanceling, setIsCanceling] = useState(false)
-  const [validationInfo, setValidationInfo] = useState<{
-    confidence?: "high" | "medium" | "low" | "none"
-    issues?: string[]
-    hasUsableContent?: boolean
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null) // null means latest job
+  const [knowledgeData, setKnowledgeData] = useState<{
+    screens?: unknown[]
+    tasks?: unknown[]
+    actions?: unknown[]
+    transitions?: unknown[]
+    business_functions?: unknown[]
+    workflows?: unknown[]
+    statistics?: {
+      screens_count?: number
+      tasks_count?: number
+      actions_count?: number
+      transitions_count?: number
+      business_functions_count?: number
+      workflows_count?: number
+      total_entities?: number
+    }
   } | null>(null)
+  const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(false)
 
   const handleRefresh = useCallback(() => {
     router.refresh()
@@ -148,35 +164,86 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
     router.refresh()
   }, [router])
 
+  // Fetch knowledge data when job selection changes
   useEffect(() => {
-    // Fetch validation info and results for completed knowledge
-    if (knowledge.status === "completed" && knowledge.jobId) {
-      const fetchValidationInfo = async () => {
-        try {
-          // For website knowledge, fetch from browser automation results API
-          if (knowledge.sourceType === "website") {
-            const response = await fetch(`/api/website-knowledge/${knowledge.id}/results`)
-            if (response.ok) {
-              const result = (await response.json()) as { data?: { validation?: typeof validationInfo } }
-              if (result.data?.validation) {
-                setValidationInfo(result.data.validation)
-              }
+    const fetchKnowledgeData = async () => {
+      // Only fetch if knowledge is completed
+      if (knowledge.status !== "completed") {
+        setKnowledgeData(null)
+        return
+      }
+
+      setIsLoadingKnowledge(true)
+      try {
+        const queryParams = selectedJobId
+          ? `?job_id=${encodeURIComponent(selectedJobId)}`
+          : ""
+        const response = await fetch(`/api/knowledge/query/${knowledge.id}${queryParams}`)
+        
+        if (!response.ok) {
+          if (response.status === 404) {
+            // Job not found, clear knowledge data
+            setKnowledgeData(null)
+            return
+          }
+          throw new Error("Failed to fetch knowledge data")
+        }
+
+        const result = (await response.json()) as {
+          data?: {
+            screens?: unknown[]
+            tasks?: unknown[]
+            actions?: unknown[]
+            transitions?: unknown[]
+            business_functions?: unknown[]
+            workflows?: unknown[]
+            statistics?: {
+              screens_count?: number
+              tasks_count?: number
+              actions_count?: number
+              transitions_count?: number
+              business_functions_count?: number
+              workflows_count?: number
+              total_entities?: number
             }
           }
-        } catch (err: unknown) {
-          console.error("[Knowledge Detail] Failed to fetch validation info", {
-            knowledgeId: knowledge.id,
-            error: err instanceof Error ? err.message : String(err),
+        }
+
+        if (result.data) {
+          setKnowledgeData({
+            screens: result.data.screens || [],
+            tasks: result.data.tasks || [],
+            actions: result.data.actions || [],
+            transitions: result.data.transitions || [],
+            business_functions: result.data.business_functions || [],
+            workflows: result.data.workflows || [],
+            statistics: result.data.statistics,
           })
         }
+      } catch (err: unknown) {
+        console.error("[Knowledge Detail] Failed to fetch knowledge data", {
+          knowledgeId: knowledge.id,
+          jobId: selectedJobId || "latest",
+          error: err instanceof Error ? err.message : String(err),
+        })
+        setKnowledgeData(null)
+      } finally {
+        setIsLoadingKnowledge(false)
       }
-      fetchValidationInfo()
     }
+
+    fetchKnowledgeData()
+  }, [knowledge.id, knowledge.status, selectedJobId])
+
+  useEffect(() => {
+    // Validation info is now provided by the knowledge extraction service
+    // No need to fetch from legacy website-knowledge API
     setIsLoadingResults(false)
   }, [knowledge.id, knowledge.status, knowledge.jobId, knowledge.sourceType])
 
   const handleDelete = async () => {
     setIsDeleting(true)
+    setDeleteDialogOpen(false)
     try {
       const response = await fetch(`/api/knowledge/${knowledge.id}`, {
         method: "DELETE",
@@ -186,7 +253,9 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
         throw new Error("Failed to delete knowledge")
       }
 
+      // Navigate to knowledge list and refresh
       router.push("/knowledge")
+      router.refresh()
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete knowledge"
       setError(errorMessage)
@@ -284,10 +353,10 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
 
   return (
     <div className="bg-background">
-      {/* Integrated Tabs with Actions */}
+      {/* Tabs with Actions */}
       <Tabs defaultValue="overview" className="w-full">
         <div className="border-b">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between px-6">
             <TabsList className="h-9 bg-transparent p-0 border-0">
               <TabsTrigger 
                 value="overview" 
@@ -315,8 +384,8 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
               </TabsTrigger>
             </TabsList>
             
-            {/* Primary Actions - Integrated with tabs */}
-            <div className="flex items-center gap-2 px-4 py-2">
+            {/* Primary Actions */}
+            <div className="flex items-center gap-2 py-2">
               {/* Stop and Cancel - Only show for queued/running jobs */}
               {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
                 <>
@@ -387,8 +456,18 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
                 variant="outline"
                 size="sm"
                 onClick={() => setDeleteDialogOpen(true)}
-                disabled={isStopping || isCanceling}
+                disabled={
+                  isStopping || 
+                  isCanceling ||
+                  // Disable delete for active jobs - user must cancel first
+                  (["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId !== null)
+                }
                 className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                title={
+                  ["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId
+                    ? "Cancel the job before deleting"
+                    : "Delete knowledge"
+                }
               >
                 <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 Delete
@@ -399,270 +478,402 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="mt-0">
-          <div className="py-6 px-6 space-y-6">
+          <div className="space-y-6 py-6 px-6">
             {/* Progress for in-progress items */}
             {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId && (
-              <div>
-                <KnowledgeProgress
-                  knowledgeId={knowledge.id}
-                  jobId={knowledge.jobId}
-                  workflowId={knowledge.workflowId}
-                  onComplete={handleRefresh}
-                />
-              </div>
+              <Card className="bg-muted/30">
+                <CardContent className="pt-6">
+                  <h3 className="text-sm font-semibold mb-4">Extraction Progress</h3>
+                  <KnowledgeProgress
+                    knowledgeId={knowledge.id}
+                    jobId={knowledge.jobId}
+                    workflowId={knowledge.workflowId}
+                    onComplete={handleRefresh}
+                  />
+                </CardContent>
+              </Card>
             )}
 
             {/* Stats for completed items */}
             {knowledge.status === "completed" && (
-              <div className="grid grid-cols-3 gap-6">
-                <div>
-                  <div className="text-2xl font-semibold">{knowledge.pagesStored || 0}</div>
-                  <div className="text-xs text-foreground mt-0.5">Pages indexed</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-semibold">{knowledge.linksStored || 0}</div>
-                  <div className="text-xs text-foreground mt-0.5">Links discovered</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-semibold">{knowledge.externalLinksDetected || 0}</div>
-                  <div className="text-xs text-foreground mt-0.5">External links</div>
-                </div>
+              <div className="grid grid-cols-3 gap-4">
+                <Card className="bg-muted/30">
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-semibold">{knowledge.pagesStored || 0}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Pages indexed</div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-muted/30">
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-semibold">{knowledge.linksStored || 0}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Links discovered</div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-muted/30">
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-semibold">{knowledge.externalLinksDetected || 0}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">External links</div>
+                  </CardContent>
+                </Card>
               </div>
             )}
 
             {/* Configuration Summary */}
-            <div className="border-t pt-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-2">
-                  <div className="text-xs text-foreground">Crawl Settings</div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                    <div>
-                      <span className="text-foreground opacity-60">Strategy:</span>{" "}
-                      <span className="font-medium">{knowledge.strategy || "BFS"}</span>
-                    </div>
-                    <div>
-                      <span className="text-foreground opacity-60">Max Pages:</span>{" "}
-                      <span className="font-medium">{knowledge.maxPages || 100}</span>
-                    </div>
-                    <div>
-                      <span className="text-foreground opacity-60">Max Depth:</span>{" "}
-                      <span className="font-medium">{knowledge.maxDepth || 10}</span>
-                    </div>
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold">Crawl Settings</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const configTab = document.querySelector('[value="configuration"]') as HTMLElement
+                      configTab?.click()
+                    }}
+                    className="h-7 text-xs"
+                  >
+                    View full configuration →
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Strategy:</span>{" "}
+                    <span className="font-medium">{knowledge.strategy || "BFS"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Max Pages:</span>{" "}
+                    <span className="font-medium">{knowledge.maxPages || 100}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Max Depth:</span>{" "}
+                    <span className="font-medium">{knowledge.maxDepth || 10}</span>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const configTab = document.querySelector('[value="configuration"]') as HTMLElement
-                    configTab?.click()
-                  }}
-                  className="h-7 text-xs"
-                >
-                  View full configuration →
-                </Button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
         {/* Configuration Tab */}
         <TabsContent value="configuration" className="mt-0">
           <div className="py-6 px-6">
-            <KnowledgeConfiguration
-              knowledge={{
-                ...knowledge,
-                organizationId,
-              }}
-              onUpdate={handleConfigUpdate}
-            />
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <KnowledgeConfiguration
+                  knowledge={{
+                    ...knowledge,
+                    organizationId,
+                  }}
+                  onUpdate={handleConfigUpdate}
+                />
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
         {/* Contents Tab */}
         <TabsContent value="contents" className="mt-0">
-          <div className="py-6 px-6">
+          <div className="space-y-6 py-6 px-6">
             {knowledge.status === "completed" ? (
               <div className="space-y-4">
-
-              <Tabs defaultValue="pages" className="space-y-3">
-              <TabsList className="h-9">
-                <TabsTrigger value="pages" className="text-xs">Pages</TabsTrigger>
-                <TabsTrigger value="links" className="text-xs">Links</TabsTrigger>
-                {knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
-                  <TabsTrigger value="errors" className="text-xs">
-                    Errors ({knowledge.extractionErrors.length})
-                  </TabsTrigger>
+                {/* Job Selection Indicator */}
+                {selectedJobId && knowledge.syncHistory && knowledge.syncHistory.length > 1 && (
+                  <Alert>
+                    <AlertDescription className="text-xs">
+                      Viewing knowledge from job: <span className="font-mono text-xs">{selectedJobId}</span>
+                      {" "}(not latest)
+                    </AlertDescription>
+                  </Alert>
                 )}
-              </TabsList>
 
-              <TabsContent value="pages" className="space-y-2">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-foreground opacity-60">
-                {knowledge.pagesStored || 0} {knowledge.pagesStored === 1 ? "page" : "pages"} indexed
-              </span>
-            </div>
-            {isLoadingResults ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="border rounded-lg p-3">
-                    <Skeleton className="h-4 w-3/4 mb-2" />
-                    <Skeleton className="h-3 w-full" />
-                  </div>
-                ))}
-              </div>
-            ) : results?.pages && results.pages.length > 0 ? (
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="h-9 text-xs font-semibold">Page</TableHead>
-                      <TableHead className="h-9 text-xs font-semibold">URL</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {results.pages.map((page, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="py-2">
-                          <a
-                            href={page.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1"
-                          >
-                            <span>{page.title || page.url}</span>
-                            <ExternalLink className="h-3 w-3 shrink-0" />
-                          </a>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <p className="text-xs text-foreground opacity-85 truncate max-w-md">
-                            {page.url}
-                          </p>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <Empty className="border-0 p-0">
-                <EmptyHeader>
-                  <EmptyTitle className="text-sm font-semibold">No pages available</EmptyTitle>
-                  <EmptyDescription className="text-xs">
-                    Pages will appear here once extraction is complete.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </TabsContent>
-
-          <TabsContent value="links" className="space-y-2">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-foreground opacity-60">
-                {knowledge.linksStored || 0} {knowledge.linksStored === 1 ? "link" : "links"} discovered
-              </span>
-            </div>
-            {isLoadingResults ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : results?.links && results.links.length > 0 ? (
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="h-9 text-xs font-semibold">From</TableHead>
-                      <TableHead className="h-9 text-xs font-semibold">To</TableHead>
-                      <TableHead className="h-9 text-xs font-semibold">Type</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {results.links.slice(0, 100).map((link, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="py-2">
-                          <p className="text-xs text-foreground opacity-85 truncate max-w-md">
-                            {link.from}
-                          </p>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <a
-                            href={link.to}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                          >
-                            <span className="truncate max-w-md">{link.to}</span>
-                            <ExternalLink className="h-3 w-3 shrink-0" />
-                          </a>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Badge variant="outline" className="text-xs">
-                            {link.type}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {results.links.length > 100 && (
-                  <div className="border-t p-2 text-center">
-                    <p className="text-xs text-foreground opacity-85">
-                      Showing first 100 of {results.links.length} links
-                    </p>
+                {/* Knowledge Statistics */}
+                {knowledgeData?.statistics && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {knowledgeData.statistics.screens_count !== undefined && (
+                      <Card className="bg-muted/30">
+                        <CardContent className="pt-6">
+                          <div className="text-2xl font-semibold">{knowledgeData.statistics.screens_count}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Screens</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {knowledgeData.statistics.tasks_count !== undefined && (
+                      <Card className="bg-muted/30">
+                        <CardContent className="pt-6">
+                          <div className="text-2xl font-semibold">{knowledgeData.statistics.tasks_count}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Tasks</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {knowledgeData.statistics.actions_count !== undefined && (
+                      <Card className="bg-muted/30">
+                        <CardContent className="pt-6">
+                          <div className="text-2xl font-semibold">{knowledgeData.statistics.actions_count}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Actions</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {knowledgeData.statistics.transitions_count !== undefined && (
+                      <Card className="bg-muted/30">
+                        <CardContent className="pt-6">
+                          <div className="text-2xl font-semibold">{knowledgeData.statistics.transitions_count}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Transitions</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {knowledgeData.statistics.business_functions_count !== undefined && (
+                      <Card className="bg-muted/30">
+                        <CardContent className="pt-6">
+                          <div className="text-2xl font-semibold">{knowledgeData.statistics.business_functions_count}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Business Functions</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {knowledgeData.statistics.workflows_count !== undefined && (
+                      <Card className="bg-muted/30">
+                        <CardContent className="pt-6">
+                          <div className="text-2xl font-semibold">{knowledgeData.statistics.workflows_count}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Workflows</div>
+                        </CardContent>
+                      </Card>
+                    )}
                   </div>
                 )}
-              </div>
-            ) : (
-              <Empty className="border-0 p-0">
-                <EmptyHeader>
-                  <EmptyTitle className="text-sm font-semibold">No links available</EmptyTitle>
-                  <EmptyDescription className="text-xs">
-                    Links will appear here once extraction is complete.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </TabsContent>
 
-              {knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
-                <TabsContent value="errors" className="space-y-2">
-                  {knowledge.extractionErrors.map((error, index) => {
-                    return (
-                      <Alert key={index} variant="destructive" className="py-2">
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        <AlertDescription className="text-xs">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              {error.phase && (
-                                <div className="font-medium truncate">{error.phase}</div>
-                              )}
-                              <div className="text-foreground opacity-85 mt-0.5">{error.message}</div>
-                              {error.timestamp && (
-                                <div className="text-foreground opacity-85 mt-0.5">
-                                  {new Date(error.timestamp).toLocaleString()}
-                                </div>
-                              )}
+                {/* Loading State */}
+                {isLoadingKnowledge && (
+                  <Card className="bg-muted/30">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Spinner className="h-4 w-4" />
+                        <span className="text-xs text-muted-foreground">Loading knowledge data...</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* No Knowledge Data */}
+                {!isLoadingKnowledge && (!knowledgeData || (knowledgeData.statistics?.total_entities === 0)) && (
+                  <Card className="bg-muted/30">
+                    <CardContent className="pt-6">
+                      <Empty className="border-0 p-0">
+                        <EmptyHeader>
+                          <EmptyTitle className="text-sm font-semibold">No knowledge extracted</EmptyTitle>
+                          <EmptyDescription className="text-xs">
+                            {selectedJobId
+                              ? "This job did not extract any knowledge entities."
+                              : "No knowledge entities have been extracted yet."}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Knowledge Visualization - Show in understandable format */}
+                {knowledgeData && (
+                  <KnowledgeVisualization knowledgeData={knowledgeData} isLoading={isLoadingKnowledge} />
+                )}
+
+                {/* Legacy Pages/Links Tabs - Keep for backward compatibility with website knowledge */}
+                {knowledge.pagesStored !== undefined && (
+                  <Tabs defaultValue="pages" className="space-y-3">
+                    <TabsList className="h-9">
+                      <TabsTrigger value="pages" className="text-xs">Pages</TabsTrigger>
+                      <TabsTrigger value="links" className="text-xs">Links</TabsTrigger>
+                      {knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
+                        <TabsTrigger value="errors" className="text-xs">
+                          Errors ({knowledge.extractionErrors.length})
+                        </TabsTrigger>
+                      )}
+                    </TabsList>
+
+                    <TabsContent value="pages" className="space-y-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-muted-foreground">
+                          {knowledge.pagesStored || 0} {knowledge.pagesStored === 1 ? "page" : "pages"} indexed
+                        </span>
+                      </div>
+                      {isLoadingResults ? (
+                        <div className="space-y-2">
+                          {[1, 2, 3].map((i) => (
+                            <Card key={i} className="bg-muted/30">
+                              <CardContent className="pt-6">
+                                <Skeleton className="h-4 w-3/4 mb-2" />
+                                <Skeleton className="h-3 w-full" />
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : results?.pages && results.pages.length > 0 ? (
+                        <Card className="bg-muted/30">
+                          <CardContent className="pt-6 p-0">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="h-9 text-xs font-semibold">Page</TableHead>
+                                  <TableHead className="h-9 text-xs font-semibold">URL</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {results.pages.map((page, index) => (
+                                  <TableRow key={index}>
+                                    <TableCell className="py-2">
+                                      <a
+                                        href={page.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sm font-semibold hover:text-primary transition-colors flex items-center gap-1"
+                                      >
+                                        <span>{page.title || page.url}</span>
+                                        <ExternalLink className="h-3 w-3 shrink-0" />
+                                      </a>
+                                    </TableCell>
+                                    <TableCell className="py-2">
+                                      <p className="text-xs text-foreground opacity-85 truncate max-w-md">
+                                        {page.url}
+                                      </p>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <Card className="bg-muted/30">
+                          <CardContent className="pt-6">
+                            <Empty className="border-0 p-0">
+                              <EmptyHeader>
+                                <EmptyTitle className="text-sm font-semibold">No pages available</EmptyTitle>
+                                <EmptyDescription className="text-xs">
+                                  Pages will appear here once extraction is complete.
+                                </EmptyDescription>
+                              </EmptyHeader>
+                            </Empty>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="links" className="space-y-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-muted-foreground">
+                          {knowledge.linksStored || 0} {knowledge.linksStored === 1 ? "link" : "links"} discovered
+                        </span>
+                      </div>
+                      {isLoadingResults ? (
+                        <div className="space-y-2">
+                          {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-10 w-full" />
+                          ))}
+                        </div>
+                      ) : results?.links && results.links.length > 0 ? (
+                        <Card className="bg-muted/30">
+                          <CardContent className="pt-6 p-0">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="h-9 text-xs font-semibold">From</TableHead>
+                                  <TableHead className="h-9 text-xs font-semibold">To</TableHead>
+                                  <TableHead className="h-9 text-xs font-semibold">Type</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {results.links.slice(0, 100).map((link, index) => (
+                                  <TableRow key={index}>
+                                    <TableCell className="py-2">
+                                      <p className="text-xs text-foreground opacity-85 truncate max-w-md">
+                                        {link.from}
+                                      </p>
+                                    </TableCell>
+                                    <TableCell className="py-2">
+                                      <a
+                                        href={link.to}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                                      >
+                                        <span className="truncate max-w-md">{link.to}</span>
+                                        <ExternalLink className="h-3 w-3 shrink-0" />
+                                      </a>
+                                    </TableCell>
+                                    <TableCell className="py-2">
+                                      <Badge variant="outline" className="text-xs">
+                                        {link.type}
+                                      </Badge>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </CardContent>
+                          {results.links.length > 100 && (
+                            <div className="border-t p-2 text-center">
+                              <p className="text-xs text-muted-foreground">
+                                Showing first 100 of {results.links.length} links
+                              </p>
                             </div>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    )
-                  })}
-                </TabsContent>
-              )}
-              </Tabs>
-            </div>
+                          )}
+                        </Card>
+                      ) : (
+                        <Card className="bg-muted/30">
+                          <CardContent className="pt-6">
+                            <Empty className="border-0 p-0">
+                              <EmptyHeader>
+                                <EmptyTitle className="text-sm font-semibold">No links available</EmptyTitle>
+                                <EmptyDescription className="text-xs">
+                                  Links will appear here once extraction is complete.
+                                </EmptyDescription>
+                              </EmptyHeader>
+                            </Empty>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </TabsContent>
+
+                    {knowledge.extractionErrors && knowledge.extractionErrors.length > 0 && (
+                      <TabsContent value="errors" className="space-y-2">
+                        {knowledge.extractionErrors.map((error, index) => {
+                          return (
+                            <Alert key={index} variant="destructive" className="py-2">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              <AlertDescription className="text-xs">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    {error.phase && (
+                                      <div className="font-medium truncate">{error.phase}</div>
+                                    )}
+                                    <div className="text-sm mt-0.5">{error.message}</div>
+                                    {error.timestamp && (
+                                      <div className="text-xs text-muted-foreground mt-0.5">
+                                        {new Date(error.timestamp).toLocaleString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </AlertDescription>
+                            </Alert>
+                          )
+                        })}
+                      </TabsContent>
+                    )}
+                  </Tabs>
+                )}
+              </div>
             ) : (
-              <Empty className="border-0 p-0">
-                <EmptyHeader>
-                  <EmptyTitle className="text-sm font-semibold">No contents available</EmptyTitle>
-                  <EmptyDescription className="text-xs">
-                    Knowledge sync must complete before contents are available.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
+              <Card className="bg-muted/30">
+                <CardContent className="pt-6">
+                  <Empty className="border-0 p-0">
+                    <EmptyHeader>
+                      <EmptyTitle className="text-sm font-semibold">No contents available</EmptyTitle>
+                      <EmptyDescription className="text-xs">
+                        Knowledge sync must complete before contents are available.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                </CardContent>
+              </Card>
             )}
           </div>
         </TabsContent>
@@ -670,17 +881,23 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
         {/* History Tab */}
         <TabsContent value="history" className="mt-0">
           <div className="py-6 px-6">
-            <KnowledgeSyncActivity
-              knowledgeId={knowledge.id}
-              currentStatus={knowledge.status}
-              startedAt={knowledge.startedAt}
-              completedAt={knowledge.completedAt}
-              pagesStored={knowledge.pagesStored}
-              linksStored={knowledge.linksStored}
-              extractionErrors={knowledge.extractionErrors}
-              syncHistory={knowledge.syncHistory}
-              createdAt={knowledge.createdAt}
-            />
+            <Card className="bg-muted/30">
+              <CardContent className="pt-6">
+                <KnowledgeSyncActivity
+                  knowledgeId={knowledge.id}
+                  currentStatus={knowledge.status}
+                  startedAt={knowledge.startedAt}
+                  completedAt={knowledge.completedAt}
+                  pagesStored={knowledge.pagesStored}
+                  linksStored={knowledge.linksStored}
+                  extractionErrors={knowledge.extractionErrors}
+                  syncHistory={knowledge.syncHistory}
+                  createdAt={knowledge.createdAt}
+                  onJobSelect={setSelectedJobId}
+                  selectedJobId={selectedJobId}
+                />
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>
@@ -697,7 +914,16 @@ export function KnowledgeDetail({ knowledge, organizationId }: KnowledgeDetailPr
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Knowledge</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this knowledge? This action cannot be undone.
+              {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId !== null ? (
+                <>
+                  This knowledge has an active job. The job will be canceled automatically before deletion.
+                  <br />
+                  <br />
+                  Are you sure you want to delete this knowledge? This action cannot be undone.
+                </>
+              ) : (
+                "Are you sure you want to delete this knowledge? This action cannot be undone."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

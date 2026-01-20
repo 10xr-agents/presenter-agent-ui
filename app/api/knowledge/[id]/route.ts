@@ -263,61 +263,83 @@ export async function GET(
           isJobNotFound,
         })
         
-        // If job is not found (404), mark the sync as failed
+        // If job is not found (404), check if it's a newly created job
+        // Newly created jobs may take a moment to appear in Temporal, so we should
+        // only mark as failed if the job has been queued for more than a reasonable time
         if (isJobNotFound) {
-          console.warn("[Knowledge] Workflow not found, marking as failed", {
-            knowledgeId: id,
-            jobId: knowledge.jobId,
-            currentStatus: knowledge.status,
-          })
+          const jobAge = knowledge.startedAt 
+            ? new Date().getTime() - new Date(knowledge.startedAt).getTime()
+            : 0
+          const jobAgeSeconds = jobAge / 1000
           
-          // Update knowledge record to failed state
-          const docToUpdate = await (KnowledgeSource as any).findById(id)
-          if (docToUpdate) {
-            docToUpdate.status = "failed"
+          // If job is queued and was created less than 30 seconds ago, it might not be in Temporal yet
+          // Don't mark it as failed immediately - allow it to remain in queued state
+          const shouldMarkAsFailed = jobAgeSeconds > 30 || knowledge.status !== "queued"
+          
+          if (shouldMarkAsFailed) {
+            console.warn("[Knowledge] Workflow not found after reasonable time, marking as failed", {
+              knowledgeId: id,
+              jobId: knowledge.jobId,
+              currentStatus: knowledge.status,
+              jobAgeSeconds: Math.round(jobAgeSeconds),
+            })
             
-            // Update sync history
-            const syncHistory = Array.isArray(docToUpdate.syncHistory) 
-              ? docToUpdate.syncHistory.map((sync: unknown) => {
-                  const s = sync as { jobId?: unknown; status?: unknown; [key: string]: unknown }
-                  return {
-                    jobId: String(s.jobId || ""),
-                    workflowId: s.workflowId ? String(s.workflowId) : undefined,
-                    status: String(s.status || "pending"),
-                    triggerType: String(s.triggerType || "initial"),
-                    startedAt: s.startedAt instanceof Date ? s.startedAt : (s.startedAt ? new Date(s.startedAt as string) : new Date()),
-                    completedAt: s.completedAt instanceof Date ? s.completedAt : (s.completedAt ? new Date(s.completedAt as string) : undefined),
-                    phase: s.phase ? String(s.phase) : undefined,
-                    progress: typeof s.progress === "number" ? s.progress : undefined,
-                    errors: Array.isArray(s.errors) ? s.errors.map((e) => String(e)) : [],
-                    warnings: Array.isArray(s.warnings) ? s.warnings.map((w) => String(w)) : [],
-                    pagesProcessed: typeof s.pagesProcessed === "number" ? s.pagesProcessed : undefined,
-                    linksProcessed: typeof s.linksProcessed === "number" ? s.linksProcessed : undefined,
-                    errorCount: typeof s.errorCount === "number" ? s.errorCount : undefined,
-                  }
-                })
-              : []
-            
-            const currentSyncIndex = syncHistory.findIndex(
-              (sync: { jobId: string }) => sync.jobId === knowledge.jobId
-            )
-            
-            if (currentSyncIndex >= 0) {
-              syncHistory[currentSyncIndex] = {
-                ...syncHistory[currentSyncIndex],
-                status: "failed",
-                completedAt: new Date(),
-                errors: [errorMessage],
-                errorCount: (syncHistory[currentSyncIndex].errorCount || 0) + 1,
+            // Update knowledge record to failed state
+            const docToUpdate = await (KnowledgeSource as any).findById(id)
+            if (docToUpdate) {
+              docToUpdate.status = "failed"
+              
+              // Update sync history
+              const syncHistory = Array.isArray(docToUpdate.syncHistory) 
+                ? docToUpdate.syncHistory.map((sync: unknown) => {
+                    const s = sync as { jobId?: unknown; status?: unknown; [key: string]: unknown }
+                    return {
+                      jobId: String(s.jobId || ""),
+                      workflowId: s.workflowId ? String(s.workflowId) : undefined,
+                      status: String(s.status || "pending"),
+                      triggerType: String(s.triggerType || "initial"),
+                      startedAt: s.startedAt instanceof Date ? s.startedAt : (s.startedAt ? new Date(s.startedAt as string) : new Date()),
+                      completedAt: s.completedAt instanceof Date ? s.completedAt : (s.completedAt ? new Date(s.completedAt as string) : undefined),
+                      phase: s.phase ? String(s.phase) : undefined,
+                      progress: typeof s.progress === "number" ? s.progress : undefined,
+                      errors: Array.isArray(s.errors) ? s.errors.map((e) => String(e)) : [],
+                      warnings: Array.isArray(s.warnings) ? s.warnings.map((w) => String(w)) : [],
+                      pagesProcessed: typeof s.pagesProcessed === "number" ? s.pagesProcessed : undefined,
+                      linksProcessed: typeof s.linksProcessed === "number" ? s.linksProcessed : undefined,
+                      errorCount: typeof s.errorCount === "number" ? s.errorCount : undefined,
+                    }
+                  })
+                : []
+              
+              const currentSyncIndex = syncHistory.findIndex(
+                (sync: { jobId: string }) => sync.jobId === knowledge.jobId
+              )
+              
+              if (currentSyncIndex >= 0) {
+                syncHistory[currentSyncIndex] = {
+                  ...syncHistory[currentSyncIndex],
+                  status: "failed",
+                  completedAt: new Date(),
+                  errors: [errorMessage],
+                  errorCount: (syncHistory[currentSyncIndex].errorCount || 0) + 1,
+                }
               }
+              
+              docToUpdate.syncHistory = syncHistory
+              await docToUpdate.save()
             }
             
-            docToUpdate.syncHistory = syncHistory
-            await docToUpdate.save()
+            // Fetch fresh lean document
+            knowledge = await (KnowledgeSource as any).findById(id).lean()
+          } else {
+            console.log("[Knowledge] Workflow not found but job is newly created, keeping queued status", {
+              knowledgeId: id,
+              jobId: knowledge.jobId,
+              jobAgeSeconds: Math.round(jobAgeSeconds),
+            })
+            // Job is too new - don't mark as failed yet, keep it in queued state
+            // The polling mechanism will retry and eventually find it when it appears in Temporal
           }
-          
-          // Fetch fresh lean document
-          knowledge = await (KnowledgeSource as any).findById(id).lean()
         }
       }
     }
@@ -608,19 +630,37 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    // Cancel the job if it's still running
+    // Cancel the job if it's still running before deleting
     if (knowledge.jobId && ["pending", "queued", "running"].includes(knowledge.status)) {
       try {
-        // Note: The new knowledge extraction API may not have a cancel endpoint yet
-        // For now, we'll just delete the record
-        console.log("[Knowledge] Deleting knowledge with active job", {
+        console.log("[Knowledge] Canceling job before delete", {
           knowledgeId: id,
           jobId: knowledge.jobId,
           status: knowledge.status,
         })
+
+        // Call the cancel endpoint to properly cancel the job
+        const cancelResponse = await fetch(`${req.nextUrl.origin}/api/knowledge/${id}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        if (!cancelResponse.ok) {
+          const cancelError = (await cancelResponse.json()) as { error?: string }
+          console.warn("[Knowledge] Failed to cancel job before delete, proceeding with delete anyway", {
+            knowledgeId: id,
+            jobId: knowledge.jobId,
+            error: cancelError.error || "Unknown error",
+          })
+        } else {
+          console.log("[Knowledge] Job canceled successfully before delete", {
+            knowledgeId: id,
+            jobId: knowledge.jobId,
+          })
+        }
       } catch (error: unknown) {
-        // Log but don't fail the delete operation
-        console.error("[Knowledge] Failed to cancel job before delete", {
+        // Log but don't fail the delete operation - we'll still delete the record
+        console.error("[Knowledge] Error canceling job before delete, proceeding with delete", {
           knowledgeId: id,
           jobId: knowledge.jobId,
           error: error instanceof Error ? error.message : String(error),

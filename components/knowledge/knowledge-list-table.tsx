@@ -1,12 +1,23 @@
 "use client"
 
 import { format } from "date-fns"
-import { ExternalLink, FileText, Globe, MoreHorizontal, RefreshCw, Square, X, Trash2 } from "lucide-react"
+import { ExternalLink, FileText, Globe, MoreHorizontal, RefreshCw, Search, Square, X, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +25,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -91,12 +110,44 @@ export function KnowledgeListTable({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [searchQuery, setSearchQuery] = useState<string>("")
   const [page, setPage] = useState(initialPagination?.page || 1)
   const [pagination, setPagination] = useState(initialPagination)
   const [resyncingIds, setResyncingIds] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [knowledgeToDelete, setKnowledgeToDelete] = useState<KnowledgeSource | null>(null)
   const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set())
   const [cancelingIds, setCancelingIds] = useState<Set<string>>(new Set())
+
+  // Calculate stats from knowledge list
+  const stats = useMemo(() => {
+    const total = knowledgeList.length
+    const completed = knowledgeList.filter((k) => k.status === "completed").length
+    const running = knowledgeList.filter((k) => ["pending", "queued", "running"].includes(k.status)).length
+    const failed = knowledgeList.filter((k) => k.status === "failed").length
+    const totalPages = knowledgeList.reduce((sum, k) => sum + (k.pagesStored || 0), 0)
+    
+    return { total, completed, running, failed, totalPages }
+  }, [knowledgeList])
+
+  // Filter knowledge list by search query
+  const filteredKnowledgeList = useMemo(() => {
+    if (!searchQuery.trim()) return knowledgeList
+    
+    const query = searchQuery.toLowerCase()
+    return knowledgeList.filter((knowledge) => {
+      const name = (knowledge.name || knowledge.sourceName || "").toLowerCase()
+      const description = (knowledge.description || "").toLowerCase()
+      const sourceUrl = (knowledge.sourceUrl || "").toLowerCase()
+      const fileName = (knowledge.fileName || "").toLowerCase()
+      
+      return name.includes(query) || 
+             description.includes(query) || 
+             sourceUrl.includes(query) || 
+             fileName.includes(query)
+    })
+  }, [knowledgeList, searchQuery])
 
   const fetchKnowledge = async (newPage: number = page, newStatus: string = statusFilter) => {
     setIsLoading(true)
@@ -177,10 +228,19 @@ export function KnowledgeListTable({
     }
   }
 
-  const handleDelete = async (knowledgeId: string) => {
-    setDeletingId(knowledgeId)
+  const handleDeleteClick = (knowledge: KnowledgeSource) => {
+    setKnowledgeToDelete(knowledge)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!knowledgeToDelete) return
+
+    setDeletingId(knowledgeToDelete.id)
+    setDeleteDialogOpen(false)
+    
     try {
-      const response = await fetch(`/api/knowledge/${knowledgeId}`, {
+      const response = await fetch(`/api/knowledge/${knowledgeToDelete.id}`, {
         method: "DELETE",
       })
 
@@ -188,12 +248,32 @@ export function KnowledgeListTable({
         throw new Error("Failed to delete knowledge")
       }
 
+      // Remove from local state immediately for instant feedback
+      setKnowledgeList((prev) => prev.filter((k) => k.id !== knowledgeToDelete.id))
+      
+      // Refresh from server to ensure consistency
       await fetchKnowledge(page, statusFilter)
+      
+      // If we're on a page that's now empty, go to previous page
+      if (knowledgeList.length === 1 && page > 1) {
+        const newPage = page - 1
+        setPage(newPage)
+        await fetchKnowledge(newPage, statusFilter)
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete knowledge"
       setError(errorMessage)
+      // Restore the item if delete failed
+      setKnowledgeList((prev) => {
+        const exists = prev.find((k) => k.id === knowledgeToDelete.id)
+        if (!exists) {
+          return [...prev, knowledgeToDelete]
+        }
+        return prev
+      })
     } finally {
       setDeletingId(null)
+      setKnowledgeToDelete(null)
     }
   }
 
@@ -274,41 +354,60 @@ export function KnowledgeListTable({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Status Filter */}
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      {knowledgeList.length > 0 && (
+        <div className="grid grid-cols-4 gap-4">
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">{stats.total}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Total sources</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">{stats.completed}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Completed</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">{stats.running}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">In progress</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-semibold">{stats.totalPages.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Pages indexed</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Search and Filters */}
       <div className="flex items-center gap-2">
-        <Button
-          variant={statusFilter === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => handleStatusFilterChange("all")}
-          className="h-7 text-xs"
-        >
-          All
-        </Button>
-        <Button
-          variant={statusFilter === "completed" ? "default" : "outline"}
-          size="sm"
-          onClick={() => handleStatusFilterChange("completed")}
-          className="h-7 text-xs"
-        >
-          Completed
-        </Button>
-        <Button
-          variant={statusFilter === "running" ? "default" : "outline"}
-          size="sm"
-          onClick={() => handleStatusFilterChange("running")}
-          className="h-7 text-xs"
-        >
-          Syncing
-        </Button>
-        <Button
-          variant={statusFilter === "failed" ? "default" : "outline"}
-          size="sm"
-          onClick={() => handleStatusFilterChange("failed")}
-          className="h-7 text-xs"
-        >
-          Failed
-        </Button>
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search knowledge..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 pl-9 text-sm"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+          <SelectTrigger className="h-9 w-[140px] text-sm">
+            <SelectValue placeholder="All Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="running">Syncing</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {error && (
@@ -318,8 +417,9 @@ export function KnowledgeListTable({
       )}
 
       {/* Table */}
-      <div className="border rounded-lg">
-        <Table>
+      <Card className="bg-muted/30">
+        <CardContent className="pt-6 p-0">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="h-9 text-xs font-semibold">Name</TableHead>
@@ -356,7 +456,7 @@ export function KnowledgeListTable({
                   </TableRow>
                 ))}
               </>
-            ) : knowledgeList.length === 0 ? (
+            ) : filteredKnowledgeList.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24">
                   <Empty className="border-0 p-0">
@@ -448,10 +548,10 @@ export function KnowledgeListTable({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="py-2 text-xs text-foreground opacity-85">
+                    <TableCell className="py-2 text-xs text-muted-foreground">
                       {getLastSyncTime(knowledge)}
                     </TableCell>
-                    <TableCell className="py-2 text-xs text-foreground opacity-85">
+                    <TableCell className="py-2 text-xs text-muted-foreground">
                       {knowledge.status === "completed" && knowledge.pagesStored
                         ? `${knowledge.pagesStored} pages`
                         : "—"}
@@ -553,11 +653,15 @@ export function KnowledgeListTable({
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (confirm("Are you sure you want to delete this knowledge? This action cannot be undone.")) {
-                                handleDelete(knowledge.id)
-                              }
+                              handleDeleteClick(knowledge)
                             }}
-                            disabled={isDeleting || stoppingIds.has(knowledge.id) || cancelingIds.has(knowledge.id)}
+                            disabled={
+                              isDeleting || 
+                              stoppingIds.has(knowledge.id) || 
+                              cancelingIds.has(knowledge.id) ||
+                              // Disable delete for active jobs - user must cancel first
+                              (["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId !== null)
+                            }
                             className="text-xs text-destructive focus:text-destructive"
                           >
                             {isDeleting ? (
@@ -569,6 +673,9 @@ export function KnowledgeListTable({
                               <>
                                 <Trash2 className="mr-2 h-3 w-3" />
                                 Delete
+                                {["pending", "queued", "running"].includes(knowledge.status) && knowledge.jobId !== null && (
+                                  <span className="ml-1 text-xs opacity-60">(Cancel first)</span>
+                                )}
                               </>
                             )}
                           </DropdownMenuItem>
@@ -581,7 +688,8 @@ export function KnowledgeListTable({
             )}
           </TableBody>
         </Table>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
@@ -593,6 +701,46 @@ export function KnowledgeListTable({
           onPageChange={handlePageChange}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Knowledge</AlertDialogTitle>
+            <AlertDialogDescription>
+              {knowledgeToDelete && ["pending", "queued", "running"].includes(knowledgeToDelete.status) && knowledgeToDelete.jobId !== null ? (
+                <>
+                  This knowledge has an active job. The job will be canceled automatically before deletion.
+                  <br />
+                  <br />
+                  Are you sure you want to delete <strong>{knowledgeToDelete.name || knowledgeToDelete.sourceName}</strong>? This action cannot be undone.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete <strong>{knowledgeToDelete?.name || knowledgeToDelete?.sourceName}</strong>? This action cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deletingId !== null}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingId ? (
+                <>
+                  <Spinner className="mr-2 h-3.5 w-3.5" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

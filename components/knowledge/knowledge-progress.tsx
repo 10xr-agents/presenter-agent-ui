@@ -12,6 +12,7 @@ interface KnowledgeProgressProps {
   knowledgeId: string
   jobId: string | null
   workflowId: string | null
+  knowledgeStatus?: "pending" | "queued" | "running" | "completed" | "failed" | "cancelled" | null
   onComplete?: () => void
   onError?: (error: string) => void
   className?: string
@@ -21,6 +22,7 @@ export function KnowledgeProgress({
   knowledgeId,
   jobId,
   workflowId,
+  knowledgeStatus,
   onComplete,
   onError,
   className,
@@ -75,18 +77,45 @@ export function KnowledgeProgress({
         })
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to fetch workflow status"
-      console.error("[Knowledge Progress] Error fetching workflow status", {
+      // Extract error details with better handling
+      let errorMessage = "Failed to fetch workflow status"
+      let errorDetails: Record<string, unknown> = {
         knowledgeId,
         jobId,
-        error: errorMessage,
-      })
+      }
+      
+      if (err instanceof Error) {
+        errorMessage = err.message
+        const errorWithStatus = err as Error & { statusCode?: number; isNotFound?: boolean; isNetworkError?: boolean }
+        
+        // Add status code if available
+        if (errorWithStatus.statusCode !== undefined) {
+          errorDetails.statusCode = errorWithStatus.statusCode
+        }
+        
+        // Handle specific error types
+        if (errorWithStatus.isNotFound) {
+          errorMessage = "Workflow not found. It may have been deleted or the job ID is invalid."
+          errorDetails.isNotFound = true
+        } else if (errorWithStatus.isNetworkError) {
+          errorMessage = "Unable to connect to knowledge extraction service. Please check your connection."
+          errorDetails.isNetworkError = true
+        }
+        
+        errorDetails.error = errorMessage
+        errorDetails.errorStack = err.stack
+      } else {
+        errorDetails.error = String(err)
+        errorDetails.errorType = typeof err
+      }
+      
+      console.error("[Knowledge Progress] Error fetching workflow status", errorDetails)
       setError(errorMessage)
       onError?.(errorMessage)
     } finally {
       setIsLoading(false)
     }
-  }, [jobId, knowledgeId, onComplete, onError])
+  }, [jobId, knowledgeId, workflowId, onComplete, onError])
 
   // Initial fetch
   useEffect(() => {
@@ -107,7 +136,7 @@ export function KnowledgeProgress({
     }, 3000) // Poll every 3 seconds
 
     return () => clearInterval(interval)
-  }, [jobId, workflowStatus?.status])
+  }, [jobId, workflowStatus?.status, fetchWorkflowStatus])
 
   const getStatusIcon = () => {
     if (!workflowStatus) return null
@@ -151,7 +180,47 @@ export function KnowledgeProgress({
     return null
   }
 
+  // If workflowStatus is null but we have knowledgeStatus from the knowledge source, use that as fallback
+  // This handles cases where the workflow API is unavailable but the knowledge source status is updated
   if (!workflowStatus) {
+    // Check if knowledge source status indicates an end state
+    if (knowledgeStatus === "failed") {
+      return (
+        <div className={cn("space-y-2", className)}>
+          <div className="flex items-center gap-2 text-xs">
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+            <span className="font-medium text-destructive">Failed</span>
+          </div>
+          <Alert variant="destructive" className="py-2">
+            <AlertDescription className="text-xs">
+              Knowledge extraction failed. Please try resyncing or check the error details.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )
+    }
+    if (knowledgeStatus === "completed") {
+      return (
+        <div className={cn("space-y-2", className)}>
+          <div className="flex items-center gap-2 text-xs">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+            <span className="font-medium text-green-600">Completed</span>
+          </div>
+        </div>
+      )
+    }
+    if (knowledgeStatus === "cancelled") {
+      return (
+        <div className={cn("space-y-2", className)}>
+          <div className="flex items-center gap-2 text-xs">
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+            <span className="font-medium text-destructive">Cancelled</span>
+          </div>
+        </div>
+      )
+    }
+    
+    // Still loading - show spinner
     return (
       <div className={cn("space-y-2", className)}>
         <div className="flex items-center gap-2 text-xs">

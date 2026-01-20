@@ -1,8 +1,9 @@
 "use client"
 
-import { CheckCircle2, Clock, XCircle } from "lucide-react"
+import { CheckCircle2, Clock, XCircle, Eye } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 
 interface SyncActivity {
   id: string
@@ -43,6 +44,8 @@ interface KnowledgeSyncActivityProps {
   }>
   createdAt: string
   className?: string
+  onJobSelect?: (jobId: string | null) => void // Callback when user selects a job to view
+  selectedJobId?: string | null // Currently selected job ID (null means latest)
 }
 
 export function KnowledgeSyncActivity({
@@ -56,6 +59,8 @@ export function KnowledgeSyncActivity({
   syncHistory,
   createdAt,
   className,
+  onJobSelect,
+  selectedJobId,
 }: KnowledgeSyncActivityProps) {
   // Build sync history from syncHistory array if available, otherwise fallback to current state
   const syncActivities: SyncActivity[] = syncHistory && syncHistory.length > 0
@@ -160,21 +165,21 @@ export function KnowledgeSyncActivity({
           <div className="flex items-center gap-4 text-xs">
             {lastSuccessfulSync && (
               <div>
-                <span className="text-foreground opacity-60">Last successful:</span>{" "}
-                <span className="font-medium text-foreground">
+                <span className="text-muted-foreground">Last successful:</span>{" "}
+                <span className="font-medium">
                   {format(new Date(lastSuccessfulSync.completedAt || lastSuccessfulSync.startedAt), "MMM d, yyyy")}
                 </span>
               </div>
             )}
             <div>
-              <span className="text-foreground opacity-60">Success rate:</span>{" "}
+              <span className="text-muted-foreground">Success rate:</span>{" "}
               <span className={cn(
                 "font-medium",
                 successRate >= 80 ? "text-green-600" : successRate >= 50 ? "text-yellow-600" : "text-destructive"
               )}>
                 {successRate}%
               </span>
-              <span className="text-foreground opacity-60 ml-1">
+              <span className="text-muted-foreground ml-1">
                 ({completedSyncs.length}/{syncActivities.length})
               </span>
             </div>
@@ -197,7 +202,8 @@ export function KnowledgeSyncActivity({
               key={activity.id}
               className={cn(
                 "py-3 border-b last:border-b-0",
-                isActive && "bg-primary/5"
+                isActive && "bg-primary/5",
+                selectedJobId === activity.id && "bg-accent/30 border-l-2 border-l-primary"
               )}
             >
               <div className="grid grid-cols-12 gap-4 items-start">
@@ -210,6 +216,9 @@ export function KnowledgeSyncActivity({
                     </div>
                     {isActive && (
                       <div className="text-xs text-primary font-medium mt-0.5">Live</div>
+                    )}
+                    {selectedJobId === activity.id && !isActive && (
+                      <div className="text-xs text-primary font-medium mt-0.5">Viewing</div>
                     )}
                   </div>
                 </div>
@@ -231,32 +240,32 @@ export function KnowledgeSyncActivity({
                 </div>
 
                 {/* Timestamp */}
-                <div className="col-span-3 text-xs text-foreground">
+                <div className="col-span-3 text-xs">
                   <div className="font-medium">
                     {format(new Date(activity.startedAt), "MMM d, yyyy 'at' h:mm a")}
                   </div>
                   {activity.completedAt && (
-                    <div className="text-foreground opacity-60 mt-0.5">
+                    <div className="text-muted-foreground mt-0.5">
                       Completed: {format(new Date(activity.completedAt), "MMM d, h:mm a")}
                     </div>
                   )}
                 </div>
 
                 {/* Duration */}
-                <div className="col-span-2 text-xs text-foreground">
+                <div className="col-span-2 text-xs">
                   {duration ? (
                     <div>
                       {minutes !== null && minutes > 0 ? `${minutes}m ` : ""}{seconds !== null ? `${seconds}s` : ""}
                     </div>
                   ) : activity.status === "running" ? (
-                    <div className="text-foreground">In progress</div>
+                    <div>In progress</div>
                   ) : activity.status === "pending" ? (
-                    <div className="text-foreground opacity-60">Queued</div>
+                    <div className="text-muted-foreground">Queued</div>
                   ) : null}
                 </div>
 
                 {/* Metrics */}
-                <div className="col-span-2 text-xs text-foreground">
+                <div className="col-span-2 text-xs">
                   {activity.status === "completed" && (
                     <div className="space-y-0.5">
                       {activity.pagesProcessed !== undefined && activity.pagesProcessed > 0 && (
@@ -343,11 +352,51 @@ export function KnowledgeSyncActivity({
                     </div>
                   )}
                 </div>
+
+                {/* View Button */}
+                {onJobSelect && activity.status === "completed" && (
+                  <div className="col-span-1 flex items-center justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onJobSelect(activity.id)}
+                      className={cn(
+                        "h-7 text-xs",
+                        selectedJobId === activity.id && "bg-primary/10"
+                      )}
+                      title="View knowledge extracted from this job"
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" />
+                      View
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )
         })}
       </div>
+
+      {/* Summary Footer */}
+      {onJobSelect && syncActivities.length > 1 && (
+        <div className="pt-3 border-t flex items-center justify-between text-xs">
+          <div className="text-muted-foreground">
+            {selectedJobId
+              ? `Viewing knowledge from selected job.`
+              : `Viewing latest knowledge (most recent job).`}
+          </div>
+          {selectedJobId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onJobSelect(null)}
+              className="h-7 text-xs"
+            >
+              View Latest
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
