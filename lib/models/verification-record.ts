@@ -65,7 +65,6 @@ const VerificationRecordSchema = new Schema<IVerificationRecord>(
     tenantId: {
       type: String,
       required: true,
-      index: true,
     },
     taskId: {
       type: String,

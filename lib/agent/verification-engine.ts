@@ -115,7 +115,7 @@ function performDOMChecks(
       // Look for element and check if it contains the expected text
       const elementRegex = new RegExp(`<[^>]*${selector}[^>]*>([\\s\\S]*?)<\\/[^>]*>`, "i")
       const match = dom.match(elementRegex)
-      const elementText = match ? match[1] : ""
+      const elementText = match?.[1] || ""
       results.elementTextMatches = elementText.includes(text)
     }
 

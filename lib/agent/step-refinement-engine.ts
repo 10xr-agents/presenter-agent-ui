@@ -210,7 +210,10 @@ function parseRefinementResponse(content: string, planToolType: "DOM" | "SERVER"
   let parameters: Record<string, unknown> = {}
   if (parametersMatch?.[1]?.trim()) {
     try {
-      parameters = JSON.parse(parametersMatch[1].trim())
+      const parsed = JSON.parse(parametersMatch[1].trim())
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        parameters = parsed as Record<string, unknown>
+      }
     } catch {
       // If JSON parse fails, try to extract parameters from action string
       parameters = {}

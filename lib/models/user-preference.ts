@@ -25,7 +25,6 @@ const UserPreferenceSchema = new Schema<IUserPreference>(
     tenantId: {
       type: String,
       required: true,
-      index: true,
     },
     userId: {
       type: String,

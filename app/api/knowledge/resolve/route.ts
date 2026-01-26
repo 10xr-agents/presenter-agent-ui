@@ -86,13 +86,20 @@ export async function GET(req: NextRequest) {
       return addCorsHeaders(req, err)
     }
 
+    // Normalize URL: add https:// if no protocol is present
+    // This allows domain-only URLs like "demo.openemr.io" since knowledge is domain-based
+    let normalizedUrl = urlParam.trim()
+    if (!normalizedUrl.match(/^https?:\/\//i)) {
+      normalizedUrl = `https://${normalizedUrl}`
+    }
+
     let parsedUrl: URL
     try {
-      parsedUrl = new URL(urlParam.trim())
+      parsedUrl = new URL(normalizedUrl)
     } catch {
       const err = errorResponse("VALIDATION_ERROR", 400, {
         code: "VALIDATION_ERROR",
-        message: "Invalid url: must be a valid absolute URL",
+        message: "Invalid url: must be a valid URL or domain",
       })
       return addCorsHeaders(req, err)
     }

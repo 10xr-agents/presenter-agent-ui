@@ -35,7 +35,6 @@ const DebugLogSchema = new Schema<IDebugLog>(
     tenantId: {
       type: String,
       required: true,
-      index: true,
     },
     taskId: {
       type: String,
