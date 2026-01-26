@@ -13,6 +13,21 @@ import mongoose, { Schema } from "mongoose"
  *
  * Tenant ID: userId (normal mode) or organizationId (organization mode)
  */
+// Task 7: Expected outcome structure for verification
+export interface ExpectedOutcome {
+  description?: string // Natural language description
+  domChanges?: {
+    elementShouldExist?: string // Element selector
+    elementShouldNotExist?: string // Element selector
+    elementShouldHaveText?: {
+      selector: string
+      text: string
+    }
+    urlShouldChange?: boolean
+  }
+  [key: string]: unknown // Allow additional fields
+}
+
 export interface ITaskAction extends mongoose.Document {
   tenantId: string // userId or organizationId
   taskId: string // References Task._id
@@ -20,6 +35,19 @@ export interface ITaskAction extends mongoose.Document {
   stepIndex: number // 0, 1, 2, ... (order of actions)
   thought: string // LLM reasoning for this step
   action: string // Action string (e.g. "click(123)", "setValue(456, 'text')", "finish()")
+  // Execution metrics (Task 3)
+  metrics?: {
+    requestDuration: number // Total request processing time in milliseconds
+    ragDuration?: number // RAG retrieval duration in milliseconds
+    llmDuration?: number // LLM call duration in milliseconds
+    tokenUsage?: {
+      promptTokens: number
+      completionTokens: number
+    }
+  }
+  // Task 7: Verification fields
+  expectedOutcome?: ExpectedOutcome // What should happen after this action
+  domSnapshot?: string // DOM state when action was taken (for comparison)
   createdAt: Date
 }
 
@@ -49,6 +77,39 @@ const TaskActionSchema = new Schema<ITaskAction>(
     action: {
       type: String,
       required: true,
+    },
+    metrics: {
+      requestDuration: {
+        type: Number,
+        required: false,
+      },
+      ragDuration: {
+        type: Number,
+        required: false,
+      },
+      llmDuration: {
+        type: Number,
+        required: false,
+      },
+      tokenUsage: {
+        promptTokens: {
+          type: Number,
+          required: false,
+        },
+        completionTokens: {
+          type: Number,
+          required: false,
+        },
+      },
+    },
+    // Task 7: Verification fields
+    expectedOutcome: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
+    domSnapshot: {
+      type: String,
+      required: false,
     },
   },
   {

@@ -74,4 +74,7 @@ export * from "./allowed-domain"
 export * from "./task"
 export * from "./task-action"
 export * from "./user-preference"
+export * from "./debug-log"
+export * from "./verification-record"
+export * from "./correction-record"
 

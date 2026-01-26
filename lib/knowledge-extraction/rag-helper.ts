@@ -5,12 +5,26 @@ import { fetchResolveFromExtractionService } from "./resolve-client"
 import type { ResolveKnowledgeChunk, ResolveCitation } from "./resolve-client"
 
 /**
+ * RAG debug information for debug UI.
+ */
+export interface RAGDebug {
+  hasOrgKnowledge: boolean
+  activeDomain: string
+  domainMatch: boolean
+  ragMode: "org_specific" | "public_only"
+  reason: string
+  chunkCount: number
+  allowedDomains?: string[]
+}
+
+/**
  * RAG result with knowledge chunks and org-specific flag.
  */
 export interface RAGResult {
   chunks: ResolveKnowledgeChunk[]
   citations?: ResolveCitation[]
   hasOrgKnowledge: boolean
+  ragDebug?: RAGDebug
 }
 
 /**
@@ -42,16 +56,27 @@ export async function getRAGChunks(
     .exec() as { domainPattern: string }[]
 
   const allowedPatterns = Array.isArray(rows) ? rows : []
+  const allowedDomainPatterns = allowedPatterns.map((r: { domainPattern: string }) => r.domainPattern)
   const domainMatches = allowedPatterns.some((r: { domainPattern: string }) =>
     matchesDomainPattern(domain, r.domainPattern)
   )
 
   if (!domainMatches) {
     // Public knowledge only - no extraction call
+    const ragDebug: RAGDebug = {
+      hasOrgKnowledge: false,
+      activeDomain: domain,
+      domainMatch: false,
+      ragMode: "public_only",
+      reason: `Domain "${domain}" does not match any allowed_domains patterns for this tenant. Using public knowledge only.`,
+      chunkCount: 0,
+      allowedDomains: allowedDomainPatterns.length > 0 ? allowedDomainPatterns : undefined,
+    }
     return {
       chunks: [],
       citations: [],
       hasOrgKnowledge: false,
+      ragDebug,
     }
   }
 
@@ -62,19 +87,41 @@ export async function getRAGChunks(
       query,
       tenantId
     )
+    const chunks = Array.isArray(context) ? context : []
+    const ragDebug: RAGDebug = {
+      hasOrgKnowledge: true,
+      activeDomain: domain,
+      domainMatch: true,
+      ragMode: "org_specific",
+      reason: `Domain "${domain}" matches allowed_domains pattern. Using org-specific knowledge.`,
+      chunkCount: chunks.length,
+      allowedDomains: allowedDomainPatterns.length > 0 ? allowedDomainPatterns : undefined,
+    }
     return {
-      chunks: Array.isArray(context) ? context : [],
+      chunks,
       citations: Array.isArray(citations) ? citations : [],
       hasOrgKnowledge: true,
+      ragDebug,
     }
   } catch (error: unknown) {
     // On extraction service error, fall back to public-only
     // Log error but don't fail the request
     console.error("[getRAGChunks] Extraction service error:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    const ragDebug: RAGDebug = {
+      hasOrgKnowledge: false,
+      activeDomain: domain,
+      domainMatch: true,
+      ragMode: "public_only",
+      reason: `Domain "${domain}" matches allowed_domains pattern, but extraction service returned an error: ${errorMessage}. Falling back to public knowledge only.`,
+      chunkCount: 0,
+      allowedDomains: allowedDomainPatterns.length > 0 ? allowedDomainPatterns : undefined,
+    }
     return {
       chunks: [],
       citations: [],
       hasOrgKnowledge: false,
+      ragDebug,
     }
   }
 }

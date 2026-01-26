@@ -4,6 +4,7 @@ import { getSessionFromRequest } from "@/lib/auth/session"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { errorResponse } from "@/lib/utils/api-response"
 import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
+import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
 
 /**
  * GET /api/knowledge/resolve
@@ -26,6 +27,10 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now()
+  let urlParam: string | null = null
+  let queryParam: string | undefined = undefined
+
   try {
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
@@ -33,18 +38,50 @@ export async function GET(req: NextRequest) {
         code: "UNAUTHORIZED",
         message: "Missing or invalid Authorization header",
       })
+      const duration = Date.now() - startTime
+      await createDebugLog({
+        tenantId: "unknown",
+        logType: "error",
+        endpoint: "/api/knowledge/resolve",
+        method: "GET",
+        headers: extractHeaders(req),
+        statusCode: 401,
+        duration,
+        error: {
+          type: "UNAUTHORIZED",
+          message: "Missing or invalid Authorization header",
+        },
+      })
       return addCorsHeaders(req, err)
     }
 
     const { tenantId } = session
     const searchParams = req.nextUrl.searchParams
-    const urlParam = searchParams.get("url")
-    const queryParam = searchParams.get("query") ?? undefined
+    urlParam = searchParams.get("url")
+    queryParam = searchParams.get("query") ?? undefined
 
     if (!urlParam || typeof urlParam !== "string" || !urlParam.trim()) {
       const err = errorResponse("VALIDATION_ERROR", 400, {
         code: "VALIDATION_ERROR",
         message: "Missing required query parameter: url",
+      })
+      const duration = Date.now() - startTime
+      await createDebugLog({
+        tenantId,
+        logType: "error",
+        endpoint: "/api/knowledge/resolve",
+        method: "GET",
+        requestData: {
+          url: urlParam,
+          query: queryParam,
+        },
+        headers: extractHeaders(req),
+        statusCode: 400,
+        duration,
+        error: {
+          type: "VALIDATION_ERROR",
+          message: "Missing required query parameter: url",
+        },
       })
       return addCorsHeaders(req, err)
     }
@@ -65,7 +102,7 @@ export async function GET(req: NextRequest) {
     const query = typeof queryParam === "string" && queryParam.trim() ? queryParam.trim() : undefined
 
     // Reuse shared RAG helper (same logic as Task 3)
-    const { chunks, citations, hasOrgKnowledge } = await getRAGChunks(url, query, tenantId)
+    const { chunks, citations, hasOrgKnowledge, ragDebug } = await getRAGChunks(url, query, tenantId)
 
     const body = {
       allowed: true as const,
@@ -73,11 +110,67 @@ export async function GET(req: NextRequest) {
       hasOrgKnowledge,
       context: chunks,
       citations: citations || [],
+      ragDebug,
     }
+    const duration = Date.now() - startTime
     const res = NextResponse.json(body, { status: 200 })
+
+    // Log successful response
+    await createDebugLog({
+      tenantId,
+      logType: "api_response",
+      endpoint: "/api/knowledge/resolve",
+      method: "GET",
+      requestData: {
+        url: urlParam,
+        query: queryParam,
+      },
+      responseData: {
+        allowed: body.allowed,
+        domain: body.domain,
+        hasOrgKnowledge: body.hasOrgKnowledge,
+        context: Array.isArray(chunks) && chunks.length > 10 ? chunks.slice(0, 10) : chunks,
+        context_truncated: Array.isArray(chunks) && chunks.length > 10,
+        context_total_count: Array.isArray(chunks) ? chunks.length : 0,
+        citations: citations || [],
+      },
+      headers: extractHeaders(req),
+      statusCode: 200,
+      duration,
+      metadata: {
+        hasOrgKnowledge,
+        chunkCount: Array.isArray(chunks) ? chunks.length : 0,
+        citationCount: citations ? citations.length : 0,
+      },
+    })
+
     return addCorsHeaders(req, res)
   } catch (e: unknown) {
     Sentry.captureException(e)
+    const duration = Date.now() - startTime
+    const errorMessage = e instanceof Error ? e.message : "An unexpected error occurred"
+    const errorStack = e instanceof Error ? e.stack : undefined
+
+    // Log error
+    await createDebugLog({
+      tenantId: "unknown",
+      logType: "error",
+      endpoint: "/api/knowledge/resolve",
+      method: "GET",
+      requestData: {
+        url: urlParam,
+        query: queryParam,
+      },
+      headers: extractHeaders(req),
+      statusCode: 500,
+      duration,
+      error: {
+        type: "INTERNAL_ERROR",
+        message: errorMessage,
+        stack: errorStack,
+      },
+    })
+
     const err = errorResponse("INTERNAL_ERROR", 500, {
       code: "INTERNAL_ERROR",
       message: "An unexpected error occurred",

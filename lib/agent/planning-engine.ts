@@ -1,0 +1,204 @@
+import { OpenAI } from "openai"
+import * as Sentry from "@sentry/nextjs"
+import type { TaskPlan, PlanStep } from "@/lib/models/task"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+
+/**
+ * Planning Engine (Task 6)
+ *
+ * Generates high-level action plans from user instructions.
+ * Breaks down tasks into logical steps with tool types and expected outcomes.
+ */
+
+/**
+ * Generate action plan from user instructions.
+ *
+ * @param query - User query/instructions
+ * @param url - Current page URL
+ * @param dom - Current DOM (simplified, for context)
+ * @param ragChunks - RAG context chunks (if available)
+ * @param hasOrgKnowledge - Whether org-specific knowledge was used
+ * @returns Generated plan or null on error
+ */
+export async function generatePlan(
+  query: string,
+  url: string,
+  dom: string,
+  ragChunks: ResolveKnowledgeChunk[] = [],
+  hasOrgKnowledge = false
+): Promise<TaskPlan | null> {
+  const apiKey = process.env.OPENAI_API_KEY
+
+  if (!apiKey) {
+    Sentry.captureException(new Error("OPENAI_API_KEY not configured"))
+    throw new Error("OpenAI API key not configured")
+  }
+
+  const openai = new OpenAI({
+    apiKey,
+  })
+
+  // Use lightweight model for planning to reduce cost (as per requirements)
+  const model = process.env.PLANNING_MODEL || "gpt-4o-mini"
+
+  // Build planning prompt
+  const systemPrompt = `You are a planning AI that breaks down user tasks into high-level action steps.
+
+Your job is to analyze the user's instructions and create a linear plan of steps needed to complete the task.
+
+For each step, provide:
+- A clear description of what needs to be done
+- Reasoning for why this step is needed
+- Tool type: "DOM" (browser actions), "SERVER" (API calls), or "MIXED" (both)
+- Expected outcome (what should happen after this step completes)
+
+Response Format:
+You must respond in the following format:
+<Plan>
+<Step index="0">
+<Description>Step description</Description>
+<Reasoning>Why this step is needed</Reasoning>
+<ToolType>DOM|SERVER|MIXED</ToolType>
+<ExpectedOutcome>What should happen after this step</ExpectedOutcome>
+</Step>
+<Step index="1">
+...
+</Step>
+</Plan>
+
+Guidelines:
+- Keep steps high-level and logical
+- Each step should be independent (no complex dependencies initially)
+- Use "DOM" for browser interactions (click, setValue, etc.)
+- Use "SERVER" for API calls or data operations
+- Use "MIXED" if step requires both DOM and server actions
+- Keep plan linear (no complex DAGs initially)
+- Aim for 3-10 steps depending on task complexity`
+
+  // Build user message with context
+  const userParts: string[] = []
+
+  userParts.push(`User Query: ${query}`)
+  userParts.push(`Current URL: ${url}`)
+
+  // Add RAG context if available
+  if (ragChunks.length > 0) {
+    const knowledgeType = hasOrgKnowledge ? "Organization-specific knowledge" : "Public knowledge"
+    userParts.push(`\n${knowledgeType} (for reference):`)
+    ragChunks.forEach((chunk, idx) => {
+      userParts.push(`${idx + 1}. [${chunk.documentTitle}] ${chunk.content}`)
+    })
+  }
+
+  // Add simplified DOM for context (truncate if too long)
+  const domPreview = dom.length > 10000 ? dom.substring(0, 10000) + "... [truncated]" : dom
+  userParts.push(`\nCurrent DOM (simplified, for context):`)
+  userParts.push(domPreview)
+
+  userParts.push(
+    `\nBased on the user query, knowledge context, and current DOM, create a linear action plan to complete the task.`
+  )
+
+  const userPrompt = userParts.join("\n")
+
+  try {
+    const response = await openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    })
+
+    const content = response.choices[0]?.message?.content
+
+    if (!content) {
+      Sentry.captureException(new Error("Empty planning LLM response"))
+      return null
+    }
+
+    // Parse plan from LLM response
+    const plan = parsePlanResponse(content)
+
+    if (!plan) {
+      Sentry.captureException(new Error("Failed to parse planning response"))
+      return null
+    }
+
+    return {
+      steps: plan.steps,
+      currentStepIndex: 0,
+      createdAt: new Date(),
+    }
+  } catch (error: unknown) {
+    Sentry.captureException(error)
+    throw error
+  }
+}
+
+/**
+ * Parse LLM response to extract plan steps.
+ *
+ * @param content - LLM response content
+ * @returns Parsed plan or null if parse fails
+ */
+function parsePlanResponse(content: string): { steps: PlanStep[] } | null {
+  // Extract all Step blocks
+  const stepRegex = /<Step\s+index="(\d+)">([\s\S]*?)<\/Step>/gi
+  const steps: PlanStep[] = []
+
+  let match
+  while ((match = stepRegex.exec(content)) !== null) {
+    const index = parseInt(match[1] || "0", 10)
+    const stepContent = match[2] || ""
+
+    // Extract fields from step content
+    const descriptionMatch = stepContent.match(/<Description>([\s\S]*?)<\/Description>/i)
+    const reasoningMatch = stepContent.match(/<Reasoning>([\s\S]*?)<\/Reasoning>/i)
+    const toolTypeMatch = stepContent.match(/<ToolType>([\s\S]*?)<\/ToolType>/i)
+    const expectedOutcomeMatch = stepContent.match(/<ExpectedOutcome>([\s\S]*?)<\/ExpectedOutcome>/i)
+
+    const description = descriptionMatch?.[1]?.trim() || ""
+    const reasoning = reasoningMatch?.[1]?.trim()
+    const toolTypeStr = toolTypeMatch?.[1]?.trim()?.toUpperCase() || "DOM"
+    const expectedOutcomeStr = expectedOutcomeMatch?.[1]?.trim()
+
+    // Validate tool type
+    const toolType = toolTypeStr === "SERVER" || toolTypeStr === "MIXED" ? toolTypeStr : "DOM"
+
+    if (!description) {
+      // Skip steps without description
+      continue
+    }
+
+    steps.push({
+      index,
+      description,
+      reasoning: reasoning || undefined,
+      toolType,
+      status: "pending",
+      expectedOutcome: expectedOutcomeStr
+        ? {
+            description: expectedOutcomeStr,
+          }
+        : undefined,
+    })
+  }
+
+  if (steps.length === 0) {
+    return null
+  }
+
+  // Sort steps by index to ensure correct order
+  steps.sort((a, b) => a.index - b.index)
+
+  return { steps }
+}
