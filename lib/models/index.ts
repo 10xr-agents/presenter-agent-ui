@@ -70,4 +70,8 @@ export * from "./analytics-event"
 export * from "./team"
 export * from "./team-membership"
 export * from "./billing" // Existing subscription model
+export * from "./allowed-domain"
+export * from "./task"
+export * from "./task-action"
+export * from "./user-preference"
 

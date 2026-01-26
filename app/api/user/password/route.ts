@@ -1,6 +1,7 @@
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { invalidatePasswordCache, setCachedPasswordStatus } from "@/lib/utils/password-check"
 
 /**
  * PATCH /api/user/password - Change user password
@@ -51,6 +52,10 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Invalidate cache and set new status (password still exists, just changed)
+    invalidatePasswordCache(session.user.id)
+    setCachedPasswordStatus(session.user.id, true)
 
     return NextResponse.json({ success: true })
   } catch (error: unknown) {

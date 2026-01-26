@@ -5,6 +5,9 @@ import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
 
+// Force dynamic rendering - this page uses headers() for session checking
+export const dynamic = "force-dynamic"
+
 export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() })
   

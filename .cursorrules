@@ -1,312 +1,126 @@
 # Cursor Project Rules
 
-**⚠️ CRITICAL: Always follow the rules in RULESETS.md when generating code to prevent build and lint errors.**
+You are a Senior Frontend Engineer and UI/UX Designer working on an enterprise-grade SaaS application. Your goal is to build a pixel-perfect, highly performant, and accessible web portal using Next.js 16, React 19, and an enterprise design system inspired by Resend, Stripe, Linear, Notion, and Atlassian.
 
-This project has mandatory code patterns documented in `RULESETS.md`. These rules prevent known build issues and ensure code compatibility with our tech stack.
-
-**⚠️ UI/UX DOCUMENTATION: There is ONLY ONE UI/UX reference document - `docs/UI_UX_REFERENCE.md`. Do NOT create separate audit reports, design docs, or UI/UX documentation files. All UI/UX guidelines, compliance status, and audit information must be consolidated in `docs/UI_UX_REFERENCE.md`.**
-
-## Quick Reference
-
-Before generating ANY code, check these mandatory patterns:
-
-### 1. Error Handling (Catch Blocks)
-**MANDATORY**: Always type catch block errors as `unknown`
-
-```typescript
-// ❌ WRONG
-catch (error) {
-  console.error(error.message)
-}
-
-// ✅ CORRECT
-catch (error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
-  console.error(message)
-}
-```
-
-### 2. Mongoose Model Operations
-**MANDATORY**: Always use `(Model as any).method()` pattern
-
-```typescript
-// ❌ WRONG
-const user = await User.findOne({ email })
-
-// ✅ CORRECT
-const user = await (User as any).findOne({ email })
-```
-
-**Apply to**: `create()`, `find()`, `findOne()`, `findById()`, `findOneAndUpdate()`, `findByIdAndUpdate()`, `countDocuments()`, `deleteOne()`, `deleteMany()`, `updateOne()`, `updateMany()`
-
-### 3. Zod v4 Validation
-**MANDATORY**: Use `.refine()` for URL/email validation, specify key type for `z.record()`
-
-```typescript
-// ❌ WRONG
-link: z.string().url().optional()
-metadata: z.record(z.any()).optional()
-
-// ✅ CORRECT
-link: z.string().refine(
-  (val) => {
-    if (!val) return true
-    try {
-      new URL(val)
-      return true
-    } catch {
-      return false
-    }
-  },
-  { message: "Invalid URL format" }
-).optional()
-metadata: z.record(z.string(), z.any()).optional()
-```
-
-### 4. JSON Parsing
-**MANDATORY**: Always type assert `await request.json()` and `await response.json()`
-
-```typescript
-// ❌ WRONG
-const body = await request.json()
-const { messages, task } = body
-
-// ✅ CORRECT
-const body = (await request.json()) as {
-  messages?: AgentMessage[]
-  task?: string
-  organizationId?: string
-}
-const { messages, task } = body
-```
-
-### 5. Better Auth Import Paths
-**MANDATORY**: Use `better-auth/client/plugins` for client-side plugins
-
-```typescript
-// ❌ WRONG
-import { organizationClient } from "better-auth/react/plugins"
-
-// ✅ CORRECT
-import { organizationClient } from "better-auth/client/plugins"
-```
-
-### 6. JSX in TypeScript Files
-**MANDATORY**: Always use `.tsx` extension for files containing JSX
-
-```typescript
-// ❌ WRONG - MyComponent.ts
-export function MyComponent() {
-  return <div>Hello</div>
-}
-
-// ✅ CORRECT - MyComponent.tsx
-export function MyComponent() {
-  return <div>Hello</div>
-}
-```
-
-### 7. Next.js 16 Middleware
-**MANDATORY**: Always use `proxy.ts`, never `middleware.ts`
-
-```typescript
-// ❌ WRONG - middleware.ts
-export function middleware() { ... }
-
-// ✅ CORRECT - proxy.ts
-export function proxy() { ... }
-```
-
-### 8. NextRequest IP Address
-**MANDATORY**: Extract IP from headers, never use `req.ip`
-
-```typescript
-// ❌ WRONG
-const ip = req.ip
-
-// ✅ CORRECT
-const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || 
-           req.headers.get("x-real-ip") || 
-           "anonymous"
-```
-
-### 9. Stripe API Version
-**MANDATORY**: Use API version `"2025-02-24.acacia"` for Stripe
-
-```typescript
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-02-24.acacia",
-})
-```
-
-### 10. Lazy Initialization
-**MANDATORY**: Use lazy initialization for third-party clients requiring environment variables (Stripe, Redis, etc.)
-
-```typescript
-// ❌ WRONG - Fails during build if env var missing
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set")
-}
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-02-24.acacia",
-})
-
-// ✅ CORRECT - Lazy initialization
-let stripeInstance: Stripe | null = null
-
-function getStripe(): Stripe {
-  if (!stripeInstance) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error("STRIPE_SECRET_KEY is not set")
-    }
-    stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2025-02-24.acacia",
-      typescript: true,
-    })
-  }
-  return stripeInstance
-}
-
-export const stripe = new Proxy({} as Stripe, {
-  get(_target, prop) {
-    return getStripe()[prop as keyof Stripe]
-  },
-})
-```
-
-### 11. Reduce Function Type Annotations
-**MANDATORY**: Always type reduce callback parameters explicitly
-
-```typescript
-// ❌ WRONG
-const total = items.reduce((sum, item) => sum + item.value, 0)
-
-// ✅ CORRECT
-const total = items.reduce((sum: number, item: any) => sum + item.value, 0)
-```
-
-### 12. Mongoose Document Property Conflicts
-**MANDATORY**: Use `Omit<mongoose.Document, "conflictingProperty">` when interface properties conflict
-
-```typescript
-// ❌ WRONG
-export interface ICost extends mongoose.Document {
-  model: string // Conflicts with Document.model
-}
-
-// ✅ CORRECT
-export interface ICost extends Omit<mongoose.Document, "model"> {
-  model: string // Now safe
-}
-```
-
-### 13. Mongoose Duplicate Index Warnings
-**MANDATORY**: Use only one indexing method - either `index: true` OR `Schema.index()`, not both
-
-**IMPORTANT**: `unique: true` automatically creates an index! Do NOT add `Schema.index()` for fields with `unique: true`.
-
-**Prefer `Schema.index()` over `index: true`** for better readability and flexibility (especially for composite indexes).
-
-```typescript
-// ❌ WRONG - Duplicate index definition (index: true + Schema.index())
-const Schema = new Schema({
-  organizationId: { type: String, required: true, index: true }, // Index defined here
-  invoiceId: { type: String, index: true }, // Index defined here
-})
-Schema.index({ organizationId: 1 }) // And here - causes duplicate warning
-Schema.index({ invoiceId: 1 }) // And here - causes duplicate warning
-
-// ❌ WRONG - unique: true creates index, Schema.index() creates duplicate
-const Schema = new Schema({
-  shareableToken: { type: String, required: true, unique: true }, // unique: true creates index automatically
-})
-Schema.index({ shareableToken: 1 }) // DUPLICATE! unique: true already created the index
-
-// ✅ CORRECT - Use only Schema.index() method
-const Schema = new Schema({
-  organizationId: { type: String, required: true }, // No index here
-  invoiceId: { type: String }, // No index here
-})
-Schema.index({ organizationId: 1 }) // Only here
-Schema.index({ invoiceId: 1 }) // Only here
-
-// ✅ CORRECT - unique: true (no Schema.index() needed)
-const Schema = new Schema({
-  shareableToken: { type: String, required: true, unique: true }, // unique: true creates index automatically
-  organizationId: { type: String, required: true, unique: true }, // unique: true creates index automatically
-})
-// No Schema.index() calls needed for unique fields
-
-// ✅ CORRECT - Composite indexes (must use Schema.index())
-const Schema = new Schema({
-  organizationId: { type: String, required: true }, // No index: true
-})
-Schema.index({ organizationId: 1, status: 1 }) // Composite index
-Schema.index({ organizationId: 1, createdAt: -1 }) // Another composite index starting with organizationId
-```
-
-**Note**: 
-- `unique: true` automatically creates an index - do NOT add `Schema.index()` for the same field
-- Composite indexes (indexes on multiple fields) can efficiently serve queries on their prefix fields. For example, an index on `{ organizationId: 1, status: 1 }` can also be used for queries on just `organizationId`, so you don't need a separate single-field index.
-
-### 14. BullMQ Queue Types
-**MANDATORY**: Use type assertions for Queue constructors and Redis connections
-
-```typescript
-// ✅ CORRECT - Queue creation
-let emailQueue: Queue<EmailJobData> | null = null
-
-export function getEmailQueue(): Queue<EmailJobData> {
-  if (!emailQueue) {
-    emailQueue = new Queue(QUEUE_NAMES.EMAIL, {
-      connection: getRedis() as any, // Type assertion for Redis connection
-      ...defaultQueueOptions,
-    }) as Queue<EmailJobData>
-  }
-  return emailQueue
-}
-
-// ✅ CORRECT - Worker creation
-const emailWorker = new Worker(QUEUE_NAMES.EMAIL, processEmailJob, {
-  connection: createRedisConnection() as any, // Type assertion for Redis connection
-  concurrency: 5,
-})
-```
-
-## Full Documentation
-
-For complete details, examples, and additional rules, see `RULESETS.md` in the project root.
-
-## Build Checklist
-
-Before generating code, verify:
-- [ ] All catch blocks type errors as `unknown`
-- [ ] All Mongoose model calls use `(Model as any).method()` pattern
-- [ ] All `request.json()` and `response.json()` have type assertions
-- [ ] All Zod validations use v4-compatible syntax (`.refine()` for URLs/emails, `z.record(keyType, valueType)`)
-- [ ] No JSX in `.ts` files (use `.tsx`)
-- [ ] Better Auth imports use correct paths (`better-auth/client/plugins`)
-- [ ] IP addresses extracted from headers, not `req.ip`
-- [ ] Reduce callbacks have explicit type annotations
-- [ ] Third-party clients (Stripe, Redis, etc.) use lazy initialization
-- [ ] No duplicate Mongoose index definitions
-- [ ] BullMQ connections use type assertions
-
-**ALWAYS reference RULESETS.md for the complete, detailed rules before generating code.**
+**⚠️ CRITICAL: Always reference `RULESETS.md` for mandatory code patterns that prevent build errors, and follow the design system rules below for complete UI/UX guidance.**
 
 ---
 
-# Design System & UX Rules (Enterprise SaaS Standard)
+## 1. Tech Stack & Engineering Standards
 
-**⚠️ CRITICAL: All UI/UX work must follow these design system rules. These rules enforce enterprise-grade visual quality comparable to Resend, Stripe, Linear, Notion, and Atlassian.**
+### Core Stack
+
+* **Framework:** Next.js 16 (App Router) with React Server Components (RSC) by default.
+* **Language:** TypeScript (Strict mode).
+* **Styling:** Tailwind CSS v4 (use arbitrary values only when necessary).
+* **UI Library:** Shadcn/UI (Radix Primitives) - Primary component library.
+* **Icons:** Lucide React (MANDATORY).
+* **Animation:** Framer Motion (when needed, default spring physics: `{ stiffness: 400, damping: 30 }`).
+* **Database:** MongoDB (Mongoose for app data, Prisma for Better Auth).
+* **Auth:** Better Auth with MongoDB adapter.
+* **Job Queue:** BullMQ with Redis.
+* **State:** URL-driven state first, server state second, local state last.
+
+### React 19 & Next.js 16 Modernity
+
+**⚠️ CRITICAL: Follow these React 19 patterns to avoid obsolete code generation.**
+
+* **NO `useEffect` for data fetching**: Use Server Components + `<Suspense>`. `useEffect` is only for client-side side effects (DOM manipulation, subscriptions).
+* **NO manual memoization**: Do NOT use `useMemo`, `useCallback`, or `memo` unless profiling proves it necessary. Rely on React Compiler.
+* **Server Actions**: Use `'use server'` at the top of action files. Prefer `useActionState` (not `useFormState`) for form handling.
+* **Forms**: Use the `action` prop on `<form>` elements with Server Actions.
+* **Caching**: Use `unstable_cache` for data fetching where appropriate.
+* **Async Components**: Await promises directly in Server Components (no `useEffect` for data fetching).
+
+**Examples:**
+
+```tsx
+// ✅ CORRECT - Server Component with async
+export default async function Page() {
+  const data = await fetchData()
+  return <div>{data}</div>
+}
+
+// ✅ CORRECT - Server Action
+'use server'
+export async function createItem(formData: FormData) {
+  // Action logic
+}
+
+// ✅ CORRECT - Form with action
+<form action={createItem}>
+  {/* Form fields */}
+</form>
+
+// ❌ WRONG - useEffect for data fetching
+'use client'
+export function Component() {
+  const [data, setData] = useState()
+  useEffect(() => {
+    fetchData().then(setData) // WRONG - use Server Component instead
+  }, [])
+}
+```
+
+### Mandatory Code Patterns
+
+**⚠️ CRITICAL: These patterns prevent build errors. Always reference `RULESETS.md` for complete details.**
+
+**1. Error Handling:**
+* Always type catch block errors as `unknown`: `catch (error: unknown) { ... }`
+
+**2. Mongoose Safety:**
+* Always cast models to `any` for methods: `(User as any).findOne(...)`
+* Apply to: `create()`, `find()`, `findOne()`, `findById()`, `findOneAndUpdate()`, `findByIdAndUpdate()`, `countDocuments()`, `deleteOne()`, `deleteMany()`, `updateOne()`, `updateMany()`
+
+**3. Zod Validation (v4):**
+* Use `.refine()` for URL/Email validation (not `.url()` or `.email()`)
+* Use `z.record(keyType, valueType)` for maps (not `z.record(z.any())`)
+
+**4. Type Safety:**
+* Explicitly type `reduce` accumulators: `reduce((sum: number, item: any) => ...)`
+* Type-assert `await request.json()` results: `const body = (await request.json()) as { ... }`
+* Use `Omit<mongoose.Document, "field">` for interface conflicts
+
+**5. Better Auth:**
+* Use `better-auth/client/plugins` for client-side plugins (not `better-auth/react/plugins`)
+
+**6. File Extensions:**
+* Always use `.tsx` for files containing JSX (never `.ts`)
+
+**7. Next.js 16 Middleware:**
+* Always use `proxy.ts`, never `middleware.ts`
+
+**8. IP Address Extraction:**
+* Extract IP from headers: `req.headers.get("x-forwarded-for")?.split(",")[0] || req.headers.get("x-real-ip") || "anonymous"`
+* Never use `req.ip`
+
+**9. Lazy Initialization:**
+* Use lazy initialization for third-party clients requiring environment variables (Stripe, Redis, etc.)
+* Use Proxy pattern to avoid build-time failures
+
+**10. BullMQ Queue Types:**
+* Use type assertions for Queue constructors and Redis connections: `connection: getRedis() as any`
+
+**11. Mongoose Indexes:**
+* Use only one indexing method - either `index: true` OR `Schema.index()`, not both
+* `unique: true` automatically creates an index - do NOT add `Schema.index()` for the same field
+* Prefer `Schema.index()` over `index: true` for better readability
+
+**12. Stripe API Version:**
+* Use API version `"2025-02-24.acacia"` for Stripe
+
+---
+
+## 2. Enterprise SaaS Design System
+
+**Aesthetic**: Calm, professional, information-dense. Comparable to Resend, Stripe, Linear, Notion, and Atlassian.
 
 **Target Quality Bar:** Mature enterprise SaaS. No "demo-like", "marketing-heavy", or "experimental" UI inside the application.
 
----
+### Typography & Visual Hierarchy
 
-## Typography & Visual Hierarchy
-
-### Page Titles & Headers
+**Page Titles & Headers:**
 - **MANDATORY**: Page titles must use `text-lg font-semibold` (never larger)
 - **MANDATORY**: Page descriptions must use `text-sm text-foreground` with `mt-0.5` spacing (NOT muted - primary content)
 - **MANDATORY**: Section headers within pages must use `text-sm font-semibold`
@@ -317,25 +131,13 @@ Before generating code, verify:
 - **FORBIDDEN**: Never use marketing-style oversized typography inside the app
 - **FORBIDDEN**: Never mute primary content text (descriptions, body text, titles)
 
-```typescript
-// ❌ WRONG
-<h1 className="text-2xl font-bold">Settings</h1>
-<p className="text-base text-muted-foreground">Manage your settings</p>
-
-// ✅ CORRECT
-<h1 className="text-lg font-semibold">Settings</h1>
-<p className="mt-0.5 text-sm text-foreground">Manage your tenant settings and configuration</p>
-```
-
-### Content Typography
+**Content Typography:**
 - **MANDATORY**: Body text must use `text-sm` (default) or `text-xs` (secondary) with `text-foreground` (NOT muted)
 - **MANDATORY**: Value displays (numbers, amounts) must use `text-2xl font-semibold` maximum
 - **MANDATORY**: Form labels must use `text-xs text-muted-foreground` (appropriate use case)
 - **MANDATORY**: Primary content (descriptions, body text, table content) must use `text-foreground` (NOT muted)
-- **FORBIDDEN**: Never use `text-base` or larger for body text in cards or forms
-- **FORBIDDEN**: Never mute primary content text
 
-### Typography Legibility Rules
+**Typography Legibility Rules:**
 - **MANDATORY**: All primary content (body text, titles, headings, descriptions, table content, navigation) must use `text-foreground` for maximum legibility
 - **MANDATORY**: Muted text (`text-muted-foreground`) is ONLY allowed for:
   - Form labels
@@ -346,32 +148,28 @@ Before generating code, verify:
 - **FORBIDDEN**: Never mute primary content text - it must be clearly legible
 - **MANDATORY**: Buttons must use `text-foreground` or high-contrast variants for clear visibility
 
----
+### Spacing & Density
 
-## Spacing & Density
-
-### Page-Level Spacing
+**Page-Level Spacing:**
 - **MANDATORY**: Page containers must use `space-y-6` for vertical spacing between major sections
 - **MANDATORY**: Page padding must use `py-6` (never `py-8` or larger)
 - **MANDATORY**: Card spacing within pages must use `space-y-4` or `space-y-3` (never `space-y-6`)
 
-### Component Spacing
+**Component Spacing:**
 - **MANDATORY**: Form fields must use `space-y-2` between label and input
 - **MANDATORY**: Button groups must use `gap-2` or `gap-1` (never `gap-4` or larger)
 - **MANDATORY**: Navigation items must use `gap-0.5` or `gap-2.5` (tight, professional)
 - **MANDATORY**: Card content padding must use `pt-6` (never `p-6` or `p-8`)
 
-### Layout Density
+**Layout Density:**
 - **MANDATORY**: All pages must prioritize information density over whitespace
 - **MANDATORY**: Cards must feel compact and scannable, not spacious
 - **FORBIDDEN**: Never use excessive padding that creates "floating" content
 - **FORBIDDEN**: Never center content arbitrarily (only when explicitly required)
 
----
+### Cards & Containers
 
-## Cards & Containers
-
-### Card Styling
+**Card Styling:**
 - **MANDATORY**: All cards must use `bg-muted/30` background (subtle, not white)
 - **MANDATORY**: Cards must use `CardContent` with `pt-6` (never full padding)
 - **MANDATORY**: Card headers (if used) must be compact with `text-sm font-semibold`
@@ -379,7 +177,7 @@ Before generating code, verify:
 - **FORBIDDEN**: Never use white backgrounds for cards (`bg-background` is forbidden)
 - **FORBIDDEN**: Never use heavy borders or shadows on cards
 
-```typescript
+```tsx
 // ❌ WRONG
 <Card>
   <CardHeader>
@@ -399,16 +197,9 @@ Before generating code, verify:
 </Card>
 ```
 
-### Container Structure
-- **MANDATORY**: Page-level containers must use `space-y-6` for section separation
-- **MANDATORY**: Grid layouts must use `gap-4` (never `gap-6` or larger)
-- **MANDATORY**: Nested containers must reduce spacing proportionally
+### Navigation & Shell
 
----
-
-## Navigation & Shell
-
-### Header
+**Header:**
 - **MANDATORY**: Header height must be `h-12` (never `h-14` or larger)
 - **MANDATORY**: Header padding must be `px-6` (never `px-4` or `px-8`)
 - **MANDATORY**: Logo size must be `h-5 w-5` (never larger)
@@ -416,7 +207,7 @@ Before generating code, verify:
 - **FORBIDDEN**: Never use backdrop blur on header
 - **FORBIDDEN**: Never use large logos or branding elements
 
-### Sidebar
+**Sidebar:**
 - **MANDATORY**: Sidebar width must be `w-56` (never `w-64` or larger)
 - **MANDATORY**: Navigation items must use `px-2.5 py-2` (compact padding)
 - **MANDATORY**: Navigation spacing must use `gap-0.5` (tight, professional)
@@ -424,162 +215,220 @@ Before generating code, verify:
 - **MANDATORY**: Navigation icons must be `h-4 w-4` (never larger)
 - **MANDATORY**: User info at bottom must use `h-7 w-7` avatar (never larger)
 
-### Navigation Items
+**Navigation Items:**
 - **MANDATORY**: Active navigation state must use `bg-accent text-accent-foreground`
 - **MANDATORY**: Inactive state must use `text-muted-foreground hover:bg-accent`
 - **MANDATORY**: Navigation text must be `text-sm font-medium`
 
----
+### Buttons & Interactive Elements
 
-## Buttons & Interactive Elements
-
-### Button Sizing
+**Button Sizing:**
 - **MANDATORY**: Primary action buttons must use `size="sm"` (never default size)
 - **MANDATORY**: Secondary buttons must use `size="sm"` with `variant="outline"`
 - **MANDATORY**: Icon-only buttons must use `h-8 w-8` (never `h-10 w-10`)
 - **FORBIDDEN**: Never use `size="lg"` inside the application (only for marketing pages)
 
-### Button Hierarchy
+**Button Hierarchy:**
 - **MANDATORY**: Primary actions must be visually obvious but not dominant
 - **MANDATORY**: Secondary actions must recede visually
 - **MANDATORY**: Destructive actions must use `variant="destructive"` explicitly
 
-### Icons
+**Icons:**
 - **MANDATORY**: Icons in buttons must be `h-3.5 w-3.5` or `h-4 w-4` (never larger)
 - **MANDATORY**: Icons in navigation must be `h-4 w-4`
 - **MANDATORY**: Icons in cards must be `h-3.5 w-3.5` or smaller
 
----
+### Forms & Inputs
 
-## Forms & Inputs
-
-### Input Styling
+**Input Styling:**
 - **MANDATORY**: All inputs must use `h-9` height (never `h-10` or default)
 - **MANDATORY**: Labels must use `text-xs text-muted-foreground`
 - **MANDATORY**: Helper text must use `text-xs text-muted-foreground`
 - **MANDATORY**: Form sections must use `space-y-2` or `space-y-3` (never `space-y-4`)
 
-### Form Layout
+**Form Layout:**
 - **MANDATORY**: Forms must be wrapped in `Card` with `bg-muted/30`
 - **MANDATORY**: Form submit buttons must use `size="sm"` and be right-aligned
 - **MANDATORY**: Form spacing must be compact (`space-y-4` maximum)
 
----
+### Settings Architecture
 
-## Settings Architecture
-
-### Settings vs Profile Separation
+**Settings vs Profile Separation:**
 - **MANDATORY**: Profile (`/profile`) is user-scoped only (email, auth, MFA, preferences)
 - **MANDATORY**: Settings (`/settings`) is tenant-scoped only (members, general, billing, usage)
 - **FORBIDDEN**: Never mix user-scoped and tenant-scoped settings on the same page
 - **FORBIDDEN**: Never duplicate profile functionality in Settings
 
-### Settings Navigation
+**Settings Navigation:**
 - **MANDATORY**: Settings must use horizontal tabs (Resend style)
 - **MANDATORY**: Tab spacing must use `space-x-6` (never larger)
 - **MANDATORY**: Active tab must use `border-foreground text-foreground`
 - **MANDATORY**: Inactive tabs must use `text-muted-foreground hover:border-muted-foreground`
 
-### Settings Content
-- **MANDATORY**: All settings pages must use `SettingsLayout` component
-- **MANDATORY**: Settings content must be card-based with `bg-muted/30`
-- **MANDATORY**: Settings sections must be clearly separated with `space-y-6`
+### Dashboard vs Analytics Separation
 
----
-
-## Dashboard vs Analytics Separation
-
-### Dashboard (High-Level)
+**Dashboard (High-Level):**
 - **MANDATORY**: Dashboard must show summary metrics only (no deep analytics)
 - **MANDATORY**: Dashboard must prioritize primary CTAs and quick actions
 - **MANDATORY**: Dashboard cards must be compact with `bg-muted/30`
 - **FORBIDDEN**: Never show dense charts or historical drill-downs on dashboard
 - **FORBIDDEN**: Never reuse analytics components on dashboard
 
-### Analytics (Deep Insights)
+**Analytics (Deep Insights):**
 - **MANDATORY**: Analytics must be a separate, dedicated area
 - **MANDATORY**: Analytics must show detailed metrics, trends, and patterns
 - **MANDATORY**: Analytics must use distinct visual patterns from dashboard
 - **FORBIDDEN**: Never show dashboard-style summary widgets in analytics
 
----
+### Normal Mode vs Organization Mode
 
-## Normal Mode vs Organization Mode
-
-### Feature Gating
+**Feature Gating:**
 - **MANDATORY**: Teams features must be completely hidden in Normal mode
 - **MANDATORY**: Team-related UI, messaging, and navigation must not appear in Normal mode
 - **MANDATORY**: Delete Account messaging must be conditional (no team references in Normal mode)
 - **FORBIDDEN**: Never show "teams" or "organization" terminology in Normal mode UI
 - **FORBIDDEN**: Never reference team concepts in Normal mode error messages or empty states
 
-### Mode-Aware UI
+**Mode-Aware UI:**
 - **MANDATORY**: All pages must check `tenantState` and adapt UI accordingly
 - **MANDATORY**: Navigation must conditionally show organization-only items
 - **MANDATORY**: Settings must show appropriate sections based on mode
 
----
+### Empty States & Loading States
 
-## Empty States & Loading States
-
-### Empty States
+**Empty States:**
 - **MANDATORY**: Empty states must be calm and instructional (never loud or marketing-heavy)
 - **MANDATORY**: Empty state titles must use `text-2xl font-semibold` maximum
 - **MANDATORY**: Empty state descriptions must use `text-sm text-muted-foreground`
 - **MANDATORY**: Empty state CTAs must use `size="lg"` (only exception to button sizing rule)
 - **FORBIDDEN**: Never use oversized illustrations or marketing-style graphics
 
-### Loading States
+**Loading States:**
 - **MANDATORY**: Loading skeletons must match final content size and layout
 - **MANDATORY**: Loading states must use `Skeleton` component with appropriate sizing
 - **MANDATORY**: Loading indicators must be subtle (`text-muted-foreground`)
 
 ---
 
-## Copy & Naming
+## 3. The "Golden Page" Pattern
 
-### UI Copy Rules
-- **MANDATORY**: All labels must be minimal and clear (no verbosity)
-- **MANDATORY**: Helper text must be concise and actionable
-- **MANDATORY**: Error messages must be specific and helpful
-- **FORBIDDEN**: Never use marketing language inside the application
-- **FORBIDDEN**: Never over-explain UI elements
-- **FORBIDDEN**: Never use casual or informal language
+*Use this exact structure for all dashboard pages to ensure consistency and reduce re-prompting.*
 
-### Naming Conventions
-- **MANDATORY**: Page titles must be singular nouns ("Settings", "Profile", not "Settings Page")
-- **MANDATORY**: Section headers must be descriptive but brief
-- **MANDATORY**: Button labels must be action verbs ("Save", "Create", not "Save Changes")
+```tsx
+import { Suspense } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
+import { DataList } from "./_components/data-list"
+
+export default function Page() {
+  return (
+    <div className="space-y-6 py-6">
+      {/* 1. Header: Standardized spacing and typography */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold">Page Title</h1>
+          <p className="text-sm text-foreground mt-0.5">
+            Clear, concise description of what this page does.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm">
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            Action
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. Content: Suspense wrapper with skeleton fallback */}
+      <div className="space-y-4">
+        <Suspense fallback={<Skeleton className="h-[200px] w-full bg-muted/30" />}>
+          {/* Server Component for Data */}
+          <DataList />
+        </Suspense>
+      </div>
+    </div>
+  )
+}
+```
+
+**Key Requirements:**
+* Use `space-y-6 py-6` for page container
+* Use `text-lg font-semibold` for title (never larger)
+* Use `text-sm text-foreground` for description with `mt-0.5`
+* Always wrap data fetching in `<Suspense>` with Skeleton fallback
+* Use Server Components by default (no `'use client'` unless needed)
 
 ---
 
-## Component Usage Patterns
+## 4. Micro-Interactions & Polish
 
-### Card Components
-- **MANDATORY**: Prefer `Card` with `CardContent` over `CardHeader` + `CardContent`
-- **MANDATORY**: Use inline headers with `text-sm font-semibold` instead of `CardTitle`
-- **MANDATORY**: Use inline descriptions with `text-xs text-muted-foreground` instead of `CardDescription`
+*Enhance the design system with subtle, professional interactions.*
 
-### Badge Components
-- **MANDATORY**: Badges must use `text-xs` (never default size)
-- **MANDATORY**: Status badges must be subtle and informative
+1. **Hover States**: 
+   * Cards: `hover:scale-[1.02] transition-transform duration-200` (subtle, professional)
+   * Buttons: Standard Shadcn hover states (not overly playful)
+   * Maintain enterprise aesthetic
 
-### Alert Components
-- **MANDATORY**: Alerts must use `py-2` padding (compact)
-- **MANDATORY**: Alert descriptions must use `text-sm` or `text-xs`
-- **MANDATORY**: Alert icons must be `h-3.5 w-3.5` or `h-4 w-4`
+2. **Loading States**: 
+   * **MANDATORY**: Always use Skeleton loaders (`<Skeleton />` from Shadcn UI)
+   * Match skeleton layout to final content structure
+   * Use appropriate sizing and spacing
+
+3. **Motion**: 
+   * Fade in: `initial={{ opacity: 0 }} animate={{ opacity: 1 }}` (Framer Motion)
+   * Spring physics: `{ stiffness: 400, damping: 30 }`
+   * Keep animations subtle and professional
+   * **Rule**: Animations communicate state, not decorate
+
+4. **Accessibility**: 
+   * All inputs must have labels (use Shadcn `<Label>` component)
+   * All images must have alt text
+   * Interactive elements must be keyboard navigable
+   * Focus states: `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`
 
 ---
 
-## Page-Level Validation Checklist
+## 5. 🛑 Hard Stops (Auto-Reject Code)
 
-**Before finalizing any page, validate:**
+**⚠️ CRITICAL: If any of these patterns are detected, the code MUST be rejected and regenerated.**
 
+1. **No `useEffect` for data fetching**: Use Server Components + Suspense. `useEffect` is only for client-side side effects.
+
+2. **No `bg-white` or `bg-black`**: Use `bg-card` or `bg-muted/30`. Never use arbitrary white/black backgrounds.
+
+3. **No `text-white` on body text**: Use `text-foreground` or appropriate semantic colors for body text. Pure white is only for headings when appropriate.
+
+4. **No default buttons**: Always specify `size="sm"` explicitly. Never omit the `size` prop.
+
+5. **No arbitrary colors**: Use design system tokens. Never use `bg-blue-500`, `text-red-400`, or Tailwind default colors not in the design system.
+
+6. **No `text-xl` or larger for page titles**: Page titles must be `text-lg font-semibold` (never larger).
+
+7. **No `h-10` inputs**: Always use `h-9` for all inputs. Never use default height or `h-10`.
+
+8. **No manual memoization without profiling**: Do not use `useMemo`, `useCallback`, or `memo` unless profiling proves it necessary. React Compiler handles this.
+
+9. **No `CardHeader`/`CardTitle`/`CardDescription`**: Use inline structure with `CardContent` and proper typography unless absolutely necessary.
+
+10. **No mixing user-scoped and tenant-scoped settings**: Profile and Settings must remain separate.
+
+11. **No team concepts in Normal mode**: Teams/organization terminology must be hidden in Normal mode.
+
+12. **No Mongoose operations without `(Model as any)`**: Always cast models to `any` for method calls.
+
+---
+
+## 6. Implementation Checklist
+
+*Before outputting code, verify:*
+
+**Design System:**
 - [ ] Page title uses `text-lg font-semibold` (not larger)
-- [ ] Page description uses `text-sm text-muted-foreground` with `mt-0.5`
+- [ ] Page description uses `text-sm text-foreground` with `mt-0.5`
 - [ ] All cards use `bg-muted/30` background
-- [ ] All buttons use `size="sm"` (except empty state CTAs)
-- [ ] All inputs use `h-9` height
+- [ ] All buttons use `size="sm"` explicitly (except empty state CTAs)
+- [ ] All inputs use `h-9` height (never `h-10` or default)
 - [ ] All labels use `text-xs text-muted-foreground`
 - [ ] Spacing is compact (`space-y-6` page-level, `space-y-4` section-level)
 - [ ] Typography is restrained (no oversized fonts)
@@ -588,181 +437,135 @@ Before generating code, verify:
 - [ ] Tenant mode is properly handled (Normal vs Organization)
 - [ ] Settings vs Profile separation is maintained
 
----
+**Code Quality:**
+- [ ] Data fetching in Server Component with Suspense (no `useEffect`)
+- [ ] No manual memoization (unless profiled)
+- [ ] Mongoose models use `(Model as any).method()` pattern
+- [ ] Catch blocks type errors as `unknown`
+- [ ] Third-party clients use lazy initialization
+- [ ] All `request.json()` and `response.json()` have type assertions
+- [ ] Zod validations use v4-compatible syntax (`.refine()` for URLs/emails, `z.record(keyType, valueType)`)
+- [ ] No JSX in `.ts` files (use `.tsx`)
+- [ ] Better Auth imports use correct paths (`better-auth/client/plugins`)
+- [ ] IP addresses extracted from headers, not `req.ip`
+- [ ] Reduce callbacks have explicit type annotations
+- [ ] No duplicate Mongoose index definitions
+- [ ] BullMQ connections use type assertions
 
-## Anti-Patterns (Forbidden)
+**States & UX:**
+- [ ] Skeleton loaders for loading states (never raw content loading)
+- [ ] Empty states with appropriate CTAs
+- [ ] Error states with proper styling
+- [ ] Success feedback (toast or inline)
 
-### Visual Anti-Patterns
-- ❌ **FORBIDDEN**: Oversized typography (`text-xl`, `text-2xl` for titles)
-- ❌ **FORBIDDEN**: Excessive whitespace or padding
-- ❌ **FORBIDDEN**: Marketing-style UI inside the application
-- ❌ **FORBIDDEN**: White card backgrounds (`bg-background`)
-- ❌ **FORBIDDEN**: Heavy borders, shadows, or visual noise
-- ❌ **FORBIDDEN**: Centered content without clear purpose
-- ❌ **FORBIDDEN**: Large buttons (`size="lg"`) except empty states
-
-### Structural Anti-Patterns
-- ❌ **FORBIDDEN**: Mixing user-scoped and tenant-scoped settings
-- ❌ **FORBIDDEN**: Duplicating navigation (Profile in multiple places)
-- ❌ **FORBIDDEN**: Showing team concepts in Normal mode
-- ❌ **FORBIDDEN**: Reusing dashboard components in analytics
-- ❌ **FORBIDDEN**: Using `CardHeader` when inline headers suffice
-
-### Interaction Anti-Patterns
-- ❌ **FORBIDDEN**: Inconsistent button hierarchies
-- ❌ **FORBIDDEN**: Missing loading or error states
-- ❌ **FORBIDDEN**: Unclear primary actions
-- ❌ **FORBIDDEN**: Dead ends or unclear navigation paths
-
----
-
-## Quality Bar Enforcement
-
-**Every UI/UX decision must answer:**
-
-1. **Does this match the visual density of Resend/Stripe?** (Compact, scannable)
-2. **Is the typography restrained and professional?** (No oversized fonts)
-3. **Is the spacing intentional and controlled?** (No excessive whitespace)
-4. **Does this feel enterprise-ready?** (Not demo-like or experimental)
-5. **Is the information hierarchy clear?** (Primary actions obvious, secondary recede)
-6. **Would this pass a senior designer's review?** (Deliberate, not accidental)
-
-**If any answer is "no", iterate until it meets the standard.**
+**Accessibility:**
+- [ ] All inputs have labels
+- [ ] All images have alt text
+- [ ] Interactive elements are keyboard navigable
+- [ ] Focus states are properly styled
+- [ ] Color contrast meets WCAG AA standards
 
 ---
 
-These examples should be used as guidance when configuring Sentry functionality within a project.
+## 7. Sentry Integration
 
-# Exception Catching
-
+**Exception Catching:**
 Use `Sentry.captureException(error)` to capture an exception and log the error in Sentry.
-Use this in try catch blocks or areas where exceptions are expected
+Use this in try catch blocks or areas where exceptions are expected.
 
-# Tracing Examples
+**Tracing:**
+Spans should be created for meaningful actions within an application like button clicks, API calls, and function calls.
+Use the `Sentry.startSpan` function to create a span.
+Child spans can exist within a parent span.
 
-Spans should be created for meaningful actions within an applications like button clicks, API calls, and function calls
-Use the `Sentry.startSpan` function to create a span
-Child spans can exist within a parent span
+**Custom Span instrumentation in component actions:**
+```typescript
+import * as Sentry from "@sentry/nextjs"
 
-## Custom Span instrumentation in component actions
-
-The `name` and `op` properties should be meaninful for the activities in the call.
-Attach attributes based on relevant information and metrics from the request
-
-```javascript
 function TestComponent() {
   const handleTestButtonClick = () => {
-    // Create a transaction/span to measure performance
     Sentry.startSpan(
       {
         op: "ui.click",
         name: "Test Button Click",
       },
       (span) => {
-        const value = "some config";
-        const metric = "some metric";
-
-        // Metrics can be added to the span
-        span.setAttribute("config", value);
-        span.setAttribute("metric", metric);
-
-        doSomething();
+        const value = "some config"
+        const metric = "some metric"
+        span.setAttribute("config", value)
+        span.setAttribute("metric", metric)
+        doSomething()
       },
-    );
-  };
-
+    )
+  }
   return (
     <button type="button" onClick={handleTestButtonClick}>
       Test Sentry
     </button>
-  );
+  )
 }
 ```
 
-## Custom span instrumentation in API calls
+**Custom span instrumentation in API calls:**
+```typescript
+import * as Sentry from "@sentry/nextjs"
 
-The `name` and `op` properties should be meaninful for the activities in the call.
-Attach attributes based on relevant information and metrics from the request
-
-```javascript
-async function fetchUserData(userId) {
+async function fetchUserData(userId: string) {
   return Sentry.startSpan(
     {
       op: "http.client",
       name: `GET /api/users/${userId}`,
     },
     async () => {
-      const response = await fetch(`/api/users/${userId}`);
-      const data = await response.json();
-      return data;
+      const response = await fetch(`/api/users/${userId}`)
+      const data = await response.json()
+      return data
     },
-  );
+  )
 }
 ```
 
-# Logs
+**Logs:**
+Where logs are used, ensure Sentry is imported using `import * as Sentry from "@sentry/nextjs"`.
+Enable logging in Sentry using `Sentry.init({ enableLogs: true })`.
+Reference the logger using `Sentry.logger` (not destructured).
 
-Where logs are used, ensure Sentry is imported using `import * as Sentry from "@sentry/nextjs"`
-Enable logging in Sentry using `Sentry.init({ enableLogs: true })`
-Reference the logger using `Sentry.logger` (not destructured)
-Sentry offers a consoleLoggingIntegration that can be used to log specific console error types automatically without instrumenting the individual logger calls
-
-## Configuration
-
+**Configuration:**
 In NextJS with `@sentry/nextjs`, the standard setup uses:
 - `sentry.client.config.ts` for client-side initialization
-- `sentry.server.config.ts` for server-side initialization  
+- `sentry.server.config.ts` for server-side initialization
 - `sentry.edge.config.ts` for edge runtime initialization (optional)
 - `sentry.config.ts` is used by the Sentry webpack plugin for build-time configuration
 
-Initialization does not need to be repeated in other files, it only needs to happen in the config files mentioned above. You should use `import * as Sentry from "@sentry/nextjs"` to reference Sentry functionality
+Initialization does not need to be repeated in other files, it only needs to happen in the config files mentioned above.
 
-### Baseline
-
-```javascript
-import * as Sentry from "@sentry/nextjs";
-
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  enableLogs: true,
-});
-```
-
-### Logger Integration
-
-```javascript
-import * as Sentry from "@sentry/nextjs";
-
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  integrations: [
-    // send console.log, console.warn, and console.error calls as logs to Sentry
-    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
-  ],
-});
-```
-
-## Logger Examples
-
-`Sentry.logger.fmt` is a template literal function that should be used to bring variables into the structured logs.
-
-```javascript
-import * as Sentry from "@sentry/nextjs";
+**Logger Examples:**
+```typescript
+import * as Sentry from "@sentry/nextjs"
 
 // Always use Sentry.logger, not a destructured logger
-Sentry.logger.trace("Starting database connection", { database: "users" });
-Sentry.logger.debug(Sentry.logger.fmt`Cache miss for user: ${userId}`);
-Sentry.logger.info("Updated profile", { profileId: 345 });
+Sentry.logger.trace("Starting database connection", { database: "users" })
+Sentry.logger.debug(Sentry.logger.fmt`Cache miss for user: ${userId}`)
+Sentry.logger.info("Updated profile", { profileId: 345 })
 Sentry.logger.warn("Rate limit reached for endpoint", {
   endpoint: "/api/results/",
   isEnterprise: false,
-});
+})
 Sentry.logger.error("Failed to process payment", {
   orderId: "order_123",
   amount: 99.99,
-});
+})
 Sentry.logger.fatal("Database connection pool exhausted", {
   database: "users",
   activeConnections: 100,
-});
+})
 ```
+
+---
+
+**Priority Order for References:**
+1. **RULESETS.md** - Mandatory code patterns (prevents build errors)
+2. **This file** - Production rules and patterns
+3. **Shadcn UI Documentation** - Component implementation examples
+
+**When guidelines conflict, prioritize RULESETS.md for code patterns and this file for design decisions.**

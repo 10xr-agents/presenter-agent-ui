@@ -1,11 +1,13 @@
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
 import { isOnboardingComplete } from "@/lib/onboarding/flow"
+import { userHasPassword } from "./password-check"
 
 /**
  * Get the post-authentication redirect URL based on user state
  * 
  * Routing contract:
+ * - User without password → /set-password (required for Chrome extension)
  * - First-time user (onboarding not completed) → /onboarding
  * - Returning user (onboarding completed) → /dashboard (or callbackUrl if provided)
  * 
@@ -17,6 +19,15 @@ export async function getPostAuthRedirect(callbackUrl?: string | null): Promise<
   
   if (!session) {
     return "/login"
+  }
+
+  // Check if user has a password (required for Chrome extension)
+  // This will cache the result for the session, avoiding repeated DB queries
+  const hasPassword = await userHasPassword(session.user.id)
+  
+  if (!hasPassword) {
+    // User needs to set a password for Chrome extension compatibility
+    return "/set-password"
   }
 
   // Check onboarding status

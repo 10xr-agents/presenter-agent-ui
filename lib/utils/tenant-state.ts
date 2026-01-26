@@ -24,17 +24,24 @@ export type TenantState = "normal" | "organization"
  * use hasOrganizationFeatures() instead.
  * 
  * @param userId - The user ID to check
+ * @param authHeaders - Optional headers to use for authentication (e.g., Bearer token)
  * @returns The tenant operating mode ("normal" or "organization")
  */
-export async function getTenantOperatingMode(userId: string): Promise<TenantOperatingMode> {
+export async function getTenantOperatingMode(
+  userId: string,
+  authHeaders?: Headers
+): Promise<TenantOperatingMode> {
   try {
     // Check if user has any organization memberships via Better Auth
     // Having an organization membership means the tenant has enabled organization features
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const authApi = auth.api as any
     
+    // Use provided headers (e.g., Bearer token) or fall back to request headers
+    const headersToUse = authHeaders || (await headers())
+    
     const orgsResult = await authApi.listOrganizations({
-      headers: await headers(),
+      headers: headersToUse,
     })
 
     // If user has at least one organization, tenant is in organization mode
@@ -46,7 +53,12 @@ export async function getTenantOperatingMode(userId: string): Promise<TenantOper
   } catch (error: unknown) {
     // If there's an error checking organizations, default to normal mode
     // This is safe because normal mode shows fewer features
-    console.error("Error checking tenant operating mode:", error)
+    // Only log if it's not a 401 (unauthorized) - that's expected during login flow
+    const errorStatus = (error as { status?: number; statusCode?: number })?.status || 
+                        (error as { status?: number; statusCode?: number })?.statusCode
+    if (errorStatus !== 401) {
+      console.error("Error checking tenant operating mode:", error)
+    }
     return "normal"
   }
 }
@@ -56,10 +68,14 @@ export async function getTenantOperatingMode(userId: string): Promise<TenantOper
  * 
  * @deprecated Use getTenantOperatingMode() for new code
  * @param userId - The user ID to check
+ * @param authHeaders - Optional headers to use for authentication (e.g., Bearer token)
  * @returns The tenant state ("normal" or "organization")
  */
-export async function getTenantState(userId: string): Promise<TenantState> {
-  return getTenantOperatingMode(userId)
+export async function getTenantState(
+  userId: string,
+  authHeaders?: Headers
+): Promise<TenantState> {
+  return getTenantOperatingMode(userId, authHeaders)
 }
 
 /**
@@ -100,27 +116,31 @@ export async function hasActiveOrganization(): Promise<boolean> {
 /**
  * Get the active organization ID if available
  * 
+ * @param authHeaders - Optional headers to use for authentication (e.g., Bearer token)
  * @returns The active organization ID, or null if not available
  */
-export async function getActiveOrganizationId(): Promise<string | null> {
+export async function getActiveOrganizationId(authHeaders?: Headers): Promise<string | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const authApi = auth.api as any
+    
+    // Use provided headers (e.g., Bearer token) or fall back to request headers
+    const headersToUse = authHeaders || (await headers())
     
     // Try to get active organization using organization.getActive method
     // If that doesn't work, try getActiveOrganization as fallback
     let activeOrgResult
     if (authApi.organization?.getActive) {
       activeOrgResult = await authApi.organization.getActive({
-        headers: await headers(),
+        headers: headersToUse,
       })
     } else if (authApi.getActiveOrganization) {
       activeOrgResult = await authApi.getActiveOrganization({
-        headers: await headers(),
+        headers: headersToUse,
       })
     } else {
       // Fallback: get from session's activeOrganizationId
-      const session = await auth.api.getSession({ headers: await headers() })
+      const session = await auth.api.getSession({ headers: headersToUse })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((session as any)?.activeOrganizationId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,10 +155,16 @@ export async function getActiveOrganizationId(): Promise<string | null> {
 
     return null
   } catch (error: unknown) {
-    console.error("Error getting active organization ID:", error)
+    // Only log if it's not a 401 (unauthorized) - that's expected during login flow
+    const errorStatus = (error as { status?: number; statusCode?: number })?.status || 
+                        (error as { status?: number; statusCode?: number })?.statusCode
+    if (errorStatus !== 401) {
+      console.error("Error getting active organization ID:", error)
+    }
     // Fallback: try to get from session
     try {
-      const session = await auth.api.getSession({ headers: await headers() })
+      const headersToUse = authHeaders || (await headers())
+      const session = await auth.api.getSession({ headers: headersToUse })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((session as any)?.activeOrganizationId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

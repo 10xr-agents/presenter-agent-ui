@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth"
 import { prismaAdapter } from "better-auth/adapters/prisma"
-import { organization } from "better-auth/plugins"
+import { bearer, organization } from "better-auth/plugins"
 import { Resend } from "resend"
 import { logger } from "@/lib/utils/logger"
 
@@ -44,8 +44,16 @@ const authConfig: Parameters<typeof betterAuth>[0] = {
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET || "development-secret-change-in-production-min-32-chars",
 
+  // Trusted origins for Chrome extension
+  trustedOrigins: process.env.NODE_ENV === "production"
+    ? process.env.CHROME_EXTENSION_ID
+      ? [`chrome-extension://${process.env.CHROME_EXTENSION_ID}`]
+      : []
+    : ["chrome-extension://*"], // Dev: allow all extensions (less secure)
+
   // Plugins
   plugins: [
+    bearer(),
     organization({
       // Configuration options
       allowUserToCreateOrganization: true,
