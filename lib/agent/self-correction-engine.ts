@@ -37,6 +37,7 @@ export interface CorrectionResult {
  * @param currentUrl - Current URL
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
+ * @param failedAction - The action that failed (e.g. "click(68)") for dropdown-aware correction
  * @returns Correction result with strategy and retry action
  */
 export async function generateCorrection(
@@ -45,7 +46,8 @@ export async function generateCorrection(
   currentDom: string,
   currentUrl: string,
   ragChunks: ResolveKnowledgeChunk[] = [],
-  hasOrgKnowledge = false
+  hasOrgKnowledge = false,
+  failedAction?: string
 ): Promise<CorrectionResult | null> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -80,6 +82,12 @@ Available Correction Strategies:
 - UPDATE_PLAN: Plan assumptions were wrong, need to update approach
 - RETRY_WITH_DELAY: Simple retry with delay (timing issue, page still loading)
 
+**DROPDOWN/POPUP CORRECTION (CRITICAL):**
+If the failed action was clicking a **dropdown/popup** button (e.g. Patient, Fees, Visits) and the page now shows a **menu** with options like "New/Search", "Dashboard", "Visits", "Records":
+- The correct fix is to **select an option FROM the dropdown** (e.g. click the element for "New/Search" to add a patient), NOT to click a **different top-level nav button**.
+- Use ALTERNATIVE_SELECTOR to pick the **menu item** element ID (e.g. the one for "New/Search" or "Dashboard"), not a sibling nav button.
+- Example: For "add a new patient", prefer clicking "New/Search" in the Patient menu over clicking "Visits".
+
 Response Format:
 You must respond in the following format:
 <Analysis>
@@ -95,16 +103,16 @@ User-friendly explanation of why this strategy was chosen
 actionName(params)
 </CorrectedAction>
 <CorrectedDescription>
-Updated step description in user-friendly language (e.g., "Click on the 'Visits' button" not "Click element ID 79")
+Updated step description in user-friendly language (e.g., "Click on 'New/Search' in the menu" not "Click element ID 79")
 </CorrectedDescription>
 
 **Language Guidelines:**
 - ❌ AVOID: "Element ID 68 verification failed", "Retrying with alternative selector strategy", "DOM structure indicates..."
-- ✅ USE: "The button didn't appear when I clicked it", "Let me try a different button", "I can see another option on the page"
+- ✅ USE: "The button didn't appear when I clicked it", "Let me try a different option", "I'll select 'New/Search' from the menu"
 
 CRITICAL RULES FOR CORRECTED ACTION:
 1. You MUST only use actions from the Available Actions list above
-2. For ALTERNATIVE_SELECTOR: Use a different element ID (e.g., if click(68) failed, try click(79) - find another element ID from the page structure)
+2. For ALTERNATIVE_SELECTOR: Use a different element ID. If a **dropdown just opened**, choose the **menu item** ID (e.g. New/Search), NOT a sibling nav button (e.g. Visits).
 3. For ALTERNATIVE_TOOL: Switch to a different valid action (e.g., if click failed, try setValue if appropriate)
 4. NEVER use CSS selectors - only use element IDs
 5. NEVER invent new action names - only use actions from the Available Actions list
@@ -124,6 +132,9 @@ Guidelines:
   userParts.push(`Failed Step:`)
   userParts.push(`- Description: ${failedStep.description}`)
   userParts.push(`- Tool Type: ${failedStep.toolType}`)
+  if (failedAction) {
+    userParts.push(`- Failed action: ${failedAction}`)
+  }
   if (failedStep.reasoning) {
     userParts.push(`- Reasoning: ${failedStep.reasoning}`)
   }
@@ -137,11 +148,20 @@ Guidelines:
     if (checks.elementExists !== undefined) {
       userParts.push(`  - Element exists: ${checks.elementExists ? "✓" : "✗"}`)
     }
+    if (checks.elementNotExists !== undefined) {
+      userParts.push(`  - Element not present: ${checks.elementNotExists ? "✓" : "✗"}`)
+    }
     if (checks.elementTextMatches !== undefined) {
       userParts.push(`  - Element text matches: ${checks.elementTextMatches ? "✓" : "✗"}`)
     }
     if (checks.urlChanged !== undefined) {
       userParts.push(`  - URL changed: ${checks.urlChanged ? "✓" : "✗"}`)
+    }
+    if (checks.attributeChanged !== undefined) {
+      userParts.push(`  - Attribute changed (popup): ${checks.attributeChanged ? "✓" : "✗"}`)
+    }
+    if (checks.elementsAppeared !== undefined) {
+      userParts.push(`  - Menu items appeared: ${checks.elementsAppeared ? "✓" : "✗"}`)
     }
   }
   userParts.push(`- Semantic match: ${verificationResult.comparison.semanticMatch ? "✓" : "✗"}`)
@@ -160,6 +180,13 @@ Guidelines:
   userParts.push(`\nCurrent Page State:`)
   userParts.push(`- URL: ${currentUrl}`)
   userParts.push(`- Page Structure Preview: ${domPreview.substring(0, 2000)}`)
+
+  const looksLikeMenu = /New\/Search|Dashboard|menuEntries|role=["']?(list|listitem|menu)["']?/i.test(domPreview.substring(0, 3000))
+  if (failedAction?.startsWith("click(") && looksLikeMenu) {
+    userParts.push(
+      `\n⚠️ DROPDOWN CONTEXT: The failed action was a click and the page shows menu-like options (e.g. New/Search, Dashboard). Prefer selecting a **menu item** (e.g. New/Search for adding a patient) over clicking another nav button (e.g. Visits).`
+    )
+  }
 
   userParts.push(
     `\nBased on the failure analysis, current page state, and knowledge context, determine the best correction strategy and generate a corrected action that should succeed.

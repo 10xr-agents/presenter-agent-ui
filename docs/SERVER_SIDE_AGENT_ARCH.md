@@ -1,17 +1,19 @@
 # Server-Side Agent Architecture
 
-**Document Version:** 3.0  
-**Date:** January 27, 2026  
+**Document Version:** 4.1  
+**Date:** January 28, 2026  
 **Status:** Technical Specification — All Features Complete  
+**Changelog (4.1):** Action-type classification (§4.9.1): `lib/agent/action-type.ts` classifies actions (dropdown, navigation, generic). Outcome prediction uses a fixed template for dropdowns (no LLM over-specification). Verification runs only dropdown-relevant checks (url, aria-expanded, menu-like content) for dropdown actions; skips elementShouldExist / elementShouldNotExist / elementShouldHaveText. Prevents false verification failures when e.g. clicking "Patient" opens a dropdown and we wrongly expected navigation or over-specific DOM checks.  
+**Changelog (4.0):** Merged `REASONING_LAYER_IMPROVEMENTS.md` and `THIN_SERVER_ROADMAP.md` into this document. Added comprehensive reasoning layer architecture (§4.7.1-4.7.4), dual-model architecture with confidence routing (§4.7.5), and enhanced implementation details throughout. All features implemented and documented. `REASONING_LAYER_IMPROVEMENTS.md` has been removed as all content is now in this document.  
 **Changelog (3.0):** Merged `BACKEND_MISSING_ITEMS.md` into this document. Added rate limiting (§4.13), production logging (§4.14), data retention & cleanup (§4.15), error handling enhancements (§4.16), and API usage examples (§17). All implementation tasks complete (100%).  
-**Changelog (2.0):** Major update: Added web search functionality (§4.8), chat persistence & session management (§4.9), debug endpoints (§10), Manus-style orchestrator features (§11-15: planning, verification, self-correction, outcome prediction, step refinement), enhanced error handling (§4.10). All features implemented and documented. See `THIN_SERVER_ROADMAP.md` for complete implementation details.  
-**Changelog (1.7):** User Preferences API added to Summary (§9): `GET/POST /api/v1/user/preferences` for extension settings. See `THIN_SERVER_ROADMAP.md` §5 for implementation details.  
+**Changelog (2.0):** Major update: Added web search functionality (§4.8), chat persistence & session management (§4.9), debug endpoints (§10), Manus-style orchestrator features (§11-15: planning, verification, self-correction, outcome prediction, step refinement), enhanced error handling (§4.10). All features implemented and documented.  
+**Changelog (1.7):** User Preferences API added to Summary (§9): `GET/POST /api/v1/user/preferences` for extension settings.  
 **Changelog (1.6):** Task 3 complete: `POST /api/agent/interact` implemented (`app/api/agent/interact/route.ts`); `tasks` and `task_actions` Mongoose models; shared RAG helper (`getRAGChunks()`); LLM integration (prompt builder, client, parser); §4.3 updated with implementation details; §8 Implementation Checklist interact items marked complete.  
 **Changelog (1.5):** Task 2 complete: `GET /api/knowledge/resolve` implemented (`app/api/knowledge/resolve/route.ts`); §5.3 updated with implementation details; §8 Implementation Checklist resolve items marked complete.  
 **Changelog (1.4):** §1.4 Knowledge types & `allowed_domains` as filter (not assert); `hasOrgKnowledge` on interact/resolve; no 403 `DOMAIN_NOT_ALLOWED`; public-only RAG path; extension “no knowledge for this website” dialog.  
 **Target:** Next.js Intelligence Layer (Thin Client backend)
 
-**Sync:** This document is the **specification**. Implementation details (MongoDB, Mongoose, Better Auth, Next.js) are in `THIN_SERVER_ROADMAP.md`. Keep both in sync; on conflict, prefer ROADMAP + enriched thread (auth adapters, DB stack, resolve = internal/debugging).
+**Sync:** This document is the **specification**. Implementation details (MongoDB, Mongoose, Better Auth, Next.js) are integrated from `THIN_SERVER_ROADMAP.md`. The reasoning layer architecture (previously in `REASONING_LAYER_IMPROVEMENTS.md`) is fully integrated. All implementation details are now consolidated in this document.
 
 ---
 
@@ -273,12 +275,169 @@ export type NextActionResponse = z.infer<typeof nextActionResponseSchema>;
 - **Output:** `thought` string, `action` string. Optionally include `usage` from LLM API in `NextActionResponse`.
 - **User-Friendly Language:** All LLM engines produce user-friendly, non-technical messages directly in `<Thought>` responses (no frontend transformation needed).
 
-### 4.7 Web Search Integration
+### 4.7 Reasoning Layer & Web Search Integration
 
-- **Reasoning Layer:** New three-step reasoning pipeline (see `REASONING_LAYER_IMPROVEMENTS.md`):
-  1. **Knowledge & Gap Analysis:** LLM analyzes task context to determine if search is needed (`analyzeTaskContext()`)
-  2. **Conditional Search:** Search only executes when `needsWebSearch` is true, using refined queries (not hardcoded "how to" format)
-  3. **Feasibility Check:** Post-search verification to ensure we have all required information (`verifyInformationCompleteness()`)
+The agent uses a **"Human-Like Reasoning Loop"** that verifies knowledge, refines search queries, and checks for missing information before acting. This replaces blind searching with intelligent, context-aware decision-making.
+
+#### 4.7.1 The 4-Step Reasoning Pipeline
+
+**Step 1: Context & Gap Analysis (The Brain)**
+
+**Purpose:** Determine the BEST SOURCE for information by checking Memory, Page, and classifying missing info.
+
+**Input:**
+- `query`: User's task instructions (e.g., "Add patient Jaswanth")
+- `url`: Current page URL
+- `chatHistory`: Recent chat history from session messages
+- `pageSummary`: Summary of current page/DOM
+- `ragChunks`: Available RAG knowledge chunks (if any)
+- `hasOrgKnowledge`: Whether organization-specific knowledge exists
+
+**Process:**
+Send to a **Smart LLM** (e.g., `gpt-4o`) with a focused prompt that checks THREE sources in order:
+1. **MEMORY (Chat History)**: Has the user already provided this information?
+2. **PAGE (Current Screen)**: Is the information visible on the current page?
+3. **WEB_SEARCH (External Knowledge)**: Can this be found via web search?
+4. **ASK_USER (Private Data)**: Is this information that only the user can provide?
+
+**Output:** `ContextAnalysisResult` with:
+- `source`: "MEMORY" | "PAGE" | "WEB_SEARCH" | "ASK_USER"
+- `missingInfo`: Array of missing fields with type classification (EXTERNAL_KNOWLEDGE vs PRIVATE_DATA)
+- `searchQuery`: Refined query for Tavily (if source is WEB_SEARCH)
+- `reasoning`: Explanation
+- `confidence`: 0.0 - 1.0 (model's certainty based on evidence)
+- `evidence`: Sources, quality, and gaps
+
+**Confidence Calculation:**
+The model self-evaluates confidence based on **evidence**, not guessing. Confidence factors:
+1. **Evidence Quality:** How strong is the evidence? (Multiple sources agree = high)
+2. **Context Completeness:** How complete is available context? (Full history + RAG = high)
+3. **Task Complexity:** How complex is the task? (Simple, well-defined = high)
+4. **Source Reliability:** How reliable is the information source? (Verified knowledge = high)
+
+**Step 2: Execution (The Action)**
+
+**Purpose:** Execute action based on the source determined in Step 1.
+
+**Process:**
+- **IF** `source == MEMORY`: Extract information from chat history; proceed directly to planning/execution
+- **IF** `source == PAGE`: Extract information from current page/DOM; proceed directly to planning/execution
+- **IF** `source == WEB_SEARCH`: Execute iterative search with Search Manager (see Step 3)
+- **IF** `source == ASK_USER`: Stop and return `NEEDS_USER_INPUT` response to frontend
+
+**Step 3: Evaluation & Iteration (The Check) - Iterative Deep Dives**
+
+**Purpose:** Evaluate search results and refine queries iteratively if needed.
+
+**Process:**
+1. **Execute Initial Search:** Use refined query from Step 1; execute Tavily search with domain filtering
+2. **Evaluate Results:** Feed search results to LLM; determine: `solved`, `shouldRetry`, `shouldAskUser`
+3. **Iterative Refinement (Max 2-3 hops):**
+   - **IF** `solved == true`: Proceed to Step 4
+   - **IF** `shouldRetry == true` AND `refinedQuery` provided: Refine query, search again, re-evaluate (repeat up to max attempts: 3)
+   - **IF** `shouldAskUser == true`: Return `ASK_USER` response
+
+**Key Features:**
+- **Iterative Deep Dives:** Handles complex queries that require multiple search iterations
+- **Query Refinement:** Automatically refines queries based on result quality
+- **Adaptive Domain Filtering:** Expands search scope if domain-filtered results are poor
+
+**Step 4: Final Verification (Post-Search)**
+
+**Purpose:** Verify if we have all required information to complete the task after search.
+
+**Input:**
+- `query`: Original user query
+- `searchResults`: Web search results (if search was performed)
+- `missingFields`: Fields identified as missing in Step 1
+- `ragChunks`: Available RAG knowledge
+
+**Output:** `InformationCompletenessCheck` with:
+- `canProceed`: boolean — Can we proceed with execution?
+- `missingInformation`: string[] — What information is still missing?
+- `userQuestion`: string — Question to ask user (if canProceed is false)
+- `reasoning`: string — Explanation
+- `confidence`: 0.0 - 1.0 — Confidence in completeness assessment
+- `evidence`: Sources, quality, and gaps
+
+**Outcomes:**
+- **Can Proceed:** Search results provide clear instructions; all required information available
+- **Needs User Input:** Documentation shows required fields, but user hasn't provided them
+- **Search Insufficient:** Search results don't contain specific information; need more context from user
+
+#### 4.7.2 Dual-Model Architecture & Confidence Routing
+
+**Two-Model Architecture:**
+
+**Smart LLM (Thinking Tasks):**
+- **Primary:** `gpt-4o` or `claude-sonnet-3-5-20241022`
+- **Fallback:** `gpt-4o-mini` (if smart model unavailable)
+- **Use Cases:**
+  - `analyzeTaskContext()` — Context & Gap Analysis
+  - `verifyInformationCompleteness()` — Post-search verification
+  - `evaluateSearchResults()` — Search result evaluation
+  - Complex reasoning tasks requiring deep understanding
+
+**Fast LLM (Doing Tasks):**
+- **Primary:** `gpt-4o-mini`
+- **Use Cases:**
+  - `generateSearchSummary()` — Summarizing search results
+  - `buildActionPrompt()` — Action generation (routine)
+  - Simple text processing and summarization
+  - High-volume, low-complexity tasks
+
+**Configuration:**
+```bash
+# Smart Model Configuration
+SMART_MODEL_NAME=gpt-4o                    # Primary smart model
+SMART_MODEL_FALLBACK=gpt-4o-mini           # Fallback if primary unavailable
+SMART_MODEL_TEMPERATURE=0.3                # Lower temperature for consistency
+
+# Fast Model Configuration
+FAST_MODEL_NAME=gpt-4o-mini                # Fast model for routine tasks
+FAST_MODEL_TEMPERATURE=0.7                 # Higher temperature for variety
+```
+
+**Confidence Thresholds (The "Safety Valve"):**
+
+**High Confidence (0.9 - 1.0):**
+- **Action:** Trust the model's decision
+- **Verification:** Minimal or none
+- **Use Case:** Clear, well-supported decisions with strong evidence
+
+**Medium Confidence (0.5 - 0.9):**
+- **Action:** Force verification or additional search
+- **Verification:** Required before proceeding
+- **Use Case:** Decisions with moderate evidence or some uncertainty
+
+**Low Confidence (< 0.5):**
+- **Action:** Block execution, force user input or search
+- **Verification:** Mandatory, cannot proceed without
+- **Use Case:** Weak evidence, high uncertainty, or conflicting information
+
+**Source-Specific Routing Rules:**
+
+**MEMORY Source:**
+- Confidence >= 0.9: Trust memory, proceed directly
+- Confidence >= 0.7: Verify memory with page check
+- Confidence < 0.7: Don't trust memory, force search
+
+**PAGE Source:**
+- Confidence >= 0.9: Trust page, proceed directly
+- Confidence >= 0.7: Verify page with search
+- Confidence < 0.7: Don't trust page, force search
+
+**WEB_SEARCH Source:**
+- Confidence >= 0.7: Proceed with search
+- Confidence < 0.5: Search might not help, ask user
+
+**Verification Search:**
+A lightweight search performed to verify a medium-confidence decision:
+- **Trigger:** Confidence between 0.5 - 0.9, Source is MEMORY or PAGE
+- **Process:** Generate verification query → Quick search → Evaluate → Proceed or switch source
+
+#### 4.7.3 Web Search Implementation
+
 - **Pre-Search:** For new tasks, reasoning engine analyzes context before deciding to search. No blind searching.
 - **Query Refinement:** Search queries are intelligently refined by the reasoning engine (e.g., "How to register new patient OpenEMR 7.0" instead of "how to add patient demo.openemr.io").
 - **Dynamic Search:** LLM can call `googleSearch(query)` action at any step during task execution. Search results are injected into LLM thought for next action.
@@ -288,6 +447,236 @@ export type NextActionResponse = z.infer<typeof nextActionResponseSchema>;
 - **Provider:** Tavily API (AI-native, domain-restricted search).
 - **Domain Restriction:** Search results are restricted to the domain from the `url` parameter, with adaptive expansion if results are poor (< 3 results).
 - **Action:** `googleSearch("query")` — Available as SERVER tool that LLM can call dynamically.
+
+#### 4.7.4 Integration with `/api/agent/interact`
+
+**New Flow:**
+```
+1. User Query → /api/agent/interact
+2. Authentication & Validation
+3. Reasoning Layer:
+   a. Step 1: analyzeTaskContext() → TaskContextAnalysis
+   b. Step 2: Conditional Search (if needed)
+   c. Step 3: verifyInformationCompleteness() → InformationCompletenessCheck
+4. If canProceed → Planning Engine → Action Generation
+5. If !canProceed → Return NEEDS_USER_INPUT response
+```
+
+**New Response Type: `NEEDS_USER_INPUT`**
+
+```typescript
+interface NeedsUserInputResponse {
+  success: true
+  data: {
+    status: "needs_user_input"
+    thought: string // User-friendly explanation
+    userQuestion: string // Specific question to ask
+    missingInformation: string[] // What we need
+    context: {
+      searchPerformed: boolean
+      searchSummary?: string
+      reasoning: string
+    }
+  }
+}
+```
+
+**Implementation Files:**
+- `lib/agent/reasoning-engine.ts` — Main reasoning engine with `analyzeTaskContext()` and `verifyInformationCompleteness()`
+- `lib/agent/web-search.ts` — Web search functionality with refined queries
+- `lib/agent/llm-client.ts` — Dual-model client with `getSmartLLM()` and `getFastLLM()`
+- `app/api/agent/interact/route.ts` — Integration of reasoning layer into interact endpoint
+
+#### 4.7.5 Detailed Implementation Specifications
+
+**LLM Client Upgrade (`lib/agent/llm-client.ts`):**
+
+**New Functions:**
+```typescript
+/**
+ * Get Smart LLM client for thinking tasks
+ * Uses SMART_MODEL_NAME or falls back to FAST_MODEL_NAME
+ */
+export function getSmartLLM(): OpenAI {
+  const modelName = process.env.SMART_MODEL_NAME || process.env.FAST_MODEL_NAME || "gpt-4o-mini"
+  const temperature = parseFloat(process.env.SMART_MODEL_TEMPERATURE || "0.3")
+  
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
+
+/**
+ * Get Fast LLM client for routine tasks
+ * Uses FAST_MODEL_NAME or defaults to gpt-4o-mini
+ */
+export function getFastLLM(): OpenAI {
+  const modelName = process.env.FAST_MODEL_NAME || "gpt-4o-mini"
+  const temperature = parseFloat(process.env.FAST_MODEL_TEMPERATURE || "0.7")
+  
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
+```
+
+**Backward Compatibility:**
+- Existing `callActionLLM()` should continue to work
+- Can optionally use `getFastLLM()` internally
+- No breaking changes to existing code
+
+**Reasoning Engine Module (`lib/agent/reasoning-engine.ts`):**
+
+**Function: `analyzeTaskContext(params): Promise<TaskContextAnalysis>`**
+
+**Parameters:**
+```typescript
+interface AnalyzeTaskContextParams {
+  query: string
+  url: string
+  pageSummary?: string // Optional: brief page state summary
+  ragChunks: ResolveKnowledgeChunk[]
+  hasOrgKnowledge: boolean
+}
+```
+
+**Implementation:**
+- Use **Smart LLM** (`getSmartLLM()`) for analysis
+- Updated prompt to require confidence and evidence evaluation
+- Structured output with JSON mode (includes confidence and evidence fields)
+- Apply routing matrix based on confidence thresholds
+- Error handling: fallback to conservative defaults (needsWebSearch: true, confidence: 0.5)
+
+**Function: `verifyInformationCompleteness(params): Promise<InformationCompletenessCheck>`**
+
+**Parameters:**
+```typescript
+interface VerifyInformationCompletenessParams {
+  query: string
+  searchResults: WebSearchResult | null
+  missingFields: string[]
+  ragChunks: ResolveKnowledgeChunk[]
+}
+```
+
+**Implementation:**
+- Use **Smart LLM** (`getSmartLLM()`) for verification
+- Updated prompt to require confidence and evidence evaluation
+- Structured output with JSON mode (includes confidence and evidence fields)
+- Apply threshold logic: if `canProceed && confidence < 0.6`, force user input
+- Error handling: fallback to `canProceed: true` (optimistic) with warning, confidence: 0.5
+
+**Context Analyzer Upgrade (`lib/agent/reasoning/context-analyzer.ts`):**
+
+**Updated `analyzeContext`:**
+- Use **Smart LLM** (`getSmartLLM()`) for context analysis
+- Updated prompt to require confidence and evidence evaluation
+- Apply routing matrix based on confidence:
+  - MEMORY with confidence < 0.7 → Switch to WEB_SEARCH
+  - PAGE with confidence < 0.7 → Switch to WEB_SEARCH
+  - WEB_SEARCH with confidence < 0.5 → Switch to ASK_USER
+
+**Search Manager Upgrade (`lib/agent/reasoning/search-manager.ts`):**
+
+**Updated `evaluateSearchResults`:**
+- Use **Smart LLM** (`getSmartLLM()`) for evaluation
+- Updated prompt to require confidence and evidence
+- Apply threshold logic: if `solved && confidence < 0.6`, force retry
+
+**Refactored Web Search Module (`lib/agent/web-search.ts`):**
+
+**Changes:**
+1. **Remove hardcoded query formatting:**
+   - Remove: `const searchQuery = \`how to ${query} ${baseDomain}\``
+   - Accept: `refinedQuery: string` parameter
+
+2. **Update function signature:**
+   ```typescript
+   // OLD
+   export async function performWebSearch(
+     query: string,
+     url: string,
+     tenantId: string
+   ): Promise<WebSearchResult | null>
+
+   // NEW
+   export async function performWebSearch(
+     refinedQuery: string, // From reasoning engine
+     url: string,
+     tenantId: string,
+     options?: {
+       strictDomainFilter?: boolean // Default: true, but can be relaxed
+       allowDomainExpansion?: boolean // If true, retry without filter if results poor
+     }
+   ): Promise<WebSearchResult | null>
+   ```
+
+3. **Adaptive domain filtering:**
+   - Start with domain filter
+   - If results < 3 and `allowDomainExpansion` is true, retry without filter
+   - Log the decision for debugging
+
+**Updated Endpoint (`app/api/agent/interact/route.ts`):**
+
+**Integration Points:**
+
+1. **Before Task Creation (New Tasks):**
+   ```typescript
+   // OLD: Blind search
+   webSearchResult = await performWebSearch(query, url, tenantId)
+
+   // NEW: Reasoning loop
+   const contextAnalysis = await analyzeTaskContext({
+     query,
+     url,
+     ragChunks: chunks,
+     hasOrgKnowledge,
+   })
+
+   if (contextAnalysis.needsWebSearch) {
+     webSearchResult = await performWebSearch(
+       contextAnalysis.searchQuery, // Refined query
+       url,
+       tenantId,
+       { allowDomainExpansion: true }
+     )
+   }
+
+   // Post-search verification
+   const completenessCheck = await verifyInformationCompleteness({
+     query,
+     searchResults: webSearchResult,
+     missingFields: contextAnalysis.missingFields,
+     ragChunks: chunks,
+   })
+
+   if (!completenessCheck.canProceed) {
+     // Return NEEDS_USER_INPUT response
+     return NextResponse.json({
+       success: true,
+       data: {
+         status: "needs_user_input",
+         thought: completenessCheck.reasoning,
+         userQuestion: completenessCheck.userQuestion,
+         missingInformation: completenessCheck.missingInformation,
+         context: {
+           searchPerformed: !!webSearchResult,
+           searchSummary: webSearchResult?.summary,
+           reasoning: completenessCheck.reasoning,
+         },
+       },
+     })
+   }
+   ```
+
+2. **Response Schema Update:**
+   - Add `NEEDS_USER_INPUT` to response type union
+   - Update `NextActionResponse` schema to include new status
+
+**Integration Points:**
+- Apply routing matrix based on confidence after context analysis
+- Check search evaluation confidence before proceeding
+- Force ASK_USER if confidence is very low (< 0.5)
 
 ### 4.8 Chat Persistence & Session Management
 
@@ -534,6 +923,48 @@ The agent uses a proactive "Reason-Act-Verify" orchestrator pattern:
 
 **Orchestrator Status:** Task status enum extended: `'planning'`, `'executing'`, `'verifying'`, `'correcting'`, `'completed'`, `'failed'`, `'interrupted'`.
 
+#### 4.9.1 Action-Type Classification & Dropdown-Aware Verification
+
+To avoid false verification failures (e.g. "Patient" click opens a dropdown but verification fails due to over-specific checks), the system uses **action-type classification** end-to-end:
+
+**1. Action-type classification (`lib/agent/action-type.ts`)**
+
+- **Input:** Action string (e.g. `click(68)`) and current DOM.
+- **Output:** `'dropdown' | 'navigation' | 'generic'`.
+- **Rules:**
+  - **dropdown:** `click(id)` on an element with `aria-haspopup` or `data-has-popup` (from DOM).
+  - **navigation:** `navigate(...)`, `goBack()`.
+  - **generic:** All other actions (e.g. plain `click`, `setValue`).
+
+**2. Outcome prediction (Task 9)**
+
+- **Before** calling the LLM, we classify the action. If **dropdown**, we **skip the LLM** and return a **fixed** `ExpectedOutcome`:
+  - `description`: from `thought` (trimmed) or `"A dropdown menu should open."`
+  - `domChanges`: **only** `urlShouldChange: false`, `attributeChanges: [{ attribute: "aria-expanded", expectedValue: "true" }]`, `elementsToAppear: [{ role: "list" }, { role: "listitem" }]`.
+  - **No** `elementShouldExist`, `elementShouldNotExist`, or `elementShouldHaveText`.
+- For **non-dropdown** actions, the existing LLM-based outcome prediction is used.
+
+**3. Verification (Task 7)**
+
+- `verifyAction` accepts an optional **`previousAction`** (e.g. `"click(68)"`). The interact route passes `previousAction.action`.
+- We classify **`previousAction`** against the **current** DOM to get `actionType`. If `actionType === 'dropdown'`, we treat the verified action as a **dropdown** regardless of `expectedOutcome`.
+- **Dropdown mode** (from `expectedOutcome` popup hints **or** `actionType === 'dropdown'`):
+  - **Run only:** `urlChanged`, `attributeChanged` (aria-expanded), `elementsToAppear` (list/listitem/menuitem).
+  - **Skip:** `elementShouldExist`, `elementShouldNotExist`, `elementShouldHaveText`.
+- **Popup override:** When dropdown and `url` unchanged and `aria-expanded` present, we boost confidence to ≥ 0.75 so we don’t fail on remaining checks.
+
+**4. Self-correction (Task 8)**
+
+- When verification fails **and** the failed action was a dropdown click **and** the page shows menu-like options (e.g. "New/Search", "Dashboard"), we instruct the correction engine to **select a menu item** (e.g. "New/Search") rather than clicking another nav button (e.g. "Visits"). See self-correction prompts and dropdown-context hints.
+
+**5. Benefits**
+
+- **Single source of truth:** Action type is derived from DOM + action, not from ad hoc LLM output.
+- **No over-specification:** Dropdown expectations are minimal and fixed; verification only checks behavioral signals (URL same, expanded, menu-like content).
+- **Backward compatible:** Legacy `expectedOutcome` with extra checks still work; we skip strict checks when `actionType === 'dropdown'` or when `expectedOutcome` indicates popup.
+
+**File locations:** `lib/agent/action-type.ts`, `lib/agent/outcome-prediction-engine.ts`, `lib/agent/verification-engine.ts`, `lib/agent/self-correction-engine.ts`, `app/api/agent/interact/route.ts`.
+
 ### 4.10 Enhanced Error Handling
 
 - **Error Detection:** Errors from client execution reports are detected and injected into LLM context.
@@ -542,6 +973,47 @@ The agent uses a proactive "Reason-Act-Verify" orchestrator pattern:
 - **Finish() Validation:** System intercepts `finish()` after recent failures and forces `verifySuccess()` first. After verification, `finish()` is allowed.
 - **Error Debug Info:** Error responses include `debugInfo` field (when debug mode enabled) with error type, message, context, stack traces (debug only), and recovery suggestions.
 - **Information Gap Detection:** Reasoning engine identifies missing information and returns `NEEDS_USER_INPUT` response when user input is required before proceeding.
+
+#### 4.10.1 Reasoning Layer Error Handling
+
+**LLM Analysis Failures:**
+- **Scenario:** `analyzeTaskContext()` fails or returns invalid JSON
+- **Handling:** Fallback to conservative defaults: `needsWebSearch: true`, `searchQuery: query`
+- **Logging:** Error logged to Sentry
+- **Behavior:** Continue with execution (don't block user)
+
+**Search Failures:**
+- **Scenario:** Tavily API fails or returns no results
+- **Handling:** Continue to Step 4 (Feasibility Check) with `searchResults: null`
+- **Behavior:** Let the feasibility check decide if we can proceed without search results
+- **Logging:** Warning logged but don't fail the request
+
+**Verification Failures:**
+- **Scenario:** `verifyInformationCompleteness()` fails
+- **Handling:** Fallback to optimistic: `canProceed: true`
+- **Logging:** Warning logged to Sentry
+- **Behavior:** Continue with execution (assume we have enough info)
+
+**Missing RAG Context:**
+- **Scenario:** No RAG chunks available
+- **Handling:** Pass empty array to reasoning engine
+- **Behavior:** Reasoning engine accounts for this in analysis; may result in `needsWebSearch: true` more often
+
+**Model Unavailability:**
+- **Smart Model Fails:**
+  1. Try fallback model (`SMART_MODEL_FALLBACK`)
+  2. If fallback fails, use fast model
+  3. Log warning about degraded reasoning quality
+  4. Continue with lower confidence threshold (0.6 instead of 0.7)
+- **Fast Model Fails:**
+  1. Retry once
+  2. If still fails, use smart model (degraded performance)
+  3. Log error
+
+**Invalid Confidence Scores:**
+- **Validation:** Ensure confidence is between 0.0 and 1.0
+- **Sanitization:** If invalid, default to 0.5 (medium confidence)
+- **Logging:** Warning logged about invalid confidence
 
 ### 4.11 Error Responses
 
@@ -710,6 +1182,104 @@ The agent uses a proactive "Reason-Act-Verify" orchestrator pattern:
 - Context-aware suggestions for different error types
 - Error classification for better handling
 
+### 4.17 Performance Considerations
+
+**LLM Call Overhead:**
+- **Current:** 1 LLM call (action generation)
+- **New:** 2-3 LLM calls (analysis + verification + action generation)
+- **Mitigation:**
+  - Use **Smart models** (`gpt-4o`) for critical thinking tasks
+  - Use **Fast models** (`gpt-4o-mini`) for routine operations
+  - Cache analysis results for similar queries (future optimization)
+  - Parallel execution where possible
+
+**Expected Latency:**
+- Analysis: ~1-2s (smart model)
+- Verification: ~1-2s (smart model)
+- Action Generation: ~2-3s (full model)
+- **Total:** ~4-7s (vs ~2-3s before, but with better accuracy)
+
+**Cost Impact:**
+- Smart models are more expensive but used only for critical decisions
+- Fast models handle high-volume routine tasks
+- Overall cost increase expected but manageable with selective usage
+
+**Search Optimization:**
+- **Current:** Always search (if no RAG)
+- **New:** Conditional search (only when needed)
+- **Expected Reduction:** ~30-50% reduction in search calls
+- Faster response times for simple tasks
+
+### 4.18 Monitoring & Observability
+
+**Confidence Metrics:**
+- Track average confidence scores by source (MEMORY, PAGE, WEB_SEARCH, ASK_USER)
+- Confidence distribution (histogram)
+- Low confidence rate (< 0.5)
+- Routing decisions (how often we switch sources)
+
+**Logging:**
+```typescript
+console.log(`[Confidence] Source: ${result.source}, Confidence: ${result.confidence}, Evidence: ${result.evidence.quality}`)
+```
+
+**Sentry Events:**
+- Log low confidence decisions (< 0.3) as warnings
+- Track confidence trends over time
+- Alert on sudden confidence drops
+
+**Performance Metrics:**
+- Track smart model latency vs fast model latency
+- Model selection (which model was used)
+- Fallback rate (how often we fallback to fast model)
+- Cost impact (smart models are more expensive)
+
+**Success Metrics:**
+- **Accuracy Metrics:**
+  - Reduction in failed actions: Target 30% reduction
+  - Reduction in false positives: Target 30% reduction
+  - Confidence calibration: Confidence scores should correlate with actual accuracy
+  - User input requests: Track frequency and user satisfaction
+  - Search relevance: Measure if refined queries produce better results
+  - Routing effectiveness: Routing decisions should improve task success rate
+
+- **Performance Metrics:**
+  - Response time: Keep under 7s (p95)
+  - Smart model latency: Keep under 2s (p95)
+  - Fast model latency: Keep under 1s (p95)
+  - Search call reduction: Target 30-50% reduction
+  - LLM token usage: Monitor cost impact
+  - Fallback rate: Track how often we fallback to fast model
+
+- **User Experience Metrics:**
+  - Task completion rate: Should increase with better routing
+  - User satisfaction: Measure via feedback
+  - Error recovery: Faster recovery from failures
+  - User input requests: Should decrease (fewer unnecessary asks)
+
+### 4.19 Testing Strategy
+
+**Unit Tests:**
+- `analyzeTaskContext()`: Test various query types
+- `verifyInformationCompleteness()`: Test with/without search results
+- `performWebSearch()`: Test refined query handling
+
+**Integration Tests:**
+- End-to-end flow: Query → Analysis → Search → Verification → Response
+- Edge cases: Missing fields, search failures, LLM failures
+
+**Manual Testing Scenarios:**
+1. **Simple Task (No Search):** "Click the login button"
+2. **Complex Task (Search Needed):** "Add patient Jaswanth"
+3. **Task Needing User Input:** "Fix the billing error"
+4. **Task with Sufficient RAG:** Query with org-specific knowledge
+5. **High Confidence MEMORY:** User provided info earlier, confidence > 0.9
+6. **Medium Confidence MEMORY:** User provided info, but confidence 0.7, should verify
+7. **Low Confidence MEMORY:** Confidence < 0.7, should switch to WEB_SEARCH
+8. **High Confidence PAGE:** Clear page state, confidence > 0.9
+9. **Low Confidence PAGE:** Unclear page state, should switch to WEB_SEARCH
+10. **Low Confidence WEB_SEARCH:** Poor search query, should switch to ASK_USER
+
 ---
 
 ## 5. GET /api/knowledge/resolve
@@ -859,10 +1429,10 @@ RAG and action history MUST use **Tenant ID** and **Active Domain** as above to 
 
 ## 8. Implementation Checklist
 
-- [x] **Auth:** Better Auth (Bearer plugin, `trustedOrigins`) + **`/api/v1/auth/*` adapters** (login, session, logout). Implement **`getSessionFromToken`** via `auth.api.getSession({ headers })`; use in all protected routes. See `THIN_SERVER_ROADMAP.md` §2.4.
-- [x] **Persistence:** **Mongoose** models `allowed_domains`, `tasks`, `task_actions`, `sessions`, `messages`, `snapshots`, `debug_logs`, `verification_records`, `correction_records`, `user_preferences`. No new auth schemas; reuse Better Auth. No SQL migrations. See `THIN_SERVER_ROADMAP.md`.
+- [x] **Auth:** Better Auth (Bearer plugin, `trustedOrigins`) + **`/api/v1/auth/*` adapters** (login, session, logout). Implement **`getSessionFromToken`** via `auth.api.getSession({ headers })`; use in all protected routes.
+- [x] **Persistence:** **Mongoose** models `allowed_domains`, `tasks`, `task_actions`, `sessions`, `messages`, `snapshots`, `debug_logs`, `verification_records`, `correction_records`, `user_preferences`. No new auth schemas; reuse Better Auth. No SQL migrations.
 - [x] Implement `POST /api/agent/interact`: validate body; **`allowed_domains` as filter** (§1.4); task create/load; RAG (org or public); web search; prompt build; LLM call; history append; orchestrator features (planning, verification, self-correction); return `NextActionResponse` with `hasOrgKnowledge`. Knowledge injected **into LLM prompt only**; extension never receives chunks/citations. **Implementation:** `app/api/agent/interact/route.ts` (complete). Uses shared `getRAGChunks()` helper, `buildActionPrompt()`, `callActionLLM()`, `parseActionResponse()`, `validateActionFormat()`, planning engine, verification engine, self-correction engine, outcome prediction engine, step refinement engine.
-- [x] Implement `GET /api/knowledge/resolve`: validate query params; **`allowed_domains` as filter** (§1.4); **proxy** to extraction service (org) or public-only (no call); return `ResolveKnowledgeResponse` with `hasOrgKnowledge`. **Internal use and debugging only** — not for extension overlay. Extraction service schema → **`BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`**; proxy details → `THIN_SERVER_ROADMAP.md` §3.1, §3.2. **Implementation:** `app/api/knowledge/resolve/route.ts` (complete).
+- [x] Implement `GET /api/knowledge/resolve`: validate query params; **`allowed_domains` as filter** (§1.4); **proxy** to extraction service (org) or public-only (no call); return `ResolveKnowledgeResponse` with `hasOrgKnowledge`. **Internal use and debugging only** — not for extension overlay. Extraction service schema → **`BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`**. **Implementation:** `app/api/knowledge/resolve/route.ts` (complete).
 - [x] Resolve **proxies** to extraction service; no duplicate RAG/storage in Next.js. Org-specific calls use **Tenant ID** and **Active Domain**; no cross-tenant or cross-domain leakage.
 - [x] Web search: Pre-search for new tasks; dynamic `googleSearch()` tool for mid-task searches. **Implementation:** `lib/agent/web-search.ts` (complete).
 - [x] Chat persistence: Session and Message models; DOM bloat management with Snapshot model. **Implementation:** `lib/models/session.ts`, `lib/models/message.ts`, `lib/models/snapshot.ts` (complete).
@@ -904,10 +1474,10 @@ RAG and action history MUST use **Tenant ID** and **Active Domain** as above to 
 - **Startup:** Call `GET /api/v1/auth/session`; if 401, show login UI and block task run.
 - **Agent interact:** Call `POST /api/agent/interact` with `{ url, query, dom, taskId?, sessionId? }`; execute returned `NextActionResponse` (click/setValue) or handle finish/fail. Send `taskId` and `sessionId` on subsequent requests. During task execution, the extension **never** receives raw knowledge (chunks/citations) — only `thought` and `action`.
 - **Knowledge resolve:** `GET /api/knowledge/resolve` is for **internal use and debugging only**. The extension does **not** use it for overlay, tooltips, or end-user display. Use resolve only in tooling, dashboards, or debugging flows (e.g. “what RAG returns for this URL”).
-- **User preferences:** Call `GET /api/v1/user/preferences` to fetch preferences; call `POST /api/v1/user/preferences` to save preferences (theme, etc.). Preferences are scoped per tenant. See `THIN_SERVER_ROADMAP.md` §5 for implementation details.
+- **User preferences:** Call `GET /api/v1/user/preferences` to fetch preferences; call `POST /api/v1/user/preferences` to save preferences (theme, etc.). Preferences are scoped per tenant.
 - **Session management:** Use `sessionId` from interact response to maintain conversation threads. Call `GET /api/session/[sessionId]/messages` to retrieve message history if needed. Call `GET /api/session` to list all sessions (archived sessions excluded by default for Chrome extension). Call `POST /api/session` to archive a session (archived sessions are not used by Chrome extension but available in UI for auditing).
 - **Debug endpoints:** Use `GET /api/debug/logs` and `GET /api/debug/session/[taskId]/export` for debug UI. Debug endpoints are for development and troubleshooting only.
-- **CORS:** Backend must allow `chrome-extension://<extension-id>` for **`/api/auth/*`**, `/api/v1/*`, `/api/agent/*`, `/api/knowledge/*`, `/api/debug/*`, `/api/session/*`. See `THIN_SERVER_ROADMAP.md` §1.3, §2.4.
+- **CORS:** Backend must allow `chrome-extension://<extension-id>` for **`/api/auth/*`**, `/api/v1/*`, `/api/agent/*`, `/api/knowledge/*`, `/api/debug/*`, `/api/session/*`.
 
 ---
 
@@ -915,7 +1485,7 @@ RAG and action history MUST use **Tenant ID** and **Active Domain** as above to 
 
 | Document | Purpose |
 |----------|---------|
-| **`THIN_SERVER_ROADMAP.md`** | Complete implementation roadmap: MongoDB, Mongoose, Better Auth, Next.js, all tasks (auth, resolve, interact, preferences, web search, chat persistence, debug, orchestrator). **Keep in sync with this spec.** |
+| **`THIN_SERVER_ROADMAP.md`** | Implementation roadmap: MongoDB, Mongoose, Better Auth, Next.js, all tasks (auth, resolve, interact, preferences, web search, chat persistence, debug, orchestrator). **Content merged into this document.** |
 | **`ARCHITECTURE.md`** | Hybrid DB (Prisma + Mongoose), tenant model (user / organization), multi-tenancy. |
 | **`BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`** | **Browser automation / extraction service** `GET /api/knowledge/resolve` request & response schema. Used when Next.js proxies resolve (§5); referenced by Task 2 and `lib/knowledge-extraction/resolve-client.ts`. |
 | **`DEBUG_VIEW_IMPROVEMENTS.md`** | Debug View requirements (client-focused, but server provides debug data). |

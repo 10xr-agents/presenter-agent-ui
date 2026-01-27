@@ -2,13 +2,32 @@ import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import { classifyActionType } from "./action-type"
 
 /**
  * Outcome Prediction Engine (Task 9)
  *
  * Predicts what should happen after each action.
  * Generates expected outcome structure for verification.
+ * Uses action-type classification: dropdown actions get a fixed template (no LLM
+ * over-specification); others use LLM prediction.
  */
+
+/** Fixed expected outcome for dropdown/popup clicks. No elementShouldExist, elementShouldNotExist, or elementShouldHaveText. */
+function dropdownExpectedOutcome(thought: string): ExpectedOutcome {
+  const description =
+    thought && thought.length > 0
+      ? thought.replace(/\s+/g, " ").trim().slice(0, 200)
+      : "A dropdown menu should open."
+  return {
+    description,
+    domChanges: {
+      urlShouldChange: false,
+      attributeChanges: [{ attribute: "aria-expanded", expectedValue: "true" }],
+      elementsToAppear: [{ role: "list" }, { role: "listitem" }],
+    },
+  }
+}
 
 /**
  * Predict expected outcome for an action
@@ -29,6 +48,12 @@ export async function predictOutcome(
   ragChunks: ResolveKnowledgeChunk[] = [],
   hasOrgKnowledge = false
 ): Promise<ExpectedOutcome | null> {
+  const actionType = classifyActionType(action, currentDom)
+
+  if (actionType === "dropdown") {
+    return dropdownExpectedOutcome(thought)
+  }
+
   const apiKey = process.env.OPENAI_API_KEY
 
   if (!apiKey) {
@@ -75,8 +100,9 @@ For popup elements, include:
   <ExpectedValue>true</ExpectedValue>
 </AttributeChange>
 - <ElementShouldAppear>
-  <Role>menuitem</Role> <!-- or 'option', 'dialog' depending on popup type -->
+  <Role>list</Role> <!-- or 'listitem', 'menuitem', 'option', 'dialog' - many UIs use list/listitem -->
 </ElementShouldAppear>
+- Do NOT use <ElementShouldNotExist> for dropdowns. Other nav buttons stay collapsed; that check falsely fails.
 
 Response Format:
 You must respond in the following format:
@@ -97,7 +123,7 @@ User-friendly description of what should happen after this action (e.g., "The fo
   <ExpectedValue>true</ExpectedValue>
 </AttributeChange>
 <ElementShouldAppear>
-  <Role>menuitem</Role> <!-- or 'option', 'dialog' -->
+  <Role>list</Role> <!-- or listitem, menuitem, option, dialog -->
   <Selector>optional-selector</Selector>
 </ElementShouldAppear>
 <ElementShouldDisappear>

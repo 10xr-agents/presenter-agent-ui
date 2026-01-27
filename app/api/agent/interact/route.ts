@@ -449,7 +449,8 @@ export async function POST(req: NextRequest) {
               previousAction.expectedOutcome,
               dom, // Current DOM (after action was executed, sent by client)
               url, // Current URL (after action was executed, sent by client)
-              previousUrl // Previous URL (task baseline URL) for comparison
+              previousUrl, // Previous URL (task baseline URL) for comparison
+              previousAction.action // For action-type-aware verification (e.g. dropdown)
             )
 
             // Store verification result
@@ -609,7 +610,8 @@ export async function POST(req: NextRequest) {
                   dom, // Current DOM
                   url, // Current URL
                   chunks, // RAG chunks
-                  hasOrgKnowledge
+                  hasOrgKnowledge,
+                  previousAction.action // Failed action (e.g. "click(68)") for dropdown-aware correction
                 )
 
                 if (correctionResult) {

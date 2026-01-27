@@ -1,6 +1,7 @@
 import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
+import { classifyActionType, type ActionType } from "./action-type"
 
 /**
  * Verification Engine (Task 7)
@@ -73,91 +74,98 @@ function extractActualState(dom: string, url: string): ActualState {
 }
 
 /**
+ * Detect if expected outcome describes a dropdown/popup open (not navigation).
+ * For popups we use relaxed verification: url same + aria-expanded + menu-like content.
+ */
+function isPopupExpectation(domChanges: NonNullable<ExpectedOutcome["domChanges"]>): boolean {
+  const urlSame = domChanges.urlShouldChange === false
+  const hasExpanded = domChanges.attributeChanges?.some(
+    (c) => c.attribute === "aria-expanded" && c.expectedValue === "true"
+  )
+  const hasMenuHint = (domChanges.elementsToAppear?.length ?? 0) > 0 || hasExpanded
+  return Boolean(urlSame && hasMenuHint)
+}
+
+/**
  * Perform DOM-based checks
  */
 function performDOMChecks(
   expectedOutcome: ExpectedOutcome,
   actualState: ActualState,
-  previousUrl?: string
+  previousUrl?: string,
+  actionType?: ActionType
 ): DOMCheckResults {
   const results: DOMCheckResults = {}
   const dom = actualState.domSnapshot
+  const domChanges = expectedOutcome.domChanges
+  if (!domChanges) return results
 
-  if (expectedOutcome.domChanges) {
-    const { domChanges } = expectedOutcome
+  const isPopupFromOutcome = isPopupExpectation(domChanges)
+  const isPopup = isPopupFromOutcome || actionType === "dropdown"
 
-    // Check if element should exist
-    if (domChanges.elementShouldExist) {
-      const selector = domChanges.elementShouldExist
-      // Simple check: look for element ID or class in DOM
-      const exists =
-        dom.includes(`id="${selector}"`) ||
-        dom.includes(`id='${selector}'`) ||
-        dom.includes(`class="${selector}"`) ||
-        dom.includes(`class='${selector}'`) ||
-        dom.includes(`<${selector}`)
-      results.elementExists = exists
+  // For popup/dropdown: only run urlChanged, attributeChanged, elementsToAppear. Skip strict checks.
+  if (!isPopup && domChanges.elementShouldExist) {
+    const selector = domChanges.elementShouldExist
+    const exists =
+      dom.includes(`id="${selector}"`) ||
+      dom.includes(`id='${selector}'`) ||
+      dom.includes(`class="${selector}"`) ||
+      dom.includes(`class='${selector}'`) ||
+      dom.includes(`<${selector}`)
+    results.elementExists = exists
+  }
+
+  if (domChanges.elementShouldNotExist && !isPopup) {
+    const selector = domChanges.elementShouldNotExist
+    const notExists =
+      !dom.includes(`id="${selector}"`) &&
+      !dom.includes(`id='${selector}'`) &&
+      !dom.includes(`class="${selector}"`) &&
+      !dom.includes(`class='${selector}'`) &&
+      !dom.includes(`<${selector}`)
+    results.elementNotExists = notExists
+  }
+
+  if (domChanges.elementShouldHaveText && !isPopup) {
+    const { selector, text } = domChanges.elementShouldHaveText
+    const elementRegex = new RegExp(`<[^>]*${selector}[^>]*>([\\s\\S]*?)<\\/[^>]*>`, "i")
+    const match = dom.match(elementRegex)
+    const elementText = match?.[1] || ""
+    results.elementTextMatches = elementText.includes(text)
+  }
+
+  // Check if URL should change
+  if (domChanges.urlShouldChange !== undefined && previousUrl !== undefined) {
+    const urlChanged = actualState.url !== previousUrl
+    results.urlChanged = domChanges.urlShouldChange ? urlChanged : !urlChanged
+  }
+
+  // CRITICAL FIX: Check attribute changes (for popup/dropdown elements)
+  if (domChanges.attributeChanges && domChanges.attributeChanges.length > 0) {
+    const expandedChange = domChanges.attributeChanges.find(
+      (change) => change.attribute === "aria-expanded" && change.expectedValue === "true"
+    )
+    if (expandedChange) {
+      const hasExpanded = dom.includes('aria-expanded="true"') || dom.includes("aria-expanded='true'")
+      results.attributeChanged = hasExpanded
     }
+  }
 
-    // Check if element should not exist
-    if (domChanges.elementShouldNotExist) {
-      const selector = domChanges.elementShouldNotExist
-      const notExists =
-        !dom.includes(`id="${selector}"`) &&
-        !dom.includes(`id='${selector}'`) &&
-        !dom.includes(`class="${selector}"`) &&
-        !dom.includes(`class='${selector}'`) &&
-        !dom.includes(`<${selector}`)
-      results.elementNotExists = notExists
-    }
-
-    // Check if element should have specific text
-    if (domChanges.elementShouldHaveText) {
-      const { selector, text } = domChanges.elementShouldHaveText
-      // Look for element and check if it contains the expected text
-      const elementRegex = new RegExp(`<[^>]*${selector}[^>]*>([\\s\\S]*?)<\\/[^>]*>`, "i")
-      const match = dom.match(elementRegex)
-      const elementText = match?.[1] || ""
-      results.elementTextMatches = elementText.includes(text)
-    }
-
-    // Check if URL should change
-    if (domChanges.urlShouldChange !== undefined && previousUrl !== undefined) {
-      const urlChanged = actualState.url !== previousUrl
-      // If urlShouldChange is true, URL should be different; if false, URL should be same
-      results.urlChanged = domChanges.urlShouldChange ? urlChanged : !urlChanged
-    }
-
-    // CRITICAL FIX: Check attribute changes (for popup/dropdown elements)
-    if (domChanges.attributeChanges && domChanges.attributeChanges.length > 0) {
-      // For popup elements, check if aria-expanded changed to true
-      const expandedChange = domChanges.attributeChanges.find(
-        (change) => change.attribute === "aria-expanded" && change.expectedValue === "true"
-      )
-      if (expandedChange) {
-        // Check if aria-expanded="true" exists in current DOM
-        const hasExpanded = dom.includes('aria-expanded="true"') || dom.includes("aria-expanded='true'")
-        results.attributeChanged = hasExpanded
+  // CRITICAL FIX: Check if new elements appeared (for popup/dropdown verification)
+  // Accept role "list" or "listitem" (common for menus) in addition to "menuitem"
+  if (domChanges.elementsToAppear && domChanges.elementsToAppear.length > 0) {
+    const hasMenuItems = domChanges.elementsToAppear.some((expected) => {
+      if (expected.role) {
+        const roleRegex = new RegExp(`role=["']?${expected.role}["']?`, "i")
+        if (roleRegex.test(dom)) return true
+        // Fallback: menuitem often rendered as list/listitem
+        if (expected.role === "menuitem" && (/role=["']?list["']?/i.test(dom) || /role=["']?listitem["']?/i.test(dom)))
+          return true
       }
-    }
-
-    // CRITICAL FIX: Check if new elements appeared (for popup/dropdown verification)
-    if (domChanges.elementsToAppear && domChanges.elementsToAppear.length > 0) {
-      // Check if menu items, options, or dialogs appeared
-      const hasMenuItems = domChanges.elementsToAppear.some((expected) => {
-        if (expected.role) {
-          // Look for role attribute matching expected role
-          const roleRegex = new RegExp(`role=["']?${expected.role}["']?`, "i")
-          return roleRegex.test(dom)
-        }
-        if (expected.selector) {
-          // Check if selector exists in DOM
-          return dom.includes(expected.selector)
-        }
-        return false
-      })
-      results.elementsAppeared = hasMenuItems
-    }
+      if (expected.selector) return dom.includes(expected.selector)
+      return false
+    })
+    results.elementsAppeared = hasMenuItems
   }
 
   return results
@@ -326,19 +334,21 @@ function calculateConfidence(
  * @param currentDom - Current DOM after action
  * @param currentUrl - Current URL after action
  * @param previousUrl - Previous URL before action (optional, for URL change check)
+ * @param previousAction - The action that was executed (e.g. "click(68)") for action-type-aware verification
  * @returns Verification result
  */
 export async function verifyAction(
   expectedOutcome: ExpectedOutcome,
   currentDom: string,
   currentUrl: string,
-  previousUrl?: string
+  previousUrl?: string,
+  previousAction?: string
 ): Promise<VerificationResult> {
-  // Extract actual state
   const actualState = extractActualState(currentDom, currentUrl)
+  const actionType =
+    previousAction !== undefined ? classifyActionType(previousAction, currentDom) : undefined
 
-  // Perform DOM-based checks
-  const domChecks = performDOMChecks(expectedOutcome, actualState, previousUrl)
+  const domChecks = performDOMChecks(expectedOutcome, actualState, previousUrl, actionType)
 
   // Perform semantic verification
   const semanticResult = await performSemanticVerification(
@@ -348,7 +358,19 @@ export async function verifyAction(
   )
 
   // Calculate confidence score
-  const confidence = calculateConfidence(domChecks, semanticResult.match)
+  let confidence = calculateConfidence(domChecks, semanticResult.match)
+
+  // Popup override: dropdown opened = url same + aria-expanded. Don't fail on strict element checks.
+  const domChanges = expectedOutcome.domChanges
+  const isPopupFromOutcome = domChanges ? isPopupExpectation(domChanges) : false
+  const isPopup = isPopupFromOutcome || actionType === "dropdown"
+  const urlSame =
+    domChanges?.urlShouldChange === false &&
+    (previousUrl !== undefined ? domChecks.urlChanged === true : true)
+  const expandedOk = domChecks.attributeChanged === true
+  if (isPopup && urlSame && expandedOk) {
+    confidence = Math.max(confidence, 0.75)
+  }
 
   // Determine success (confidence >= 0.7 threshold)
   const success = confidence >= 0.7
@@ -365,13 +387,15 @@ export async function verifyAction(
   if (domChecks.elementExists !== undefined) {
     reasonParts.push(`Element existence: ${domChecks.elementExists ? "✓" : "✗"}`)
   }
+  if (domChecks.elementNotExists !== undefined) {
+    reasonParts.push(`Element not present: ${domChecks.elementNotExists ? "✓" : "✗"}`)
+  }
   if (domChecks.elementTextMatches !== undefined) {
     reasonParts.push(`Element text match: ${domChecks.elementTextMatches ? "✓" : "✗"}`)
   }
   if (domChecks.urlChanged !== undefined) {
     reasonParts.push(`URL changed: ${domChecks.urlChanged ? "✓" : "✗"}`)
   }
-  // CRITICAL FIX: Include popup/dropdown verification in reason
   if (domChecks.attributeChanged !== undefined) {
     reasonParts.push(`Attribute changed (popup): ${domChecks.attributeChanged ? "✓" : "✗"}`)
   }
