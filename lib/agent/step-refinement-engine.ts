@@ -2,6 +2,7 @@ import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { PlanStep } from "@/lib/models/task"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 
 /**
  * Step Refinement Engine (Task 10)
@@ -61,11 +62,7 @@ Your job is to:
 3. Generate tool parameters based on the current DOM
 4. Respect the tool type (DOM vs SERVER) from the plan step
 
-Available DOM Tools:
-- click(elementId) - Click an element by its ID
-- setValue(elementId, "text") - Set the value of an input field
-- finish() - Task completed successfully
-- fail(reason) - Task failed with reason
+${getAvailableActionsPrompt()}
 
 Available SERVER Tools (Phase 3+, not implemented yet):
 - These will be handled separately
@@ -80,7 +77,7 @@ DOM|SERVER
 </ToolType>
 <Parameters>
 {
-  "elementId": 123,
+  "elementId": "123",
   "text": "value",
   "reason": "reason"
 }
@@ -89,12 +86,21 @@ DOM|SERVER
 actionName(params)
 </Action>
 
+CRITICAL RULES:
+1. You MUST only use actions from the Available Actions list above
+2. For DOM tools, find the specific element ID from the DOM (the id attribute value, NOT a CSS selector)
+3. Generate concrete parameters (element IDs as strings, text values, etc.)
+4. Respect the toolType from the plan step (if DOM, use DOM tools; if SERVER, indicate SERVER)
+5. For SERVER tools, return toolType="SERVER" but action will be handled separately (Phase 3+)
+6. NEVER use CSS selectors - only use element IDs
+7. NEVER invent new action names - only use: click, setValue, finish, fail
+8. Action format must exactly match the examples in Available Actions
+
 Guidelines:
-- For DOM tools, find the specific element ID from the DOM
-- Generate concrete parameters (element IDs, text values, etc.)
-- Respect the toolType from the plan step (if DOM, use DOM tools; if SERVER, indicate SERVER)
-- For SERVER tools, return toolType="SERVER" but action will be handled separately (Phase 3+)
-- Be specific about element selectors and values`
+- For click(): Extract the element's ID attribute value from the page structure (e.g., if element has id="123", use click(123))
+- For setValue(): Extract element ID and provide the text value to set
+- Be specific about element IDs and values
+- Remember: The plan step uses user-friendly language - your job is to convert it to a technical action while keeping the user-friendly description in mind`
 
   // Build user message with context
   const userParts: string[] = []
@@ -124,14 +130,16 @@ Guidelines:
     })
   }
 
-  // Add current DOM for context (truncate if too long)
+  // Add current DOM for context (Task 2: Don't mention "DOM")
   const domPreview = currentDom.length > 10000 ? currentDom.substring(0, 10000) + "... [truncated]" : currentDom
   userParts.push(`\nCurrent Page State:`)
   userParts.push(`- URL: ${currentUrl}`)
-  userParts.push(`- DOM Preview: ${domPreview.substring(0, 2000)}`)
+  userParts.push(`- Page Structure Preview: ${domPreview.substring(0, 2000)}`)
 
   userParts.push(
-    `\nBased on the plan step, previous actions, current page state, and knowledge context, refine this step into a specific tool action. Generate concrete parameters (element IDs, text values) that can be executed.`
+    `\nBased on the plan step, previous actions, current page state, and knowledge context, refine this step into a specific tool action. Generate concrete parameters (element IDs, text values) that can be executed.
+
+Note: The plan step description is written in user-friendly language. When generating the action, focus on finding the correct element IDs from the page structure, but remember that the user-facing thought messages will use user-friendly descriptions.`
   )
 
   const userPrompt = userParts.join("\n")
@@ -161,7 +169,7 @@ Guidelines:
     }
 
     // Parse refined tool action from LLM response
-    const refinedAction = parseRefinementResponse(content, planStep.toolType)
+    const refinedAction = parseRefinementResponse(content, planStep.toolType, planStep)
 
     if (!refinedAction) {
       Sentry.captureException(new Error("Failed to parse step refinement response"))
@@ -178,7 +186,11 @@ Guidelines:
 /**
  * Parse LLM response to extract refined tool action
  */
-function parseRefinementResponse(content: string, planToolType: "DOM" | "SERVER" | "MIXED"): RefinedToolAction | null {
+function parseRefinementResponse(
+  content: string,
+  planToolType: "DOM" | "SERVER" | "MIXED",
+  planStep?: PlanStep
+): RefinedToolAction | null {
   // Extract tool name
   const toolNameMatch = content.match(/<ToolName>([\s\S]*?)<\/ToolName>/i)
   const toolName = toolNameMatch?.[1]?.trim() || ""
@@ -222,41 +234,49 @@ function parseRefinementResponse(content: string, planToolType: "DOM" | "SERVER"
 
   // Extract action string
   const actionMatch = content.match(/<Action>([\s\S]*?)<\/Action>/i)
-  const action = actionMatch?.[1]?.trim() || ""
+  let action = actionMatch?.[1]?.trim() || ""
 
   if (!action) {
     // If no action provided, try to construct from toolName and parameters
     if (toolName === "click" && parameters.elementId) {
-      return {
-        toolName,
-        toolType: "DOM",
-        parameters,
-        action: `click(${parameters.elementId})`,
-      }
+      action = `click(${parameters.elementId})`
     } else if (toolName === "setValue" && parameters.elementId && parameters.text) {
-      return {
-        toolName,
-        toolType: "DOM",
-        parameters,
-        action: `setValue(${parameters.elementId}, ${JSON.stringify(parameters.text)})`,
-      }
+      action = `setValue(${parameters.elementId}, ${JSON.stringify(parameters.text)})`
     } else if (toolName === "finish") {
-      return {
-        toolName,
-        toolType: "DOM",
-        parameters: {},
-        action: "finish()",
-      }
+      action = "finish()"
     } else if (toolName === "fail" && parameters.reason) {
-      return {
-        toolName,
-        toolType: "DOM",
-        parameters,
-        action: `fail(${JSON.stringify(parameters.reason)})`,
-      }
+      action = `fail(${JSON.stringify(parameters.reason)})`
     } else {
       return null
     }
+  }
+
+  // CRITICAL: Validate action against configuration
+  const validation = validateActionName(action)
+  if (!validation.valid) {
+    // Log error and reject invalid action
+    const errorMessage = `Invalid refined action generated: "${action}". ${validation.error}`
+    Sentry.captureException(new Error(errorMessage), {
+      tags: {
+        component: "step-refinement-engine",
+        action,
+        toolName,
+        toolType,
+      },
+      extra: {
+        planStep: planStep
+          ? {
+              description: planStep.description,
+              toolType: planStep.toolType,
+              index: planStep.index,
+            }
+          : undefined,
+        parameters,
+      },
+    })
+    console.error(`[Step Refinement] ${errorMessage}`)
+    // Return null to reject invalid action
+    return null
   }
 
   return {

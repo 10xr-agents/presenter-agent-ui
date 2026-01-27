@@ -77,4 +77,7 @@ export * from "./user-preference"
 export * from "./debug-log"
 export * from "./verification-record"
 export * from "./correction-record"
+export * from "./session"
+export * from "./message"
+export * from "./snapshot"
 

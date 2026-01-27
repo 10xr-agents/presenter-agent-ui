@@ -64,6 +64,7 @@
     "@t3-oss/env-nextjs": "^0.13.10",
     "@uploadthing/react": "^7.3.3",
     "@vercel/otel": "^2.1.0",
+    "axios": "^1.13.3",
     "better-auth": "^1.4.7",
     "bullmq": "^5.66.2",
     "class-variance-authority": "^0.7.1",

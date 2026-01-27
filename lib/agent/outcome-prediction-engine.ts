@@ -49,13 +49,39 @@ Your job is to:
 1. Analyze the action and its context
 2. Predict what should happen after the action executes
 3. Generate an expected outcome structure with:
-   - Natural language description of what should happen
-   - DOM-based expectations (element existence, text matching, URL changes)
+   - User-friendly description of what should happen (avoid technical terms)
+   - Page-based expectations (element existence, text matching, URL changes)
+
+**CRITICAL: Use user-friendly, non-technical language in the <Description>.**
+
+## Dropdown/Popup Elements (CRITICAL)
+
+When clicking an element that has \`aria-haspopup\` or \`data-has-popup\` attribute:
+1. The expected behavior is that a dropdown/popup opens (NOT page navigation)
+2. The URL will NOT change - set <URLShouldChange>false</URLShouldChange>
+3. New elements will appear with roles like 'menuitem', 'option', 'dialog'
+4. The clicked element's \`aria-expanded\` will change to "true"
+5. After the dropdown opens, you must select an option from the dropdown to proceed
+
+Common patterns:
+- Navigation buttons with hasPopup="menu" open dropdown menus
+- Comboboxes with hasPopup="listbox" open option lists
+- Buttons with hasPopup="dialog" open modal dialogs
+
+For popup elements, include:
+- <URLShouldChange>false</URLShouldChange>
+- <AttributeChange>
+  <Attribute>aria-expanded</Attribute>
+  <ExpectedValue>true</ExpectedValue>
+</AttributeChange>
+- <ElementShouldAppear>
+  <Role>menuitem</Role> <!-- or 'option', 'dialog' depending on popup type -->
+</ElementShouldAppear>
 
 Response Format:
 You must respond in the following format:
 <Description>
-Natural language description of what should happen after this action...
+User-friendly description of what should happen after this action (e.g., "The form should open" not "Element with selector 'form' should exist in DOM")
 </Description>
 <DOMChanges>
 <ElementShouldExist>selector</ElementShouldExist>
@@ -65,14 +91,32 @@ Natural language description of what should happen after this action...
   <Text>expected text</Text>
 </ElementShouldHaveText>
 <URLShouldChange>true|false</URLShouldChange>
+<!-- For popup/dropdown elements: -->
+<AttributeChange>
+  <Attribute>aria-expanded</Attribute>
+  <ExpectedValue>true</ExpectedValue>
+</AttributeChange>
+<ElementShouldAppear>
+  <Role>menuitem</Role> <!-- or 'option', 'dialog' -->
+  <Selector>optional-selector</Selector>
+</ElementShouldAppear>
+<ElementShouldDisappear>
+  <Role>optional-role</Role>
+  <Selector>optional-selector</Selector>
+</ElementShouldDisappear>
 </DOMChanges>
 
+**Language Guidelines:**
+- ❌ AVOID: "Element with selector 'form' should exist", "DOM structure should change", "Element ID 123 should appear"
+- ✅ USE: "The form should open", "A new page should load", "The submit button should appear"
+
 Guidelines:
-- Be specific about what should change in the DOM
-- Include element selectors that can be verified
+- Be specific about what should change on the page
+- Include element selectors that can be verified (for technical verification)
 - Indicate if URL should change
 - Consider the action type (click, setValue, etc.)
-- Use knowledge context if available`
+- Use knowledge context if available
+- Write the description as if explaining to a non-technical user`
 
   // Build user message with context
   const userParts: string[] = []
@@ -90,14 +134,34 @@ Guidelines:
     })
   }
 
-  // Add current DOM for context (truncate if too long)
+  // Add current DOM for context (Task 2: Don't mention "DOM")
   const domPreview = currentDom.length > 10000 ? currentDom.substring(0, 10000) + "... [truncated]" : currentDom
   userParts.push(`\nCurrent Page State:`)
   userParts.push(`- URL: ${currentUrl}`)
-  userParts.push(`- DOM Preview: ${domPreview.substring(0, 2000)}`)
+  userParts.push(`- Page Structure Preview: ${domPreview.substring(0, 2000)}`)
+  
+  // CRITICAL: Check if action is clicking an element with hasPopup attribute
+  // Extract element ID from action (e.g., "click(123)" -> 123)
+  const clickMatch = action.match(/^click\((\d+)\)$/)
+  if (clickMatch) {
+    const elementId = clickMatch[1]
+    // Look for element with this ID in DOM and check for hasPopup attributes
+    const elementRegex = new RegExp(`id=["']?${elementId}["']?[^>]*>`, "i")
+    const elementMatch = currentDom.match(elementRegex)
+    if (elementMatch) {
+      const elementHtml = elementMatch[0]
+      const hasPopup = elementHtml.match(/aria-haspopup=["']?([^"'\s>]+)["']?/i) || 
+                       elementHtml.match(/data-has-popup=["']?([^"'\s>]+)["']?/i)
+      if (hasPopup) {
+        userParts.push(`\n⚠️ CRITICAL: The element being clicked has a popup attribute (aria-haspopup="${hasPopup[1]}"). This means clicking it will open a dropdown/popup menu, NOT navigate to a new page. Set URLShouldChange to false and expect aria-expanded to become true, with new menu items appearing.`)
+      }
+    }
+  }
 
   userParts.push(
-    `\nBased on the action, reasoning, current page state, and knowledge context, predict what should happen after this action executes. Generate specific DOM-based expectations that can be verified.`
+    `\nBased on the action, reasoning, current page state, and knowledge context, predict what should happen after this action executes. Generate specific page-based expectations that can be verified.
+
+Remember: Write the <Description> in user-friendly language that a non-technical user would understand. Avoid technical terms like "DOM", "element selector", etc. Focus on what the user would see (e.g., "The form should open" instead of "Element with selector 'form' should exist").`
   )
 
   const userPrompt = userParts.join("\n")
@@ -185,6 +249,57 @@ function parseOutcomeResponse(content: string): ExpectedOutcome | null {
   if (urlShouldChangeMatch?.[1]?.trim()) {
     const urlShouldChangeStr = urlShouldChangeMatch[1].trim().toLowerCase()
     domChanges.urlShouldChange = urlShouldChangeStr === "true" || urlShouldChangeStr === "yes"
+  }
+
+  // Attribute changes (for popup/dropdown elements)
+  const attributeChangeMatches = Array.from(
+    content.matchAll(/<AttributeChange>[\s\S]*?<Attribute>([\s\S]*?)<\/Attribute>[\s\S]*?<ExpectedValue>([\s\S]*?)<\/ExpectedValue>[\s\S]*?<\/AttributeChange>/gi)
+  )
+  const attributeChanges: Array<{ attribute: string; expectedValue: string }> = []
+  for (const match of attributeChangeMatches) {
+    if (match[1]?.trim() && match[2]?.trim()) {
+      attributeChanges.push({
+        attribute: match[1].trim(),
+        expectedValue: match[2].trim(),
+      })
+    }
+  }
+  if (attributeChanges.length > 0) {
+    domChanges.attributeChanges = attributeChanges
+  }
+
+  // Elements to appear (for popup/dropdown verification)
+  const elementShouldAppearMatches = Array.from(
+    content.matchAll(/<ElementShouldAppear>[\s\S]*?(?:<Role>([\s\S]*?)<\/Role>)?[\s\S]*?(?:<Selector>([\s\S]*?)<\/Selector>)?[\s\S]*?<\/ElementShouldAppear>/gi)
+  )
+  const elementsToAppear: Array<{ role?: string; selector?: string }> = []
+  for (const match of elementShouldAppearMatches) {
+    if (match[1]?.trim() || match[2]?.trim()) {
+      elementsToAppear.push({
+        role: match[1]?.trim(),
+        selector: match[2]?.trim(),
+      })
+    }
+  }
+  if (elementsToAppear.length > 0) {
+    domChanges.elementsToAppear = elementsToAppear
+  }
+
+  // Elements to disappear
+  const elementShouldDisappearMatches = Array.from(
+    content.matchAll(/<ElementShouldDisappear>[\s\S]*?(?:<Role>([\s\S]*?)<\/Role>)?[\s\S]*?(?:<Selector>([\s\S]*?)<\/Selector>)?[\s\S]*?<\/ElementShouldDisappear>/gi)
+  )
+  const elementsToDisappear: Array<{ role?: string; selector?: string }> = []
+  for (const match of elementShouldDisappearMatches) {
+    if (match[1]?.trim() || match[2]?.trim()) {
+      elementsToDisappear.push({
+        role: match[1]?.trim(),
+        selector: match[2]?.trim(),
+      })
+    }
+  }
+  if (elementsToDisappear.length > 0) {
+    domChanges.elementsToDisappear = elementsToDisappear
   }
 
   return {

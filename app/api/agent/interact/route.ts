@@ -3,24 +3,38 @@ import { z } from "zod"
 import { randomUUID } from "crypto"
 import * as Sentry from "@sentry/nextjs"
 import { connectDB } from "@/lib/db/mongoose"
-import { Task, TaskAction } from "@/lib/models"
+import { Task, TaskAction, Session, Message, Snapshot } from "@/lib/models"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
-import { buildActionPrompt, parseActionResponse, validateActionFormat } from "@/lib/agent/prompt-builder"
+import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
+import { validateActionName } from "@/lib/agent/action-config"
 import { callActionLLM } from "@/lib/agent/llm-client"
 import { generatePlan } from "@/lib/agent/planning-engine"
 import { verifyAction } from "@/lib/agent/verification-engine"
 import { generateCorrection } from "@/lib/agent/self-correction-engine"
 import { predictOutcome } from "@/lib/agent/outcome-prediction-engine"
 import { refineStep } from "@/lib/agent/step-refinement-engine"
+import { performWebSearch } from "@/lib/agent/web-search"
+import type { WebSearchResult } from "@/lib/agent/web-search"
+import {
+  analyzeContext,
+  type ContextAnalysisResult,
+} from "@/lib/agent/reasoning/context-analyzer"
+import { manageSearch, type SearchManagerResult } from "@/lib/agent/reasoning/search-manager"
 import type { TaskPlan } from "@/lib/models/task"
 import { VerificationRecord, CorrectionRecord } from "@/lib/models"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
-import { interactRequestBodySchema, type NextActionResponse } from "@/lib/agent/schemas"
+import {
+  interactRequestBodySchema,
+  type NextActionResponse,
+  needsUserInputResponseSchema,
+  type NeedsUserInputResponse,
+} from "@/lib/agent/schemas"
 import { errorResponse } from "@/lib/utils/api-response"
 import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
 import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
+import { applyRateLimit } from "@/lib/middleware/rate-limit"
 
 /**
  * POST /api/agent/interact
@@ -50,7 +64,16 @@ export async function POST(req: NextRequest) {
   let requestBody: unknown = null
   let taskId: string | undefined = undefined
 
+  console.log(`[Interact] Request received at ${new Date().toISOString()}`)
+
   try {
+    // Apply rate limiting
+    const rateLimitResponse = await applyRateLimit(req, "/api/agent/interact")
+    if (rateLimitResponse) {
+      console.log(`[Interact] Rate limit exceeded`)
+      return rateLimitResponse
+    }
+
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
       const debugInfo = buildErrorDebugInfo(new Error("Missing or invalid Authorization header"), {
@@ -82,20 +105,60 @@ export async function POST(req: NextRequest) {
     const { userId, tenantId } = session
 
     // Parse and validate body
+    console.log(`[Interact] Parsing request body for tenant ${tenantId}`)
     requestBody = (await req.json()) as unknown
+    
+    // Log request summary (without full DOM)
+    const requestSummary = requestBody as Record<string, unknown>
+    console.log(`[Interact] Request received:`, {
+      url: requestSummary.url,
+      query: requestSummary.query,
+      domLength: typeof requestSummary.dom === "string" ? requestSummary.dom.length : "N/A",
+      hasTaskId: !!requestSummary.taskId,
+      hasSessionId: !!requestSummary.sessionId,
+    })
+    
     const validationResult = interactRequestBodySchema.safeParse(requestBody)
 
     if (!validationResult.success) {
+      // Format validation errors for better readability
+      const formattedErrors = validationResult.error.issues.map((issue) => ({
+        field: issue.path.join(".") || "root",
+        message: issue.message,
+        code: issue.code,
+        ...(issue.path.length > 0 && { path: issue.path }),
+      }))
+
+      // Log validation errors for debugging
+      console.error(`[Interact] Validation failed for tenant ${tenantId}:`, {
+        errors: formattedErrors.map((e) => `${e.field}: ${e.message}`),
+        requestSummary: {
+          url: requestSummary.url,
+          queryLength: typeof requestSummary.query === "string" ? requestSummary.query.length : "N/A",
+          domLength: typeof requestSummary.dom === "string" ? requestSummary.dom.length : "N/A",
+          taskId: requestSummary.taskId,
+          sessionId: requestSummary.sessionId,
+        },
+      })
+
       const debugInfo = buildErrorDebugInfo(new Error("Request validation failed"), {
         code: "VALIDATION_ERROR",
         statusCode: 400,
         endpoint: "/api/agent/interact",
-        requestData: requestBody,
+        requestData: {
+          ...(requestBody as Record<string, unknown>),
+          // Truncate large fields for logging
+          dom: typeof (requestBody as any)?.dom === "string"
+            ? `${(requestBody as any).dom.substring(0, 100)}... (${(requestBody as any).dom.length} chars)`
+            : (requestBody as any)?.dom,
+        },
         validationErrors: validationResult.error.issues,
       })
       const err = errorResponse("VALIDATION_ERROR", 400, {
         code: "VALIDATION_ERROR",
-        errors: validationResult.error.issues,
+        message: `Validation failed: ${formattedErrors.map((e) => `${e.field}: ${e.message}`).join(", ")}`,
+        errors: formattedErrors,
+        validationErrors: validationResult.error.issues, // Keep raw errors for debugging
       }, debugInfo)
       const duration = Date.now() - startTime
       await createDebugLog({
@@ -115,13 +178,139 @@ export async function POST(req: NextRequest) {
           validationErrors: validationResult.error.issues,
         },
       })
+      console.log(`[Interact] Returning 400 validation error after ${duration}ms`)
       return addCorsHeaders(req, err)
     }
 
-    const { url, query, dom, taskId: requestTaskId } = validationResult.data
+    console.log(`[Interact] Validation passed, proceeding with request`)
+
+    const {
+      url,
+      query,
+      dom,
+      taskId: requestTaskId,
+      sessionId: requestSessionId,
+      lastActionStatus,
+      lastActionError,
+      lastActionResult,
+    } = validationResult.data
     taskId = requestTaskId
 
     await connectDB()
+
+    // Task 3: Session Resolution - Create or load session
+    let currentSessionId: string | undefined = undefined
+
+    if (requestSessionId) {
+      // Load existing session (exclude archived sessions - Chrome extension should not use archived sessions)
+      const currentSession = await (Session as any)
+        .findOne({
+          sessionId: requestSessionId,
+          tenantId,
+          status: { $ne: "archived" }, // Exclude archived sessions
+        })
+        .lean()
+        .exec()
+
+      if (!currentSession) {
+        const debugInfo = buildErrorDebugInfo(new Error(`Session ${requestSessionId} not found for tenant or is archived`), {
+          code: "SESSION_NOT_FOUND",
+          statusCode: 404,
+          endpoint: "/api/agent/interact",
+          sessionId: requestSessionId,
+        })
+        const err = errorResponse("SESSION_NOT_FOUND", 404, {
+          code: "SESSION_NOT_FOUND",
+          message: `Session ${requestSessionId} not found for tenant or is archived`,
+        }, debugInfo)
+        return addCorsHeaders(req, err)
+      }
+
+      // Security check: ensure user owns session
+      if (currentSession.userId !== userId) {
+        const debugInfo = buildErrorDebugInfo(new Error("Unauthorized session access"), {
+          code: "UNAUTHORIZED",
+          statusCode: 403,
+          endpoint: "/api/agent/interact",
+          sessionId: requestSessionId,
+        })
+        const err = errorResponse("UNAUTHORIZED", 403, {
+          code: "UNAUTHORIZED",
+          message: "Unauthorized session access",
+        }, debugInfo)
+        return addCorsHeaders(req, err)
+      }
+
+      currentSessionId = requestSessionId
+
+      // Task 3: Update last message status if provided
+      // Task 4: Also handle error details
+      if (lastActionStatus) {
+        const lastMessage = await (Message as any)
+          .findOne({ sessionId: requestSessionId, tenantId })
+          .sort({ sequenceNumber: -1 })
+          .lean()
+          .exec()
+
+        if (lastMessage) {
+          const updateData: Record<string, unknown> = {
+            status: lastActionStatus,
+          }
+
+          // Task 4: Add error details if action failed
+          if (lastActionStatus === "failure" && (lastActionError || lastActionResult)) {
+            updateData.error = lastActionError
+              ? {
+                  message: lastActionError.message,
+                  code: lastActionError.code,
+                  action: lastActionError.action,
+                  elementId: lastActionError.elementId,
+                }
+              : {
+                  message: lastActionResult?.actualState || "Action failed",
+                  code: "ACTION_FAILED",
+                  action: "unknown",
+                }
+          }
+
+          await (Message as any)
+            .findOneAndUpdate(
+              { messageId: lastMessage.messageId, tenantId },
+              {
+                $set: updateData,
+              }
+            )
+            .exec()
+        }
+      }
+    } else {
+      // Create new session
+      const newSessionId = randomUUID()
+      await (Session as any).create({
+        sessionId: newSessionId,
+        userId,
+        tenantId,
+        url,
+        status: "active",
+        metadata: {
+          initialQuery: query,
+        },
+      })
+
+      currentSessionId = newSessionId
+
+      // Task 3: Save user message for new session
+      await (Message as any).create({
+        messageId: randomUUID(),
+        sessionId: newSessionId,
+        userId,
+        tenantId,
+        role: "user",
+        content: query,
+        sequenceNumber: 0,
+        timestamp: new Date(),
+      })
+    }
 
     // RAG: Fetch chunks early for use in verification/correction/planning (Task 8, Task 10)
     const ragStartTime = Date.now()
@@ -133,6 +322,10 @@ export async function POST(req: NextRequest) {
     let currentStepIndex = 0
     // Task 7: Verification result (declared at top level for use in response)
     let verificationResult: Awaited<ReturnType<typeof verifyAction>> | undefined = undefined
+    // Task 1: Web search result (for new tasks)
+    let webSearchResult: WebSearchResult | null = null
+    // For reasoning layer: chat history messages
+    let previousMessages: any[] = []
 
     // Task resolution
     if (taskId) {
@@ -171,8 +364,65 @@ export async function POST(req: NextRequest) {
 
       currentTaskId = taskId
 
-      // Load action history (including expectedOutcome and domSnapshot for verification)
-      const actions = await (TaskAction as any)
+      // Task 1: Load web search results from existing task (if available)
+      const existingTask = await (Task as any).findOne({ taskId, tenantId }).lean().exec()
+      if (existingTask?.webSearchResult) {
+        webSearchResult = existingTask.webSearchResult as WebSearchResult
+      }
+
+      // Task 3: Load history from database (messages) if session exists, otherwise fall back to TaskAction
+      // Improvement 3: Don't load full DOMs from past messages - only use domSummary
+      if (currentSessionId) {
+        previousMessages = await (Message as any)
+          .find({
+            sessionId: currentSessionId,
+            tenantId,
+          })
+          .sort({ sequenceNumber: 1 })
+          .limit(50) // Last 50 messages for context
+          .select("messageId role content actionString status error sequenceNumber timestamp domSummary") // Improvement 3: Exclude snapshotId and full DOM
+          .lean()
+          .exec()
+
+        // Convert to format expected by prompt builder (filter assistant messages with actions)
+        previousActions = previousMessages
+          .filter((m: any) => m.role === "assistant" && m.actionString)
+          .map((m: any, idx: number) => ({
+            stepIndex: idx,
+            thought: m.content,
+            action: m.actionString || "",
+            status: m.status,
+            error: m.error,
+            // Improvement 3: Include domSummary for context (not full DOM)
+            domSummary: m.domSummary,
+          }))
+        currentStepIndex = previousActions.length
+      } else {
+        // Fallback to TaskAction for backward compatibility
+        const actions = await (TaskAction as any)
+          .find({ tenantId, taskId })
+          .sort({ stepIndex: 1 })
+          .lean()
+          .exec() as Array<{
+            stepIndex: number
+            thought: string
+            action: string
+            expectedOutcome?: ExpectedOutcome
+            domSnapshot?: string
+          }>
+
+        previousActions = Array.isArray(actions)
+          ? actions.map((a) => ({
+              stepIndex: a.stepIndex,
+              thought: a.thought,
+              action: a.action,
+            }))
+          : []
+        currentStepIndex = previousActions.length
+      }
+
+      // Task 7: Verify previous action if it has expectedOutcome (load TaskAction for verification)
+      const actionsForVerification = await (TaskAction as any)
         .find({ tenantId, taskId })
         .sort({ stepIndex: 1 })
         .lean()
@@ -184,18 +434,9 @@ export async function POST(req: NextRequest) {
           domSnapshot?: string
         }>
 
-      previousActions = Array.isArray(actions)
-        ? actions.map((a) => ({
-            stepIndex: a.stepIndex,
-            thought: a.thought,
-            action: a.action,
-          }))
-        : []
-      currentStepIndex = previousActions.length
-
       // Task 7: Verify previous action if it has expectedOutcome
-      if (actions.length > 0) {
-        const previousAction = actions[actions.length - 1]
+      if (actionsForVerification.length > 0) {
+        const previousAction = actionsForVerification[actionsForVerification.length - 1]
         if (previousAction && previousAction.expectedOutcome) {
           try {
             // Get previous URL from task (baseline URL when task was created)
@@ -308,6 +549,7 @@ export async function POST(req: NextRequest) {
                       taskState: { stepIndex: previousAction.stepIndex, attemptNumber, maxRetriesPerStep },
                     }
                   )
+                  console.error(`[Interact] Max retries exceeded for task ${taskId}, step ${previousAction.stepIndex}: ${attemptNumber}/${maxRetriesPerStep}`)
                   const err = errorResponse("VALIDATION_ERROR", 400, {
                     code: "MAX_RETRIES_EXCEEDED",
                     message: `Max retries (${maxRetriesPerStep}) exceeded for step ${previousAction.stepIndex}. Task marked as failed.`,
@@ -339,6 +581,7 @@ export async function POST(req: NextRequest) {
                       taskState: { consecutiveFailures },
                     }
                   )
+                  console.error(`[Interact] Too many consecutive failures for task ${taskId}: ${consecutiveFailures} failures`)
                   const err = errorResponse("VALIDATION_ERROR", 400, {
                     code: "CONSECUTIVE_FAILURES_EXCEEDED",
                     message: "Too many consecutive failures. Task marked as failed.",
@@ -479,6 +722,7 @@ export async function POST(req: NextRequest) {
           taskId: currentTaskId,
           taskState: { stepIndex: currentStepIndex, maxSteps: MAX_STEPS_PER_TASK, status: "failed" },
         })
+        console.error(`[Interact] Task ${currentTaskId} exceeded max steps: ${currentStepIndex}/${MAX_STEPS_PER_TASK}`)
         const err = errorResponse("VALIDATION_ERROR", 400, {
           code: "MAX_STEPS_EXCEEDED",
           message: `Task exceeded maximum steps (${MAX_STEPS_PER_TASK})`,
@@ -486,8 +730,193 @@ export async function POST(req: NextRequest) {
         return addCorsHeaders(req, err)
       }
     } else {
-      // Create new task with UUID
+      console.log(`[Interact] Creating new task for query: "${query.substring(0, 50)}..."`)
+      
+      // For new tasks, load chat history if session exists
+      if (currentSessionId) {
+        console.log(`[Interact] Loading chat history for session ${currentSessionId}`)
+        previousMessages = await (Message as any)
+          .find({
+            sessionId: currentSessionId,
+            tenantId,
+          })
+          .sort({ sequenceNumber: 1 })
+          .limit(50)
+          .select("messageId role content actionString status error sequenceNumber timestamp domSummary")
+          .lean()
+          .exec()
+
+        console.log(`[Interact] Loaded ${previousMessages.length} messages from history`)
+
+        // Convert to format expected by prompt builder
+        previousActions = previousMessages
+          .filter((m: any) => m.role === "assistant" && m.actionString)
+          .map((m: any, idx: number) => ({
+            stepIndex: idx,
+            thought: m.content,
+            action: m.actionString || "",
+            status: m.status,
+            error: m.error,
+            domSummary: m.domSummary,
+          }))
+        currentStepIndex = previousActions.length
+        console.log(`[Interact] Found ${previousActions.length} previous actions`)
+      } else {
+        console.log(`[Interact] No session ID provided, starting fresh`)
+      }
+
+      // NEW: 4-Step Reasoning Pipeline
+      // Step 1: Context & Gap Analysis (Memory & Visual Check)
+      console.log(`[Interact] Starting reasoning pipeline: Context Analysis`)
+      
+      // Extract chat history for context analysis
+      const chatHistoryForAnalysis = previousMessages.map((m: any) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        timestamp: m.timestamp,
+      }))
+
+      // Extract page summary from DOM (similar to domSummary generation)
+      let pageSummary = `Current page: ${url}`
+      try {
+        // Extract visible text from DOM (first 500 chars)
+        const textMatch = dom.match(/<[^>]*>([^<]+)<\/[^>]*>/g)
+        if (textMatch) {
+          const extractedText = textMatch
+            .slice(0, 20)
+            .map((match) => match.replace(/<[^>]*>/g, ""))
+            .join(" ")
+            .substring(0, 500)
+          if (extractedText) {
+            pageSummary = `Current page: ${url}\nVisible content: ${extractedText}`
+          }
+        }
+      } catch {
+        // Fallback to URL only
+        pageSummary = `Current page: ${url}`
+      }
+
+      let contextAnalysis: ContextAnalysisResult
+      try {
+        console.log(`[Interact] Analyzing context with ${chatHistoryForAnalysis.length} history messages, ${chunks.length} RAG chunks`)
+        contextAnalysis = await analyzeContext({
+          query,
+          url,
+          chatHistory: chatHistoryForAnalysis,
+          pageSummary,
+          ragChunks: chunks,
+          hasOrgKnowledge,
+        })
+        console.log(
+          `[Interact] Context analysis complete: source=${contextAnalysis.source}, confidence=${contextAnalysis.confidence}, missingInfo=${contextAnalysis.missingInfo.length}`
+        )
+      } catch (error: unknown) {
+        console.error(`[Interact] Context analysis failed, using fallback:`, error)
+        Sentry.captureException(error, {
+          tags: { component: "agent-interact", operation: "context-analysis" },
+          extra: { query, url, tenantId },
+        })
+        // Fallback: conservative defaults
+        contextAnalysis = {
+          source: "WEB_SEARCH",
+          missingInfo: [],
+          searchQuery: query,
+          reasoning: "Analysis failed, defaulting to search",
+          confidence: 0.3,
+        }
+      }
+
+      // Step 2: Execution (The Action)
+      if (contextAnalysis.source === "ASK_USER") {
+        console.log(`[Interact] Context analysis determined ASK_USER is needed`)
+        // Return ASK_USER response
+        const privateDataFields = contextAnalysis.missingInfo
+          .filter((info) => info.type === "PRIVATE_DATA")
+          .map((info) => info.description || info.field)
+
+        const response: NeedsUserInputResponse = {
+          success: true,
+          data: {
+            status: "needs_user_input",
+            thought: contextAnalysis.reasoning || "I need some additional information to complete this task.",
+            userQuestion: privateDataFields.length > 0
+              ? `I need the following information to proceed: ${privateDataFields.join(", ")}. Can you provide these?`
+              : "I need some additional information to complete this task. Can you provide it?",
+            missingInformation: contextAnalysis.missingInfo.map((info) => info.field),
+            context: {
+              searchPerformed: false,
+              reasoning: contextAnalysis.reasoning,
+            },
+          },
+        }
+
+        const validatedResponse = needsUserInputResponseSchema.parse(response)
+        console.log(`[Interact] Returning ASK_USER response`)
+        const res = NextResponse.json(validatedResponse, { status: 200 })
+        return addCorsHeaders(req, res)
+      }
+
+      // Step 3: Evaluation & Iteration (Iterative Deep Dives) - Only if WEB_SEARCH
+      if (contextAnalysis.source === "WEB_SEARCH") {
+        console.log(`[Interact] Executing web search with query: "${contextAnalysis.searchQuery.substring(0, 100)}..."`)
+        try {
+          const searchManagerResult: SearchManagerResult = await manageSearch({
+            query,
+            searchQuery: contextAnalysis.searchQuery,
+            url,
+            tenantId,
+            ragChunks: chunks,
+            maxAttempts: 3, // Max 3 search attempts
+          })
+
+          webSearchResult = searchManagerResult.searchResults
+
+          console.log(
+            `[Interact] Search completed: ${searchManagerResult.attempts} attempts, solved=${searchManagerResult.evaluation.solved}, results=${webSearchResult?.results.length || 0}`
+          )
+
+          // If search evaluation says we should ask user, return ASK_USER response
+          if (searchManagerResult.evaluation.shouldAskUser && !searchManagerResult.evaluation.solved) {
+            console.log(`[Interact] Search evaluation determined ASK_USER is needed`)
+            const response: NeedsUserInputResponse = {
+              success: true,
+              data: {
+                status: "needs_user_input",
+                thought: searchManagerResult.evaluation.reasoning || "I couldn't find the information I need.",
+                userQuestion: "I searched for information but couldn't find what I need. Could you provide more details or context?",
+                missingInformation: contextAnalysis.missingInfo.map((info) => info.field),
+                context: {
+                  searchPerformed: true,
+                  searchSummary: webSearchResult?.summary,
+                  reasoning: searchManagerResult.evaluation.reasoning,
+                },
+              },
+            }
+
+            const validatedResponse = needsUserInputResponseSchema.parse(response)
+            const res = NextResponse.json(validatedResponse, { status: 200 })
+            return addCorsHeaders(req, res)
+          }
+        } catch (error: unknown) {
+          console.error(`[Interact] Search management failed:`, error)
+          Sentry.captureException(error, {
+            tags: { component: "agent-interact", operation: "search-management" },
+            extra: { query, url, tenantId, searchQuery: contextAnalysis.searchQuery },
+          })
+          // Continue without search - web search is optional
+          webSearchResult = null
+        }
+      } else {
+        // MEMORY or PAGE - no search needed
+        console.log(`[Interact] Source is ${contextAnalysis.source}, skipping web search`)
+        webSearchResult = null
+      }
+      
+      console.log(`[Interact] Reasoning pipeline complete, creating task`)
+
+      // Create new task with UUID and web search results
       const newTaskId = randomUUID()
+      console.log(`[Interact] Creating new task ${newTaskId}`)
       await (Task as any).create({
         taskId: newTaskId,
         tenantId,
@@ -495,10 +924,12 @@ export async function POST(req: NextRequest) {
         url,
         query,
         status: "active",
+        webSearchResult: webSearchResult || undefined, // Store search results if available
       })
 
       currentTaskId = newTaskId
       currentStepIndex = 0
+      console.log(`[Interact] Task ${newTaskId} created, proceeding to action generation`)
     }
 
     // Task 6: Planning Engine - Check if plan exists, generate if not
@@ -514,9 +945,16 @@ export async function POST(req: NextRequest) {
       taskPlan = currentTask.plan as TaskPlan
       currentPlanStepIndex = taskPlan.currentStepIndex || 0
     } else {
-      // No plan exists - generate one
+      // No plan exists - generate one (with web search results if available)
       try {
-        const generatedPlan = await generatePlan(query, url, dom, chunks, hasOrgKnowledge)
+        const generatedPlan = await generatePlan(
+          query,
+          url,
+          dom,
+          chunks,
+          hasOrgKnowledge,
+          webSearchResult || undefined
+        )
 
         if (generatedPlan) {
           // Store plan in task and set status to 'executing'
@@ -621,6 +1059,56 @@ export async function POST(req: NextRequest) {
     if (!refinedToolAction || refinedToolAction.toolType === "SERVER") {
       // Build prompt with history and RAG context
       const currentTime = new Date().toISOString()
+      // Task 4: Detect client-reported failures and build system messages
+      const systemMessages: string[] = []
+      
+      // Check if previous action failed
+      const previousActionFailed =
+        lastActionStatus === "failure" || (lastActionResult && !lastActionResult.success)
+
+      if (previousActionFailed && currentSessionId) {
+        const errorContext = lastActionError
+          ? {
+              message: lastActionError.message,
+              code: lastActionError.code,
+              action: lastActionError.action,
+            }
+          : {
+              message: lastActionResult?.actualState || "The previous action did not work as expected",
+              code: "UNKNOWN_ERROR",
+              action: "unknown",
+            }
+
+        systemMessages.push(
+          `[SYSTEM ERROR]: The previous action '${errorContext.action}' FAILED. ` +
+            `Error: ${errorContext.message} (Code: ${errorContext.code || "UNKNOWN"}). ` +
+            `You MUST acknowledge this failure in your <Thought> and try a different strategy. ` +
+            `Do NOT try the same action again. Do NOT call finish() until you have successfully completed the task. ` +
+            `If the error indicates an element was not found, try searching for text, using different selectors, or scrolling to make the element visible.`
+        )
+
+        // Also check for recent failures in message history
+        const recentFailures = await (Message as any)
+          .find({
+            sessionId: currentSessionId,
+            tenantId,
+            status: "failure",
+            timestamp: { $gte: new Date(Date.now() - 5 * 60 * 1000) }, // Last 5 minutes
+          })
+          .sort({ sequenceNumber: -1 })
+          .limit(3)
+          .lean()
+          .exec()
+
+        if (recentFailures.length > 1) {
+          systemMessages.push(
+            `[SYSTEM WARNING]: Multiple actions have failed recently (${recentFailures.length} failures in the last 5 minutes). ` +
+              `Please carefully review the page state and try a completely different approach. ` +
+              `Consider if the task is actually achievable given the current page state.`
+          )
+        }
+      }
+
       const { system, user } = buildActionPrompt({
         query,
         currentTime,
@@ -628,6 +1116,7 @@ export async function POST(req: NextRequest) {
         ragChunks: chunks,
         hasOrgKnowledge,
         dom,
+        systemMessages: systemMessages.length > 0 ? systemMessages : undefined, // Task 4: Pass system messages
       })
 
       // Call LLM
@@ -692,25 +1181,172 @@ export async function POST(req: NextRequest) {
       thought = parsed.thought
       action = parsed.action
       llmDuration = Date.now() - llmStartTime
+
+      // Improvement 1: Handle dynamic googleSearch action (SERVER tool)
+      const parsedActionMatch = action.match(/^(\w+)\((.*)\)$/)
+      if (parsedActionMatch && parsedActionMatch[1] === "googleSearch" && parsedActionMatch[2] && currentSessionId) {
+        // Extract search query from action
+        const searchQueryMatch = parsedActionMatch[2].match(/^"([^"]+)"$/)
+        const searchQuery = searchQueryMatch && searchQueryMatch[1] ? searchQueryMatch[1] : parsedActionMatch[2].replace(/^"|"$/g, "")
+
+        if (searchQuery) {
+          try {
+            // Perform web search with refined query (use searchQuery as-is, reasoning engine already refined it)
+            const searchResult = await performWebSearch(
+              searchQuery, // Use the query from googleSearch() action
+              url,
+              tenantId,
+              { strictDomainFilter: true, allowDomainExpansion: true }
+            )
+
+            if (searchResult) {
+              // Update thought to include search results
+              thought = `${thought}\n\n[Web Search Results]: ${searchResult.summary}\n\nTop results:\n${searchResult.results
+                .slice(0, 3)
+                .map((r, i) => `${i + 1}. ${r.title}: ${r.snippet}`)
+                .join("\n")}`
+
+              // Change action to continue with the task (search is complete)
+              // The LLM should now have the information it needs
+              action = "wait(1)" // Small wait to process search results, then continue
+
+              // Log search execution
+              console.log(`[Dynamic Search] Executed googleSearch("${searchQuery}") - found ${searchResult.results.length} results`)
+            } else {
+              // Search failed or returned no results
+              thought = `${thought}\n\n[Web Search]: Search did not return useful results. Continuing with available information.`
+              action = "wait(1)"
+            }
+          } catch (searchError: unknown) {
+            Sentry.captureException(searchError, {
+              tags: { component: "agent-interact", operation: "dynamic-search" },
+              extra: { searchQuery, url, tenantId },
+            })
+            console.error("[Dynamic Search] Error during search:", searchError)
+            thought = `${thought}\n\n[Web Search]: Search encountered an error. Continuing with available information.`
+            action = "wait(1)"
+          }
+        }
+      }
+
+      // Improvement 4: Handle verifySuccess action - explicit verification state
+      if (parsedActionMatch && parsedActionMatch[1] === "verifySuccess" && parsedActionMatch[2] && currentSessionId) {
+        // Extract verification description
+        const verifyDescMatch = parsedActionMatch[2].match(/^"([^"]+)"$/)
+        const verifyDescription = verifyDescMatch && verifyDescMatch[1] ? verifyDescMatch[1] : parsedActionMatch[2].replace(/^"|"$/g, "")
+
+        // Check for recent failures
+        const recentFailures = await (Message as any)
+          .find({
+            sessionId: currentSessionId,
+            tenantId,
+            status: "failure",
+            timestamp: { $gte: new Date(Date.now() - 5 * 60 * 1000) }, // Last 5 minutes
+          })
+          .sort({ sequenceNumber: -1 })
+          .lean()
+          .exec()
+
+        if (recentFailures.length > 0) {
+          // Recent failures exist - verification is required
+          // The LLM has provided verification description, now allow finish() if it confirms
+          thought = `${thought}\n\n[Verification]: ${verifyDescription}\n\nBased on this verification, the task appears to be complete.`
+          // Keep verifySuccess action - it will be saved to message history as verification record
+          console.log(`[Verification] Agent verified success: ${verifyDescription}`)
+        } else {
+          // No recent failures - verification not needed, convert to finish()
+          thought = `${thought}\n\n[Verification]: ${verifyDescription}`
+          action = "finish()"
+        }
+      }
+
+      // Task 4: Validate finish() actions - prevent premature completion (Improvement 4: Enhanced)
+      if (parsedActionMatch && parsedActionMatch[1] === "finish" && currentSessionId) {
+        // Check if there are recent failures
+        const recentFailures = await (Message as any)
+          .find({
+            sessionId: currentSessionId,
+            tenantId,
+            status: "failure",
+            timestamp: { $gte: new Date(Date.now() - 5 * 60 * 1000) }, // Last 5 minutes
+          })
+          .sort({ sequenceNumber: -1 })
+          .lean()
+          .exec()
+
+        if (recentFailures.length > 0) {
+          // Improvement 4: Instead of just warning, force verifySuccess action
+          // Check if there's a recent verifySuccess action
+          const recentVerification = await (Message as any)
+            .find({
+              sessionId: currentSessionId,
+              tenantId,
+              actionString: { $regex: /^verifySuccess\(/ },
+              timestamp: { $gte: new Date(Date.now() - 2 * 60 * 1000) }, // Last 2 minutes
+            })
+            .sort({ sequenceNumber: -1 })
+            .limit(1)
+            .lean()
+            .exec()
+
+          if (recentVerification.length === 0) {
+            // No recent verification - force verification step
+            thought = `[SYSTEM]: You attempted to finish(), but there were ${recentFailures.length} recent failure(s). You MUST first verify the task is complete by describing what visual element or page state confirms success. Use verifySuccess("description") to verify before finishing.`
+            action = "verifySuccess(\"Please describe what confirms the task is complete\")"
+
+            Sentry.captureMessage("LLM attempted finish() without verification after failures", {
+              level: "warning",
+              tags: { component: "agent-interact", operation: "finish-validation" },
+              extra: {
+                sessionId: currentSessionId,
+                taskId: currentTaskId,
+                recentFailuresCount: recentFailures.length,
+              },
+            })
+            console.warn(
+              `[interact] Forced verifySuccess() - LLM attempted finish() after ${recentFailures.length} recent failures without verification`
+            )
+          } else {
+            // Verification exists - allow finish() but log
+            Sentry.captureMessage("LLM attempted finish() after verification", {
+              level: "info",
+              tags: { component: "agent-interact", operation: "finish-validation" },
+              extra: {
+                sessionId: currentSessionId,
+                taskId: currentTaskId,
+                recentFailuresCount: recentFailures.length,
+                verificationMessage: recentVerification[0].content?.substring(0, 100),
+              },
+            })
+          }
+        }
+      }
     }
 
-    // Validate action format
-    if (!validateActionFormat(action)) {
+    // CRITICAL: Final validation check - ALL actions must pass this validation
+    // This validates actions from: main LLM, step refinement, self-correction, etc.
+    const actionValidation = validateActionName(action)
+    if (!actionValidation.valid) {
       // Mark task as failed
       await (Task as any)
         .findOneAndUpdate({ taskId: currentTaskId, tenantId }, { status: "failed" })
         .exec()
 
-      const debugInfo = buildErrorDebugInfo(new Error(`Invalid action format: ${action}`), {
+      const debugInfo = buildErrorDebugInfo(new Error(`Invalid action: ${actionValidation.error}`), {
         code: "INVALID_ACTION_FORMAT",
         statusCode: 400,
         endpoint: "/api/agent/interact",
         taskId: currentTaskId,
-        taskState: { stepIndex: currentStepIndex, status: "failed", action, thought },
+        taskState: { stepIndex: currentStepIndex, status: "failed", action, thought, validationError: actionValidation.error },
+      })
+      console.error(`[Interact] Invalid action format for task ${currentTaskId}:`, {
+        action,
+        error: actionValidation.error,
+        stepIndex: currentStepIndex,
       })
       const err = errorResponse("VALIDATION_ERROR", 400, {
         code: "INVALID_ACTION_FORMAT",
-        message: `Invalid action format: ${action}. Expected: click(id), setValue(id, "text"), finish(), or fail(reason)`,
+        message: actionValidation.error || `Invalid action format: ${action}. Action must be one of: click(elementId), setValue(elementId, "text"), finish(), fail(reason)`,
       }, debugInfo)
       return addCorsHeaders(req, err)
     }
@@ -899,6 +1535,20 @@ export async function POST(req: NextRequest) {
           }
         )
         .exec()
+
+      // Task 3: Update session status when task completes/fails
+      if (currentSessionId) {
+        await (Session as any)
+          .findOneAndUpdate(
+            { sessionId: currentSessionId, tenantId },
+            {
+              $set: {
+                status: isFinish ? "completed" : "failed",
+              },
+            }
+          )
+          .exec()
+      }
     }
 
     // Get current task status for response
@@ -906,6 +1556,8 @@ export async function POST(req: NextRequest) {
     const taskStatus = finalTask?.status || "active"
 
     // Build response with metrics and plan (Task 6)
+    console.log(`[Interact] Request completed for task ${currentTaskId} in ${totalRequestDuration}ms, step ${currentStepIndex}`)
+    
     const response: NextActionResponse = {
       thought,
       action,
@@ -955,6 +1607,169 @@ export async function POST(req: NextRequest) {
         : undefined,
       // Task 9: Include expected outcome in response
       expectedOutcome: expectedOutcome || undefined,
+      // Task 1: Include web search status in response
+      webSearchPerformed: webSearchResult ? true : undefined,
+      webSearchSummary: webSearchResult?.summary || undefined,
+      // Task 3: Include session ID in response
+      sessionId: currentSessionId,
+    }
+
+    // Task 3: Save assistant message before responding
+    // Improvement 3: Use snapshot for DOM storage
+    if (currentSessionId) {
+      try {
+        // Get current message count for sequence number
+        const messageCount = await (Message as any)
+          .countDocuments({ sessionId: currentSessionId, tenantId })
+          .exec()
+
+        // Parse action to create structured payload
+        const actionPayload: Record<string, unknown> = {}
+        const actionMatch = action.match(/^(\w+)\((.*)\)$/)
+        if (actionMatch && actionMatch[1]) {
+          actionPayload.type = actionMatch[1]
+          // Try to parse parameters (simple parsing for common cases)
+          const params = actionMatch[2]
+          if (params) {
+            // For click(123) -> { elementId: 123 }
+            const numMatch = params.match(/^(\d+)$/)
+            if (numMatch && numMatch[1]) {
+              actionPayload.elementId = parseInt(numMatch[1], 10)
+            } else {
+              // For setValue(123, "text") -> { elementId: 123, text: "text" }
+              const setValueMatch = params.match(/^(\d+),\s*"([^"]+)"$/)
+              if (setValueMatch && setValueMatch[1] && setValueMatch[2]) {
+                actionPayload.elementId = parseInt(setValueMatch[1], 10)
+                actionPayload.text = setValueMatch[2]
+              } else {
+                actionPayload.rawParams = params
+              }
+            }
+          }
+        }
+
+        // Improvement 3: Create snapshot for DOM (store separately to avoid bloat)
+        let snapshotId: string | undefined = undefined
+        let domSummary: string | undefined = undefined
+
+        if (dom && dom.length > 0) {
+          try {
+            // Generate a short summary of DOM for context (max 200 chars)
+            // Extract key elements: forms, buttons, inputs, headings
+            const domLower = dom.toLowerCase()
+            const hasForm = domLower.includes("<form") || domLower.includes("form")
+            const hasButton = domLower.includes("<button") || domLower.includes('role="button"')
+            const hasInput = domLower.includes("<input") || domLower.includes("<textarea")
+            const hasHeading = domLower.includes("<h1") || domLower.includes("<h2") || domLower.includes("<h3")
+
+            // Try to extract page title or heading
+            const titleMatch = dom.match(/<title[^>]*>([^<]+)<\/title>/i) || dom.match(/<h1[^>]*>([^<]+)<\/h1>/i) || dom.match(/<h2[^>]*>([^<]+)<\/h2>/i)
+            const pageTitle = titleMatch && titleMatch[1] ? titleMatch[1].trim().substring(0, 50) : undefined
+
+            // Build summary
+            const summaryParts: string[] = []
+            if (pageTitle) {
+              summaryParts.push(pageTitle)
+            }
+            if (hasForm) summaryParts.push("form")
+            if (hasButton) summaryParts.push("buttons")
+            if (hasInput) summaryParts.push("input fields")
+            if (hasHeading) summaryParts.push("headings")
+
+            domSummary = summaryParts.length > 0 ? summaryParts.join(", ") : "Page with interactive elements"
+            if (domSummary.length > 200) {
+              domSummary = domSummary.substring(0, 197) + "..."
+            }
+
+            // Create snapshot for full DOM (only if DOM is substantial)
+            if (dom.length > 1000) {
+              // Only store snapshot if DOM is large enough to warrant separate storage
+              const newSnapshotId = randomUUID()
+              await (Snapshot as any).create({
+                snapshotId: newSnapshotId,
+                sessionId: currentSessionId,
+                tenantId,
+                domSnapshot: dom,
+                url,
+                timestamp: new Date(),
+                metadata: {
+                  messageId: randomUUID(), // Will be updated after message creation
+                },
+              })
+              snapshotId = newSnapshotId
+            }
+          } catch (snapshotError: unknown) {
+            // Log error but don't fail message creation
+            Sentry.captureException(snapshotError, {
+              tags: { component: "agent-interact", operation: "create-snapshot" },
+              extra: { sessionId: currentSessionId, tenantId },
+            })
+            console.error("[interact] Failed to create snapshot:", snapshotError)
+          }
+        }
+
+        const newMessageId = randomUUID()
+
+        // Update snapshot with messageId if snapshot was created
+        if (snapshotId) {
+          try {
+            await (Snapshot as any)
+              .findOneAndUpdate(
+                { snapshotId, tenantId },
+                {
+                  $set: {
+                    "metadata.messageId": newMessageId,
+                  },
+                }
+              )
+              .exec()
+          } catch (updateError: unknown) {
+            // Log but don't fail
+            console.error("[interact] Failed to update snapshot with messageId:", updateError)
+          }
+        }
+
+        await (Message as any).create({
+          messageId: newMessageId,
+          sessionId: currentSessionId,
+          userId,
+          tenantId,
+          role: "assistant",
+          content: thought,
+          actionPayload: Object.keys(actionPayload).length > 0 ? actionPayload : undefined,
+          actionString: action,
+          status: "pending", // Will be updated by client after execution
+          sequenceNumber: messageCount,
+          timestamp: new Date(),
+          // Improvement 3: Reference snapshot instead of embedding DOM
+          snapshotId: snapshotId || undefined,
+          domSummary: domSummary || undefined,
+          metadata: {
+            tokens_used: llmResponse?.usage
+              ? {
+                  promptTokens: llmResponse.usage.promptTokens,
+                  completionTokens: llmResponse.usage.completionTokens,
+                }
+              : undefined,
+            latency: llmDuration,
+            llm_model: "gpt-4-turbo-preview",
+            verification_result: verificationResult
+              ? {
+                  success: verificationResult.success,
+                  confidence: verificationResult.confidence,
+                  reason: verificationResult.reason,
+                }
+              : undefined,
+          },
+        })
+      } catch (messageError: unknown) {
+        // Log error but don't fail the request
+        Sentry.captureException(messageError, {
+          tags: { component: "agent-interact", operation: "save-message" },
+          extra: { sessionId: currentSessionId, tenantId },
+        })
+        console.error("[interact] Failed to save message:", messageError)
+      }
     }
 
     const duration = Date.now() - startTime

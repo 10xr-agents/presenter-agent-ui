@@ -4,6 +4,7 @@ import type { VerificationResult } from "./verification-engine"
 import type { PlanStep } from "@/lib/models/task"
 import type { CorrectionStrategy } from "@/lib/models/correction-record"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 
 /**
  * Self-Correction Engine (Task 8)
@@ -66,10 +67,15 @@ Your job is to:
 1. Analyze why the action failed (based on verification result)
 2. Determine the best correction strategy
 3. Generate a corrected action that should succeed
+4. Provide a user-friendly description of what went wrong and what you'll try instead
+
+**CRITICAL: Use user-friendly, non-technical language in <Analysis>, <Reason>, and <CorrectedDescription>.**
+
+${getAvailableActionsPrompt()}
 
 Available Correction Strategies:
-- ALTERNATIVE_SELECTOR: Try different element selector (element not found, wrong selector)
-- ALTERNATIVE_TOOL: Use different tool (e.g., keyboard navigation instead of click, or vice versa)
+- ALTERNATIVE_SELECTOR: Try different element ID (element not found, wrong ID)
+- ALTERNATIVE_TOOL: Use different action (e.g., setValue instead of click, or vice versa)
 - GATHER_INFORMATION: Need more info before proceeding (e.g., search for missing information)
 - UPDATE_PLAN: Plan assumptions were wrong, need to update approach
 - RETRY_WITH_DELAY: Simple retry with delay (timing issue, page still loading)
@@ -77,26 +83,40 @@ Available Correction Strategies:
 Response Format:
 You must respond in the following format:
 <Analysis>
-Brief analysis of why the action failed...
+User-friendly explanation of why the action failed (avoid technical terms like "verification failed", "element ID", etc.)
 </Analysis>
 <Strategy>
 ALTERNATIVE_SELECTOR|ALTERNATIVE_TOOL|GATHER_INFORMATION|UPDATE_PLAN|RETRY_WITH_DELAY
 </Strategy>
 <Reason>
-Why this strategy was chosen...
+User-friendly explanation of why this strategy was chosen
 </Reason>
 <CorrectedAction>
 actionName(params)
 </CorrectedAction>
 <CorrectedDescription>
-Updated step description...
+Updated step description in user-friendly language (e.g., "Click on the 'Visits' button" not "Click element ID 79")
 </CorrectedDescription>
+
+**Language Guidelines:**
+- ❌ AVOID: "Element ID 68 verification failed", "Retrying with alternative selector strategy", "DOM structure indicates..."
+- ✅ USE: "The button didn't appear when I clicked it", "Let me try a different button", "I can see another option on the page"
+
+CRITICAL RULES FOR CORRECTED ACTION:
+1. You MUST only use actions from the Available Actions list above
+2. For ALTERNATIVE_SELECTOR: Use a different element ID (e.g., if click(68) failed, try click(79) - find another element ID from the page structure)
+3. For ALTERNATIVE_TOOL: Switch to a different valid action (e.g., if click failed, try setValue if appropriate)
+4. NEVER use CSS selectors - only use element IDs
+5. NEVER invent new action names - only use actions from the Available Actions list
+6. Action format must exactly match the examples in Available Actions
 
 Guidelines:
 - Choose the strategy that best addresses the failure reason
 - Generate a corrected action that should succeed
-- Consider DOM structure and available elements
-- Use knowledge context if available`
+- Consider page structure and available elements
+- Use knowledge context if available
+- ALWAYS validate your corrected action matches one of the valid action formats
+- Write all descriptions as if explaining to a non-technical user`
 
   // Build user message with context
   const userParts: string[] = []
@@ -108,9 +128,9 @@ Guidelines:
     userParts.push(`- Reasoning: ${failedStep.reasoning}`)
   }
 
-  userParts.push(`\nVerification Failure:`)
-  userParts.push(`- Confidence: ${(verificationResult.confidence * 100).toFixed(1)}%`)
-  userParts.push(`- Reason: ${verificationResult.reason}`)
+  userParts.push(`\nWhat Went Wrong:`)
+  userParts.push(`- The action did not work as expected`)
+  userParts.push(`- Details: ${verificationResult.reason}`)
   if (verificationResult.comparison.domChecks) {
     const checks = verificationResult.comparison.domChecks
     userParts.push(`- DOM Checks:`)
@@ -135,14 +155,16 @@ Guidelines:
     })
   }
 
-  // Add current DOM for context (truncate if too long)
+  // Add current DOM for context (Task 2: Don't mention "DOM")
   const domPreview = currentDom.length > 10000 ? currentDom.substring(0, 10000) + "... [truncated]" : currentDom
   userParts.push(`\nCurrent Page State:`)
   userParts.push(`- URL: ${currentUrl}`)
-  userParts.push(`- DOM Preview: ${domPreview.substring(0, 2000)}`)
+  userParts.push(`- Page Structure Preview: ${domPreview.substring(0, 2000)}`)
 
   userParts.push(
-    `\nBased on the failure analysis, current page state, and knowledge context, determine the best correction strategy and generate a corrected action that should succeed.`
+    `\nBased on the failure analysis, current page state, and knowledge context, determine the best correction strategy and generate a corrected action that should succeed.
+
+Remember: Write your <Analysis>, <Reason>, and <CorrectedDescription> in user-friendly language. Avoid technical terms like "verification failed", "element ID", "DOM structure", etc. Focus on what the user would observe (e.g., "the button didn't appear" instead of "element ID 68 verification failed").`
   )
 
   const userPrompt = userParts.join("\n")
@@ -219,6 +241,29 @@ function parseCorrectionResponse(
 
   if (!retryAction) {
     // If no corrected action provided, return null
+    return null
+  }
+
+  // CRITICAL: Validate action against configuration
+  const validation = validateActionName(retryAction)
+  if (!validation.valid) {
+    // Log error and reject invalid action
+    const errorMessage = `Invalid corrected action generated: "${retryAction}". ${validation.error}`
+    Sentry.captureException(new Error(errorMessage), {
+      tags: {
+        component: "self-correction-engine",
+        action: retryAction,
+        strategy,
+      },
+      extra: {
+        failedStep: {
+          description: failedStep.description,
+          toolType: failedStep.toolType,
+        },
+      },
+    })
+    console.error(`[Self-Correction] ${errorMessage}`)
+    // Return null to reject invalid action
     return null
   }
 

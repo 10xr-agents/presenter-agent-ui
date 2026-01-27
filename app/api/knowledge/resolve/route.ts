@@ -5,6 +5,7 @@ import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { errorResponse } from "@/lib/utils/api-response"
 import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
 import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
+import { applyRateLimit } from "@/lib/middleware/rate-limit"
 
 /**
  * GET /api/knowledge/resolve
@@ -32,6 +33,12 @@ export async function GET(req: NextRequest) {
   let queryParam: string | undefined = undefined
 
   try {
+    // Apply rate limiting
+    const rateLimitResponse = await applyRateLimit(req, "/api/knowledge/resolve")
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
+
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
       const err = errorResponse("UNAUTHORIZED", 401, {

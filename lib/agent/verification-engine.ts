@@ -31,6 +31,8 @@ export interface DOMCheckResults {
   elementNotExists?: boolean // If elementShouldNotExist was specified
   elementTextMatches?: boolean // If elementShouldHaveText was specified
   urlChanged?: boolean // If urlShouldChange was specified
+  attributeChanged?: boolean // If attributeChanges was specified (for popup elements)
+  elementsAppeared?: boolean // If elementsToAppear was specified (for popup verification)
 }
 
 /**
@@ -125,6 +127,37 @@ function performDOMChecks(
       // If urlShouldChange is true, URL should be different; if false, URL should be same
       results.urlChanged = domChanges.urlShouldChange ? urlChanged : !urlChanged
     }
+
+    // CRITICAL FIX: Check attribute changes (for popup/dropdown elements)
+    if (domChanges.attributeChanges && domChanges.attributeChanges.length > 0) {
+      // For popup elements, check if aria-expanded changed to true
+      const expandedChange = domChanges.attributeChanges.find(
+        (change) => change.attribute === "aria-expanded" && change.expectedValue === "true"
+      )
+      if (expandedChange) {
+        // Check if aria-expanded="true" exists in current DOM
+        const hasExpanded = dom.includes('aria-expanded="true"') || dom.includes("aria-expanded='true'")
+        results.attributeChanged = hasExpanded
+      }
+    }
+
+    // CRITICAL FIX: Check if new elements appeared (for popup/dropdown verification)
+    if (domChanges.elementsToAppear && domChanges.elementsToAppear.length > 0) {
+      // Check if menu items, options, or dialogs appeared
+      const hasMenuItems = domChanges.elementsToAppear.some((expected) => {
+        if (expected.role) {
+          // Look for role attribute matching expected role
+          const roleRegex = new RegExp(`role=["']?${expected.role}["']?`, "i")
+          return roleRegex.test(dom)
+        }
+        if (expected.selector) {
+          // Check if selector exists in DOM
+          return dom.includes(expected.selector)
+        }
+        return false
+      })
+      results.elementsAppeared = hasMenuItems
+    }
   }
 
   return results
@@ -159,11 +192,18 @@ Your job is to analyze:
 2. What actually happened (current page state)
 3. Determine if the expected outcome was achieved
 
+**CRITICAL: Use user-friendly, non-technical language in the "reason" field.**
+
 Respond with a JSON object:
 {
   "match": true/false,
-  "reason": "Brief explanation of why it matches or doesn't match"
-}`
+  "reason": "User-friendly explanation of why it matches or doesn't match (avoid technical terms like 'verification failed', 'element not found', 'DOM structure', etc.)"
+}
+
+**Language Guidelines:**
+- ❌ AVOID: "Verification failed", "Element not found", "DOM structure mismatch", "Element ID 123 does not exist"
+- ✅ USE: "The button didn't appear", "The form didn't open as expected", "The page loaded successfully", "The text field is now visible"`
+
 
   const expectedDescription = expectedOutcome.description || "No specific description provided"
   const domPreview = actualState.domSnapshot.length > 5000
@@ -177,9 +217,11 @@ Current Page State:
 - URL: ${actualState.url}
 ${previousUrl ? `- Previous URL: ${previousUrl}` : ""}
 - Key Text: ${actualState.extractedText || "Not extracted"}
-- DOM Preview: ${domPreview.substring(0, 2000)}
+- Page Structure Preview: ${domPreview.substring(0, 2000)}
 
-Determine if the expected outcome was achieved based on the current page state.`
+Determine if the expected outcome was achieved based on the current page state.
+
+Remember: Write the "reason" in user-friendly language. If the action didn't work, explain what the user would observe (e.g., "the button didn't appear" instead of "element not found"). If it worked, describe what the user would see (e.g., "the form is now open" instead of "verification successful").`
 
   try {
     const response = await openai.chat.completions.create({
@@ -258,6 +300,15 @@ function calculateConfidence(
     domScore += domChecks.urlChanged ? 1 : 0
     domCount++
   }
+  // CRITICAL FIX: Include popup/dropdown verification in score
+  if (domChecks.attributeChanged !== undefined) {
+    domScore += domChecks.attributeChanged ? 1 : 0
+    domCount++
+  }
+  if (domChecks.elementsAppeared !== undefined) {
+    domScore += domChecks.elementsAppeared ? 1 : 0
+    domCount++
+  }
 
   const domAverage = domCount > 0 ? domScore / domCount : 0.5 // Default to neutral if no DOM checks
   const semanticScore = semanticMatch ? 1 : 0
@@ -319,6 +370,13 @@ export async function verifyAction(
   }
   if (domChecks.urlChanged !== undefined) {
     reasonParts.push(`URL changed: ${domChecks.urlChanged ? "✓" : "✗"}`)
+  }
+  // CRITICAL FIX: Include popup/dropdown verification in reason
+  if (domChecks.attributeChanged !== undefined) {
+    reasonParts.push(`Attribute changed (popup): ${domChecks.attributeChanged ? "✓" : "✗"}`)
+  }
+  if (domChecks.elementsAppeared !== undefined) {
+    reasonParts.push(`Menu items appeared: ${domChecks.elementsAppeared ? "✓" : "✗"}`)
   }
   reasonParts.push(`Semantic match: ${semanticResult.match ? "✓" : "✗"}`)
   reasonParts.push(`Confidence: ${(confidence * 100).toFixed(1)}%`)

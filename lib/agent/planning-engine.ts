@@ -2,6 +2,7 @@ import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { TaskPlan, PlanStep } from "@/lib/models/task"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { WebSearchResult } from "./web-search"
 
 /**
  * Planning Engine (Task 6)
@@ -18,6 +19,7 @@ import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-c
  * @param dom - Current DOM (simplified, for context)
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
+ * @param webSearchResult - Web search results (if available, Task 1)
  * @returns Generated plan or null on error
  */
 export async function generatePlan(
@@ -25,7 +27,8 @@ export async function generatePlan(
   url: string,
   dom: string,
   ragChunks: ResolveKnowledgeChunk[] = [],
-  hasOrgKnowledge = false
+  hasOrgKnowledge = false,
+  webSearchResult?: WebSearchResult
 ): Promise<TaskPlan | null> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -41,25 +44,31 @@ export async function generatePlan(
   // Use lightweight model for planning to reduce cost (as per requirements)
   const model = process.env.PLANNING_MODEL || "gpt-4o-mini"
 
-  // Build planning prompt
+  // Build planning prompt (Task 2: User-friendly language)
   const systemPrompt = `You are a planning AI that breaks down user tasks into high-level action steps.
 
 Your job is to analyze the user's instructions and create a linear plan of steps needed to complete the task.
 
+**CRITICAL: Use user-friendly, non-technical language in step descriptions.**
+
 For each step, provide:
-- A clear description of what needs to be done
-- Reasoning for why this step is needed
+- A clear, user-friendly description of what needs to be done (avoid technical terms like "DOM", "element ID", etc.)
+- Reasoning for why this step is needed (in plain language)
 - Tool type: "DOM" (browser actions), "SERVER" (API calls), or "MIXED" (both)
-- Expected outcome (what should happen after this step completes)
+- Expected outcome (what should happen after this step completes, described in user-friendly terms)
+
+**Language Guidelines:**
+- ❌ AVOID: "Click element ID 68", "Navigate to DOM structure", "Verify element exists"
+- ✅ USE: "Click on the 'Patient' button", "Go to the patient registration page", "Check if the form is open"
 
 Response Format:
 You must respond in the following format:
 <Plan>
 <Step index="0">
-<Description>Step description</Description>
-<Reasoning>Why this step is needed</Reasoning>
+<Description>User-friendly step description</Description>
+<Reasoning>Why this step is needed (in plain language)</Reasoning>
 <ToolType>DOM|SERVER|MIXED</ToolType>
-<ExpectedOutcome>What should happen after this step</ExpectedOutcome>
+<ExpectedOutcome>What should happen after this step (user-friendly description)</ExpectedOutcome>
 </Step>
 <Step index="1">
 ...
@@ -73,13 +82,29 @@ Guidelines:
 - Use "SERVER" for API calls or data operations
 - Use "MIXED" if step requires both DOM and server actions
 - Keep plan linear (no complex DAGs initially)
-- Aim for 3-10 steps depending on task complexity`
+- Aim for 3-10 steps depending on task complexity
+- Write all descriptions as if explaining to a non-technical user`
 
   // Build user message with context
   const userParts: string[] = []
 
   userParts.push(`User Query: ${query}`)
   userParts.push(`Current URL: ${url}`)
+
+  // Task 1: Add web search results if available
+  if (webSearchResult) {
+    userParts.push(`\n## Web Search Results`)
+    userParts.push(`I searched the web to understand how to complete this task. Here's what I found:`)
+    userParts.push(`\nSearch Query: ${webSearchResult.searchQuery}`)
+    userParts.push(`\nSummary: ${webSearchResult.summary}`)
+    userParts.push(`\nTop Results:`)
+    webSearchResult.results.forEach((r, i) => {
+      userParts.push(`${i + 1}. ${r.title}`)
+      userParts.push(`   ${r.snippet}`)
+      userParts.push(`   ${r.url}`)
+    })
+    userParts.push(`\nUse this information to create a more accurate plan.`)
+  }
 
   // Add RAG context if available
   if (ragChunks.length > 0) {
@@ -90,13 +115,15 @@ Guidelines:
     })
   }
 
-  // Add simplified DOM for context (truncate if too long)
+  // Add simplified DOM for context (Task 2: Don't mention "DOM" - use "page structure")
   const domPreview = dom.length > 10000 ? dom.substring(0, 10000) + "... [truncated]" : dom
-  userParts.push(`\nCurrent DOM (simplified, for context):`)
+  userParts.push(`\n## Current Page Structure`)
   userParts.push(domPreview)
 
   userParts.push(
-    `\nBased on the user query, knowledge context, and current DOM, create a linear action plan to complete the task.`
+    `\nBased on the user query, knowledge context, and current page structure, create a linear action plan to complete the task. 
+
+Remember: Write all step descriptions in user-friendly language that a non-technical user would understand. Avoid technical terms like "DOM", "element ID", "verification", etc.`
   )
 
   const userPrompt = userParts.join("\n")

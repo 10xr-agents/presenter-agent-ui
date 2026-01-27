@@ -13,14 +13,14 @@ export interface IRateLimit extends mongoose.Document {
 
 const RateLimitSchema = new Schema<IRateLimit>(
   {
-    key: { type: String, required: true, unique: true, index: true },
+    key: { type: String, required: true, unique: true }, // unique: true automatically creates an index
     count: { type: Number, default: 0 },
-    resetAt: { type: Date, required: true, index: true },
+    resetAt: { type: Date, required: true }, // Index created via Schema.index() below
   },
   { timestamps: true }
 )
 
-// TTL index for auto-cleanup
+// TTL index for auto-cleanup (expires documents when resetAt is reached)
 RateLimitSchema.index({ resetAt: 1 }, { expireAfterSeconds: 0 })
 
 export const RateLimit =

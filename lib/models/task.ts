@@ -58,6 +58,18 @@ export interface ITask extends mongoose.Document {
   // Task 8: Retry limits for self-correction
   maxRetriesPerStep?: number // Max retries per step (default: 3)
   consecutiveFailures?: number // Track consecutive failures (default: 0)
+  // Task 1 (Web Search): Web search results for task context
+  webSearchResult?: {
+    searchQuery: string // The query used for search
+    results: Array<{
+      title: string
+      url: string
+      snippet: string // Brief summary from search result
+      relevanceScore?: number // Optional relevance score (0-1)
+    }>
+    summary: string // LLM-generated summary of search results
+    timestamp: Date // When search was performed
+  }
   // Aggregate execution metrics (Task 3)
   metrics?: {
     totalSteps: number // Total number of actions executed
@@ -156,6 +168,41 @@ const TaskSchema = new Schema<ITask>(
       type: Number,
       required: false,
       default: 0,
+    },
+    // Task 1 (Web Search): Web search results for task context
+    webSearchResult: {
+      searchQuery: {
+        type: String,
+        required: false,
+      },
+      results: [
+        {
+          title: {
+            type: String,
+            required: false,
+          },
+          url: {
+            type: String,
+            required: false,
+          },
+          snippet: {
+            type: String,
+            required: false,
+          },
+          relevanceScore: {
+            type: Number,
+            required: false,
+          },
+        },
+      ],
+      summary: {
+        type: String,
+        required: false,
+      },
+      timestamp: {
+        type: Date,
+        required: false,
+      },
     },
     metrics: {
       totalSteps: {

@@ -24,6 +24,19 @@ export interface ExpectedOutcome {
       text: string
     }
     urlShouldChange?: boolean
+    // Popup/dropdown handling (CRITICAL FIX)
+    attributeChanges?: Array<{
+      attribute: string // e.g., 'aria-expanded'
+      expectedValue: string // e.g., 'true'
+    }>
+    elementsToAppear?: Array<{
+      role?: string // e.g., 'menuitem', 'option', 'dialog'
+      selector?: string // Optional selector
+    }>
+    elementsToDisappear?: Array<{
+      role?: string
+      selector?: string
+    }>
   }
   [key: string]: unknown // Allow additional fields
 }
