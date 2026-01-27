@@ -68,7 +68,7 @@ export async function getRAGChunks(
       activeDomain: domain,
       domainMatch: false,
       ragMode: "public_only",
-      reason: `Domain "${domain}" does not match any allowed_domains patterns for this tenant. Using public knowledge only.`,
+      reason: `Using public knowledge only. Domain "${domain}" is not configured for organization-specific knowledge.`,
       chunkCount: 0,
       allowedDomains: allowedDomainPatterns.length > 0 ? allowedDomainPatterns : undefined,
     }
@@ -113,7 +113,7 @@ export async function getRAGChunks(
       activeDomain: domain,
       domainMatch: true,
       ragMode: "public_only",
-      reason: `Domain "${domain}" matches allowed_domains pattern, but extraction service returned an error: ${errorMessage}. Falling back to public knowledge only.`,
+      reason: `Using public knowledge only. Organization-specific knowledge is temporarily unavailable (${errorMessage}).`,
       chunkCount: 0,
       allowedDomains: allowedDomainPatterns.length > 0 ? allowedDomainPatterns : undefined,
     }
