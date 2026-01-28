@@ -55,6 +55,8 @@ export interface ITask extends mongoose.Document {
   status: TaskStatus
   // Task 6: Action plan (optional)
   plan?: TaskPlan
+  // Phase 4 Task 8: Hierarchical plan (sub-tasks) when decomposition was applied
+  hierarchicalPlan?: Record<string, unknown>
   // Task 8: Retry limits for self-correction
   maxRetriesPerStep?: number // Max retries per step (default: 3)
   consecutiveFailures?: number // Track consecutive failures (default: 0)
@@ -157,6 +159,11 @@ const TaskSchema = new Schema<ITask>(
         required: false,
         default: Date.now,
       },
+    },
+    // Phase 4 Task 8: Hierarchical plan (sub-tasks)
+    hierarchicalPlan: {
+      type: Schema.Types.Mixed,
+      required: false,
     },
     // Task 8: Retry limits for self-correction
     maxRetriesPerStep: {

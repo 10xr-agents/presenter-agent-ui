@@ -3,6 +3,7 @@ import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { PlanStep, TaskPlan } from "@/lib/models/task"
 import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import type { VerificationSummary } from "@/lib/agent/verification/types"
 import type { WebSearchResult } from "./web-search"
 
 /**
@@ -13,13 +14,15 @@ import type { WebSearchResult } from "./web-search"
  */
 
 /**
- * Context for cost tracking (optional)
+ * Context for cost tracking and optional verification outcome.
  */
 export interface PlanningContext {
   tenantId: string
   userId: string
   sessionId?: string
   taskId?: string
+  /** Optional verification outcome for "next step" context when regenerating plan. */
+  verificationSummary?: VerificationSummary
 }
 
 /**
@@ -111,6 +114,15 @@ Guidelines:
 
   // Build user message with context
   const userParts: string[] = []
+
+  if (
+    context?.verificationSummary?.action_succeeded === true &&
+    context?.verificationSummary?.task_completed === false
+  ) {
+    userParts.push(
+      `Previous action succeeded; the full user goal is not yet achieved. Create or adjust the plan for the remaining steps.\n`
+    )
+  }
 
   userParts.push(`User Query: ${query}`)
   userParts.push(`Current URL: ${url}`)

@@ -3,6 +3,13 @@
 **Purpose:** Explain how the backend processes a command from the Chrome extension from first request to completion. This document is the **canonical** flow description and **implementation roadmap** for the interact flow.  
 **Example prompt:** *"Add a new patient with name 'Jas'"*
 
+**Focus:** **DOM-based only** for now. Visual/screenshot-based features (OCR, screenshot verification, Session Replay screenshot scrubber) are **deferred to end of roadmap** — see § Deferred: Visual / Non-DOM Features.
+
+**Related docs (canonical details):**
+
+- **Verification:** Flow, observation-based verification, goalAchieved, client contract, troubleshooting ("same step repeats") → **`docs/VERIFICATION_PROCESS.md`**.
+- **Planner:** Planning engine, step refinement, re-planning, conditional and hierarchical planning, implementation tasks → **`docs/PLANNER_PROCESS.md`**.
+
 **Roadmap format:** When adding or updating implementation roadmap sections, follow the structure and best practices in `THIN_CLIENT_ROADMAP.md` (Objectives, Deliverables, Definition of Done, References, task ordering).
 
 ---
@@ -13,8 +20,8 @@
 |-----------|--------|-------|-------|
 | **Core Interact Loop** | ✅ Implemented | — | `app/api/agent/interact/route.ts` (now uses LangGraph) |
 | **4-Step Reasoning Pipeline** | ✅ Implemented | — | Context analysis, web search, ASK_USER |
-| **Planning Engine** | ✅ Implemented | — | `lib/agent/planning-engine.ts` |
-| **Verification Engine** | ✅ Implemented | — | `lib/agent/verification-engine.ts` |
+| **Planning Engine** | ✅ Implemented | — | `lib/agent/planning-engine.ts`. See **PLANNER_PROCESS.md** for flow and roadmap. |
+| **Verification Engine** | ✅ Implemented | — | `lib/agent/verification-engine.ts`. See **VERIFICATION_PROCESS.md** for flow and roadmap. |
 | **Self-Correction Engine** | ✅ Implemented | — | `lib/agent/self-correction-engine.ts` |
 | **Outcome Prediction** | ✅ Implemented | — | `lib/agent/outcome-prediction-engine.ts` |
 | **Step Refinement** | ✅ Implemented | — | `lib/agent/step-refinement-engine.ts` |
@@ -25,14 +32,14 @@
 | **Knowledge Extraction Pipeline** | ✅ **COMPLETE** | 2 | `lib/knowledge/` - Multi-format doc ingestion + web crawling |
 | **Two-Phase SPA Ingestion** | 🔲 Planned | 3 | Required for Knowledge Extraction |
 | **DOM Similarity Algorithm** | ✅ **COMPLETE** | 3 | `lib/agent/dom-similarity.ts` - Jaccard similarity on element signatures |
-| **Dynamic Re-Planning** | ✅ **COMPLETE** | 3 | `lib/agent/replanning-engine.ts` - Plan health check on DOM/URL change |
-| **Look-Ahead Verification** | ✅ **COMPLETE** | 3 | `nextGoal` in ExpectedOutcome schema + verification engine |
+| **Dynamic Re-Planning** | ✅ **COMPLETE** | 3 | `lib/agent/replanning-engine.ts`. See **PLANNER_PROCESS.md**. |
+| **Look-Ahead Verification** | ✅ **COMPLETE** | 3 | `nextGoal` in ExpectedOutcome + verification engine. See **VERIFICATION_PROCESS.md**. |
 | **Critic Loop** | ✅ **COMPLETE** | 4 | `lib/agent/critic-engine.ts` - Pre-execution reflection |
 | **Multi-Source Synthesis** | ✅ **COMPLETE** | 4 | `requiredSources` array in context analysis |
 | **Dynamic Interrupt** | ✅ **COMPLETE** | 4 | `lib/agent/dynamic-interrupt.ts` - Mid-flight MISSING_INFO handling |
 | **Skills Library** | ✅ **COMPLETE** | 4 | `lib/models/skill.ts` + `lib/agent/skills-service.ts` - Tenant/domain scoped |
-| **Conditional Planning** | ✅ **COMPLETE** | 4 | `lib/agent/conditional-planning.ts` - Tree of thoughts with contingencies |
-| **Hierarchical Planning** | ✅ **COMPLETE** | 4 | `lib/agent/hierarchical-planning.ts` - Sub-task decomposition |
+| **Conditional Planning** | ✅ **COMPLETE** | 4 | `lib/agent/conditional-planning.ts`. See **PLANNER_PROCESS.md**. |
+| **Hierarchical Planning** | ✅ **COMPLETE** | 4 | `lib/agent/hierarchical-planning.ts`. **Wired in graph (Tasks 8 + 9):** planning node calls decomposePlan; hierarchicalPlan in state and persisted; verification node uses sub_task_completed to advance/fail sub-task. See **PLANNER_PROCESS.md** and **VERIFICATION_PROCESS.md** Task 5. |
 
 **Legend:** ✅ = Complete/Default | 🔄 = In Progress | 🔲 Planned
 
@@ -47,33 +54,10 @@
 3. **Extension** executes the action (e.g. `click(68)`, `setValue(42, "Jas")`) on the page, then sends the **next** request with **updated `url` and `dom`** and **the same `taskId`** from the response.
 4. **Backend** verifies the **previous** action against the new DOM/URL, then produces the **next** action. Repeat until `finish()` or `fail()` or max steps/retries.
 
-### ⚠️ Client contract: why the same step can repeat
+### Client contract and troubleshooting (verification continuation)
 
-If the extension **does not send `taskId`** on the request that follows an executed action, the backend treats every request as a **new task**. That causes:
+**Required:** First request — no `taskId`. After executing an action — send **`taskId`** from the previous response and **updated `dom`** (and `url` if changed). Without `taskId`, every request is treated as a new task and the same step repeats. **Troubleshooting** (same step repeats with taskId): see **VERIFICATION_PROCESS.md** § Client contract and troubleshooting.
 
-- Each request: "go to overview section" with **no taskId** → backend returns the **first** step again (e.g. `click(169)`).
-- The same message is effectively processed many times and the user sees "1 step processed" repeatedly.
-
-**Required behavior:**
-
-- **First request (new task):** Send `{ url, query, dom, sessionId? }` — no `taskId`.
-- **After executing an action:** Send the **next** request with:
-  - **`taskId`** from the previous response (required for continuation).
-  - **Updated `dom`** (and `url` if it changed) after the click/input.
-  - **`sessionId`** unchanged.
-  - Optionally the same `query` or omit it; the backend will verify and return the next step or `finish()`.
-
-If the extension stores the response’s `taskId` and sends it (with updated dom) on the next call, the loop advances: verification → next action or completion — and the same step will not repeat.
-
-**Troubleshooting: same step repeats even when client sends `taskId`**
-
-The backend persists each returned action as a **TaskAction** so the next request can load `previousActions` and route to **verification** (not `direct_action`). If the same step keeps repeating with `hasTaskId: true` in logs, check server logs for:
-
-1. **After first request:** `[RouteIntegration] saveGraphResults: creating TaskAction taskId=..., stepIndex=0, action=click(169)` — confirms the action was persisted. If you see `TaskAction.create failed`, inspect the error (e.g. validation, duplicate key).
-2. **On follow-up request:** `[RouteIntegration] loadTaskContext: taskId=..., previousActions.length=1, hasLastAction=true, lastAction=click(169)` — confirms the task had one previous action and `lastAction` is set. If `previousActions.length=0` or `hasLastAction=false`, the follow-up is not seeing the persisted action (wrong `taskId`, wrong tenant, or TaskAction not created).
-3. **Router:** `[Graph:router] Routing to verification (existing task)` — confirms the graph is going to verification. If you still see `Routing to direct_action (SIMPLE task)` on the follow-up, the state had `previousActions.length === 0` (see step 2).
-
-Ensure the client sends the **exact `taskId`** from the previous response (`data.taskId`) and that the same tenant/user is used.
 
 ---
 
@@ -140,32 +124,11 @@ Because there is **no `taskId`**, we run the **4-step reasoning pipeline** **bef
 
 ### Step 1.6 — Planning (after reasoning)
 
-- **Planning runs only after** reasoning (context analysis + optional web search) and task creation.
-- Load task. If no **plan** exists:
-  - `generatePlan(query, url, dom, chunks, hasOrgKnowledge, webSearchResult)`.
-  - Store plan in `task.plan`, set `status: "executing"`.
-- Plan has **steps** (e.g. “Open Patient menu”, “Click New/Search”, “Fill form”, “Submit”). `currentStepIndex` points at the next step to run.
-- Planning receives **RAG chunks** and **webSearchResult** (if any); it does **not** decide when to search — that was already decided by context analysis.
+Planning runs only after reasoning and task creation. If no plan exists, we generate and store it; `currentStepIndex` points at the next step. **Flow, triggers, and implementation roadmap:** **`docs/PLANNER_PROCESS.md`**.
 
 ### Step 1.7 — Step refinement or LLM action
 
-**If plan exists and current step is refinable:**
-
-- `refineStep(currentPlanStep, dom, url, previousActions, chunks, hasOrgKnowledge)`.
-- Produces a **DOM tool** action (e.g. `click(68)`) from the plan step. If it returns a **SERVER** tool, we fall back to LLM.
-
-**If no refinement (or SERVER / refinement failed):**
-
-- Build **action prompt** via `buildActionPrompt({ query, currentTime, previousActions, ragChunks, hasOrgKnowledge, dom, systemMessages })`.
-- Optional **system messages**: e.g. “Previous action failed… try a different strategy” if `lastActionStatus === "failure"`.
-- **Call LLM** `callActionLLM(system, user)`.
-- **Parse** `<Thought>...</Thought><Action>...</Action>` from the response → `thought`, `action`.
-
-**Special handling:**
-
-- `googleSearch("...")` → run **`performWebSearch`** (Tavily). Inject summary into `thought`, replace action with `wait(1)`. **This is the second place Tavily is used** (when the LLM explicitly requests search mid-task).
-- `verifySuccess("...")` → either keep it or convert to `finish()` depending on recent failures.
-- `finish()` after recent failures → force `verifySuccess("...")` first.
+If the plan exists and the current step is refinable, we call `refineStep(...)` to produce a DOM action; otherwise we build the action prompt and call the LLM. When available (e.g. after verification → replanning → step_refinement in the same run), `refineStep` receives an optional **verification summary** (action_succeeded, task_completed) so the prompt can say "Previous action succeeded; full goal not yet achieved" (Task 6 — see **`docs/PLANNER_PROCESS.md`** § Optional verification summary). Special handling: `googleSearch` → Tavily; `verifySuccess` / `finish()` retry logic. **Details and roadmap:** **`docs/PLANNER_PROCESS.md`** (Step Refinement, Action Generation).
 
 ### Step 1.8 — Action validation
 
@@ -223,27 +186,11 @@ Because there is **no `taskId`**, we run the **4-step reasoning pipeline** **bef
 
 ### Step 3.3 — Verify **previous** action (Task 7)
 
-- Load **TaskActions** for this task. Take the **last** one (the action we told the extension to run).
-- If it has **`expectedOutcome`**:
-  - **previousUrl**: use `previousUrl` from body, or **last verification record**’s `actualState.url` (for step N−1), or **task baseline** `task.url`.
-  - `verifyAction(expectedOutcome, dom, url, previousUrl, previousAction.action)`:
-    - **DOM checks**: e.g. URL change, `aria-expanded`, elements appeared, element exist/not exist/text (dropdowns skip strict checks).
-    - **Semantic verification**: LLM compares expected vs actual — **skipped for dropdowns** (DOM-only).
-    - **Popup override**: for dropdowns, if URL unchanged and `aria-expanded` OK, boost confidence.
-  - Persist **VerificationRecord** (success, confidence, reason, etc.).
-  - On **success**: reset `consecutiveFailures`.
-  - On **failure**: trigger **self-correction** (Task 8).
+We load the last TaskAction, run `verifyAction(expectedOutcome, dom, url, previousUrl, previousAction)` (DOM + optional semantic checks), persist VerificationRecord, and on failure trigger self-correction. **Flow, observation-based verification, goalAchieved, and troubleshooting:** **`docs/VERIFICATION_PROCESS.md`**.
 
 ### Step 3.4 — Self-correction (Task 8) when verification fails
 
-- Check **retry limits**: `maxRetriesPerStep` (e.g. 3) and **consecutive** failures.
-- If **over limit** → mark task **failed**, return **400** `MAX_RETRIES_EXCEEDED` or `CONSECUTIVE_FAILURES_EXCEEDED`.
-- Otherwise:
-  - `generateCorrection(failedStep, verificationResult, dom, url, chunks, hasOrgKnowledge, failedAction)`.
-  - Uses **action-type** (e.g. dropdown): inject hints like “select a **menu item** (e.g. New/Search), not another nav button.”
-  - Returns **corrected** step and **retry action** (e.g. `click(79)` for “New/Search”).
-  - Store **CorrectionRecord**, update **plan** with corrected step, set task `status: "correcting"`.
-  - **Return immediately** with `thought` + `action: retryAction` (and `correction` metadata). **No new TaskAction** appended; extension will execute the retry.
+We enforce retry/consecutive-failure limits; if under limit, call `generateCorrection(...)`, store CorrectionRecord, update plan, and return the retry action immediately (no new TaskAction). **Flow, triggers, and implementation:** **`docs/VERIFICATION_PROCESS.md`** (Self-correction).
 
 ### Step 3.5 — Max steps check
 
@@ -251,11 +198,7 @@ Because there is **no `taskId`**, we run the **4-step reasoning pipeline** **bef
 
 ### Step 3.6 — Next action (same as Phase 1)
 
-- **Planning**: use existing plan; advance to next step if previous step completed.
-- **Refine or LLM**: same as Steps 1.7–1.8 (refine current plan step or `buildActionPrompt` + `callActionLLM`, parse, validate).
-- **Outcome prediction**: same as Step 1.9 (dropdown/navigation fixed vs generic LLM).
-- **Store TaskAction**, update metrics, plan, task status.
-- **Save assistant message**, return **NextActionResponse** (including `verification` for the **previous** action).
+- **Planning**: reuse existing plan; **currentStepIndex** set from `previousActions.length` at graph input (see **PLANNER_PROCESS.md**). Refine current step or fall back to LLM action. Outcome prediction, store TaskAction, return NextActionResponse (including verification for previous action).
 
 ---
 
@@ -266,27 +209,6 @@ Because there is **no `taskId`**, we run the **4-step reasoning pipeline** **bef
   - **`finish()`**: task **completed**, session status updated.
   - **`fail(reason)`**: task **failed**.
   - **Max steps** or **max retries / consecutive failures**: task **failed**, **400** with corresponding code.
-
----
-
-## Example Flow: “Add a new patient with name ‘Jas’”
-
-| # | Who | What |
-|---|-----|------|
-| 1 | Extension | Sends `query: "add a new patient with name \"Jas\""`, `url`, `dom`. No `taskId`. |
-| 2 | Backend | Auth, RAG, context analysis (e.g. MEMORY or PAGE). Create task, generate plan. |
-| 3 | Backend | Plan step 0 e.g. “Open Patient menu”. Refine → `click(68)` (Patient button). Predict outcome (dropdown) → fixed template. Store TaskAction, return `{ thought, action: "click(68)", taskId }`. |
-| 4 | Extension | Executes `click(68)`. Dropdown opens. Sends request with same `taskId`, updated `dom`. |
-| 5 | Backend | Verify previous action (dropdown): URL unchanged, `aria-expanded`, menu-like content → **pass**. Plan step 1 e.g. “Click New/Search”. Refine → `click(79)`. Store, return `action: "click(79)"`. |
-| 6 | Extension | Executes `click(79)`. Navigates to “Add patient” form. Sends `taskId`, new `url`, `dom`. |
-| 7 | Backend | Verify `click(79)` (e.g. URL change). Next step: fill form. Refine or LLM → e.g. `setValue(101, "Jas")` for name field. Store, return. |
-| 8 | Extension | Fills “Jas” in name field, sends updated `dom`. |
-| 9 | Backend | Verify `setValue`. Next step: submit. LLM → `click(201)` (Submit). Store, return. |
-| 10 | Extension | Clicks Submit. Success screen. Sends final `dom`. |
-| 11 | Backend | Verify `click(201)`. Next action: `finish()`. Task **completed**. Return `finish()`. |
-| 12 | Extension | Shows “Task completed” (or similar). Stops loop. |
-
-If at step 5 we had **wrongly** clicked “Visits” instead of “New/Search”, verification would **fail** (e.g. no form, wrong URL). Self-correction would suggest **“select menu item New/Search”** and return `click(79)`; extension retries, and we continue as above.
 
 ---
 
@@ -379,7 +301,7 @@ const markdown = turndownService.turndown(htmlContent)
 | **Tables** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ (good enough for forms) |
 | **Speed** | Slow (ML models) | **Instant** (regex/heuristics) |
 
-**Recommendation:** Use the Node stack for HTML/web; use **Gotenberg → HTML → Turndown** for complex PDFs when needed.
+**Recommendation:** Use the Node stack for HTML/web; use **Gotenberg → HTML → Turndown** for complex PDFs when needed. **Focus:** DOM-based extraction only for now; **OCR/visual PDF parsing** (Marker-style) is **deferred** — see § Deferred: Visual / Non-DOM Features at end of roadmap.
 
 ---
 
@@ -1072,134 +994,7 @@ POST /api/knowledge/index-link
 
 ### Task 2: Dynamic Re-Planning (Plan Health Check)
 
-**Objective:** Re-evaluate plan validity when **URL changes** or **DOM similarity drops below 70%**. Run a fast "Plan Validator" prompt before the next action; adapt or regenerate plan instead of blindly advancing `currentStepIndex`.
-
-**⚠️ CRITICAL:** "DOM similarity < 70%" requires a defined algorithm. Do NOT leave this ambiguous.
-
-**DOM Similarity Algorithm:**
-
-```typescript
-// lib/agent/dom-similarity.ts
-
-interface DomSimilarityResult {
-  similarity: number          // 0.0 to 1.0
-  structuralChanges: string[] // What changed (e.g., "form removed", "navigation changed")
-  shouldReplan: boolean       // Convenience flag
-}
-
-/**
- * Calculate DOM similarity using structural comparison (fast, no LLM)
- * 
- * Algorithm: Jaccard similarity on element signatures
- * - Extract element signatures: tag + id/class + role + aria-label
- * - Compare sets using Jaccard: |A ∩ B| / |A ∪ B|
- * - Weight interactive elements higher (inputs, buttons, links)
- */
-export function calculateDomSimilarity(
-  previousDom: string,
-  currentDom: string
-): DomSimilarityResult {
-  const prevStructure = extractStructure(previousDom)
-  const currStructure = extractStructure(currentDom)
-  
-  // Jaccard similarity on element signatures
-  const intersection = prevStructure.filter(e => currStructure.includes(e))
-  const union = new Set([...prevStructure, ...currStructure])
-  
-  const rawSimilarity = intersection.length / union.size
-  
-  // Weight interactive elements (2x importance)
-  const prevInteractive = prevStructure.filter(isInteractive)
-  const currInteractive = currStructure.filter(isInteractive)
-  const interactiveIntersection = prevInteractive.filter(e => currInteractive.includes(e))
-  const interactiveSimilarity = prevInteractive.length > 0 
-    ? interactiveIntersection.length / prevInteractive.length 
-    : 1.0
-  
-  // Combined score: 60% structural + 40% interactive
-  const similarity = (rawSimilarity * 0.6) + (interactiveSimilarity * 0.4)
-  
-  // Detect major changes
-  const structuralChanges: string[] = []
-  if (!currStructure.some(e => e.includes('form'))) {
-    if (prevStructure.some(e => e.includes('form'))) {
-      structuralChanges.push('form removed')
-    }
-  }
-  // ... more change detection
-  
-  return {
-    similarity,
-    structuralChanges,
-    shouldReplan: similarity < 0.7 || structuralChanges.length > 0,
-  }
-}
-
-function extractStructure(dom: string): string[] {
-  // Extract element signatures
-  // e.g., "button#submit.primary[role=button]"
-  // Implementation uses Cheerio or regex
-}
-
-function isInteractive(signature: string): boolean {
-  return /^(button|input|select|textarea|a\[href)/.test(signature)
-}
-```
-
-**Re-Planning Trigger Conditions:**
-
-| Condition | Threshold | Action |
-|-----------|-----------|--------|
-| URL changed | Any change | Trigger re-planning |
-| DOM similarity < 70% | `similarity < 0.7` | Trigger re-planning |
-| Interactive elements changed significantly | `interactiveSimilarity < 0.5` | Trigger re-planning |
-| Expected element missing | Plan step N references element not in DOM | Trigger re-planning |
-
-**Plan Validator Prompt (Fast):**
-
-```typescript
-// Use gpt-4o-mini for speed
-const planValidatorPrompt = `
-Current page state: ${domSummary}
-Remaining plan steps:
-${remainingSteps.map((s, i) => `${i + 1}. ${s.description}`).join('\n')}
-
-Question: Can these steps still be executed on the current page?
-
-Respond with JSON:
-{
-  "valid": true/false,
-  "reason": "brief explanation",
-  "suggestedChanges": ["step 2 should be modified to...", ...] // optional
-}
-`
-```
-
-**Deliverable:**
-
-- **Server:** Triggers: URL change (vs `previousUrl`) or DOM similarity < 70% (using defined algorithm). Plan Validator LLM: *"Given the current screen, does the remaining plan still make sense?"* Update or replace plan; then continue. Optional `rePlanning: true` in response.
-- **Client:** When `rePlanning` indicated, show brief "Re-planning..." in UI. Continue sending `url`, `dom`, `previousUrl`.
-- **DOM Similarity Module:** Implement `lib/agent/dom-similarity.ts` with the algorithm above.
-
-**Definition of Done:**
-
-- [x] DOM similarity algorithm implemented in `lib/agent/dom-similarity.ts`.
-- [x] Plan health check runs on trigger (URL change OR similarity < 70%).
-- [x] Plan Validator LLM prompt exists; uses fast model (gpt-4o-mini).
-- [x] Plan updated when invalid; response includes `rePlanning: true`.
-- [ ] Client shows re-planning indicator when server signals (if adopted). *(Client-side change pending)*
-- [x] Unit tests for DOM similarity with known inputs/outputs.
-
-**Metrics to Track:**
-
-- Re-planning frequency (% of requests that trigger re-plan)
-- Re-planning success rate (% of re-plans that lead to task completion)
-- DOM similarity distribution (histogram of scores)
-- False positive rate (re-plans that weren't necessary)
-
-**References:** `SERVER_SIDE_AGENT_ARCH.md` §4.9.3, `THIN_SERVER_ROADMAP.md` Part E Task 20.
-
----
+Re-evaluate plan validity on URL change or DOM similarity < 70%; run Plan Validator, adapt or regenerate plan. **Algorithm, triggers, DoD, and metrics:** **`docs/PLANNER_PROCESS.md`** (Re-planning).
 
 ### ~~Task 3: Complexity Routing~~ → MOVED TO FOUNDATION
 
@@ -1323,20 +1118,10 @@ interface ExpectedOutcomeWithLookAhead extends ExpectedOutcome {
 - Indexes: deduplication, TTL cleanup, efficient lookup
 - Prompt injection: `buildSkillPromptInjection()` generates hints for action generation
 
-**Conditional Planning (Task 7):**
-- `lib/agent/conditional-planning.ts` - Tree of thoughts with contingencies
-- Plans now include `contingencies: Contingency[]` for common failure scenarios
-- Contingency types: POPUP_DETECTED, ELEMENT_MISSING, ERROR_DISPLAYED, FORM_VALIDATION, URL_CHANGED
-- `checkContingencies()` matches failure state against contingency map
-- Applied BEFORE calling expensive Correction LLM
+**Conditional Planning (Task 7):** See **`docs/PLANNER_PROCESS.md`** (Conditional Planning).
 
-**Hierarchical Planning (Task 8):**
-- `lib/agent/hierarchical-planning.ts` - Sub-task decomposition
-- Decomposes plans with >5 steps or distinct phases into bounded SubTasks
-- Each SubTask has: inputs, outputs, estimated steps, status
-- Accumulated outputs passed between SubTasks
-- Context reset/trim between SubTasks for better reasoning
-- Progress tracking: `getHierarchicalProgress()` returns completion percentage
+**Hierarchical Planning (Task 8):** See **`docs/PLANNER_PROCESS.md`** (Hierarchical Planning).
+
 
 **New LLMActionTypes added to token-usage-log:**
 - CRITIC, MULTI_SOURCE_SYNTHESIS, DYNAMIC_INTERRUPT, SKILLS_RETRIEVAL, CONTINGENCY_CHECK, HIERARCHICAL_PLANNING
@@ -1516,51 +1301,13 @@ These **8 improvements** focus on **how the LLM thinks and plans** (context, pla
 
 ### 7. Conditional Planning (Tree of Thoughts)
 
-**Current:** Planner (Step 1.6) produces a linear step list. The web is non-linear (popups, A/B tests, errors). E.g. “Click Patient” → survey popup → “Click New” fails → retry/correct loop.
+Planner produces main path + contingencies; verification failure triggers contingency check before Correction LLM. **Full spec and DoD:** **`docs/PLANNER_PROCESS.md`** (Conditional Planning).
 
-**Improvement:** **Conditional planning (tree of thoughts).**
-
-- **Output:** Planner anticipates **branching paths**:
-  - **Main path:** e.g. “Click Patient” → “Click New”.
-  - **Contingency A:** “If survey popup → Click ‘Close’ → resume main path.”
-  - **Contingency B:** “If ‘Patient’ missing → Click ‘Menu’ first.”
-- **Execution:** Store contingencies. On verification failure, check **contingency map** *before* calling the heavy Correction LLM (Step 3.4). Apply matching contingency if found.
-
-**Deliverable:**
-
-- **Server:** Plan schema extended with optional `contingencies: { condition, actions }[]`. Verification failure triggers contingency lookup; if match, return contingency action (and optionally skip or simplify Correction LLM call).
-- **Planner prompt:** Ask for main path + likely contingencies (popups, missing elements, errors).
-
-**Definition of Done:**
-
-- [x] Plans can include contingencies; failure triggers contingency check before full correction.
-- [x] Fewer unnecessary Correction LLM calls when a contingency applies.
-
-**Implementation Note (2026-01-28):** `lib/agent/conditional-planning.ts`. Contingency types: POPUP_DETECTED, ELEMENT_MISSING, ERROR_DISPLAYED, FORM_VALIDATION, URL_CHANGED. `checkContingencies()` matches failure state.
-
----
 
 ### 8. Hierarchical Manager–Worker Planning — *Hardest*
 
-**Current:** Planner creates one linear list for the whole task. Long workflows (e.g. “Add patient → schedule visit → print invoice”) clog the context with completed steps and degrade later reasoning.
+Complex tasks decomposed into sub-tasks with input/output contract; context reset between sub-tasks. **Full spec and DoD:** **`docs/PLANNER_PROCESS.md`** (Hierarchical Planning).
 
-**Improvement:** **Sub-task decomposition.**
-
-- **Trigger:** Initial plan has &gt; 5 steps or distinct phases.
-- **Action:** “Manager” LLM splits the request into **SubTask A**, **SubTask B**, **SubTask C**.
-- **Flow:** Run each sub-task as an **isolated** run. After SubTask A, pass **output state** (e.g. Patient ID) to SubTask B. **Clear context window** between sub-tasks.
-
-**Deliverable:**
-
-- **Server:** Manager step before execution: decompose into sub-tasks with input/output contract. Execute sub-tasks sequentially; pass outputs as inputs; reset or trim context between sub-tasks.
-- **Client:** No change to per-request contract; sub-task boundaries are server-internal.
-
-**Definition of Done:**
-
-- [x] Complex tasks decomposed into sub-tasks; each run has bounded context.
-- [x] Outputs of earlier sub-tasks (e.g. IDs) correctly passed into later ones.
-
----
 
 ### Task Order (by Ease of Implementation)
 
@@ -1862,6 +1609,16 @@ describe("Action Chaining", () => {
 | **P4** | Hierarchical Planning | 🔲 Planned | Very High | Medium | All above |
 
 **Critical Path:** ~~LangGraph~~ → ~~LangFuse~~ → ~~Cost Tracking~~ → ~~Action Chaining~~ → Skills Library
+
+### Deferred: Visual / Non-DOM Features (End of Roadmap)
+
+**Focus:** We are **DOM-based only** for now. The following are **visual/non-DOM** and moved to the **end of the roadmap**.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| **PDF OCR/visual parsing** (Marker-style layout/OCR) | 🔲 Deferred | Use text-only or Gotenberg → HTML (DOM-based) for PDFs; OCR/vision-based extraction out of scope for now |
+| **Screenshot-based verification** | 🔲 Deferred | Verification is DOM-based only (DOM snapshot, URL, semantic skeleton); no image/screenshot comparison |
+| **Vision/image-based planning or action** | 🔲 Deferred | Planning and actions use DOM (element IDs, structure); no vision-model inputs |
 
 ---
 

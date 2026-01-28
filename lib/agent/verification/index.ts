@@ -16,9 +16,13 @@ export type {
 
 export { extractActualState, isPopupExpectation, performDOMChecks } from "./dom-checks"
 export {
+  parseSemanticVerificationResponse,
   performSemanticVerification,
   performSemanticVerificationOnObservations,
   type SemanticVerificationResult,
 } from "./semantic-verification"
-export { buildObservationList } from "./observation-builder"
+export {
+  buildObservationList,
+  type ObservationListResult,
+} from "./observation-builder"
 export { calculateConfidence, checkNextGoalAvailability } from "./confidence"

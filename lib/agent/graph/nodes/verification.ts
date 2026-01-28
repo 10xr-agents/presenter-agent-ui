@@ -12,6 +12,12 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
+import {
+  completeSubTask,
+  extractSubTaskOutputs,
+  getCurrentSubTask,
+  isHierarchicalPlanComplete,
+} from "@/lib/agent/hierarchical-planning"
 import { verifyActionWithObservations } from "@/lib/agent/verification-engine"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, VerificationResult } from "../types"
@@ -32,12 +38,18 @@ export async function verificationNode(
     url,
     query,
     clientObservations,
+    hierarchicalPlan,
   } = state
   const log = logger.child({
     process: "Graph:verification",
     sessionId: state.sessionId,
     taskId: state.taskId ?? "",
   })
+
+  // Phase 4 Task 9: Sub-task objective for hierarchical verification
+  const currentSubTask =
+    hierarchicalPlan != null ? getCurrentSubTask(hierarchicalPlan) : null
+  const subTaskObjective = currentSubTask?.objective
 
   // No previous action to verify
   if (!lastAction) {
@@ -60,7 +72,9 @@ export async function verificationNode(
     }
   }
 
-  log.info(`Verifying previous action: ${lastAction} (observation-based)`)
+  log.info(
+    `Verifying previous action: ${lastAction} (observation-based)${subTaskObjective ? ` [sub-task: ${subTaskObjective.substring(0, 40)}...]` : ""}`
+  )
 
   try {
     const result = await verifyActionWithObservations(
@@ -75,12 +89,60 @@ export async function verificationNode(
         userId: state.userId,
         sessionId: state.sessionId,
         taskId: state.taskId,
-      }
+      },
+      subTaskObjective
     )
 
     log.info(
-      `Verification ${result.success ? "SUCCESS" : "FAILED"}: confidence=${result.confidence.toFixed(2)}, goalAchieved=${result.goalAchieved === true}, reason=${result.reason}`
+      `Verification ${result.success ? "SUCCESS" : "FAILED"}: confidence=${result.confidence.toFixed(2)}, action_succeeded=${result.action_succeeded}, task_completed=${result.task_completed}, sub_task_completed=${result.sub_task_completed ?? "—"}, goalAchieved=${result.goalAchieved === true}, reason=${result.reason}`
     )
+
+    let updatedHierarchicalPlan = hierarchicalPlan
+    const subTaskConfidenceOk = result.confidence >= 0.7
+
+    // Phase 4 Task 9: Advance or fail sub-task when hierarchical and sub_task_completed was evaluated
+    if (
+      hierarchicalPlan != null &&
+      currentSubTask != null &&
+      result.sub_task_completed !== undefined
+    ) {
+      if (result.sub_task_completed === true && subTaskConfidenceOk) {
+        const outputs =
+          currentSubTask.outputs.length > 0
+            ? extractSubTaskOutputs(
+                currentSubTask,
+                dom,
+                result.semanticSummary ?? result.reason
+              )
+            : {}
+        updatedHierarchicalPlan = completeSubTask(hierarchicalPlan, {
+          success: true,
+          outputs,
+          summary: result.semanticSummary ?? result.reason,
+        })
+        log.info(
+          `Sub-task "${currentSubTask.name}" completed; advanced to index ${updatedHierarchicalPlan.currentSubTaskIndex}`
+        )
+      } else if (result.sub_task_completed === false && !result.success) {
+        updatedHierarchicalPlan = completeSubTask(hierarchicalPlan, {
+          success: false,
+          outputs: {},
+          summary: result.reason,
+          error: result.reason,
+        })
+        log.info(`Sub-task "${currentSubTask.name}" failed (sub_task_completed=false)`)
+      }
+    }
+
+    let goalAchieved = result.goalAchieved
+    // Phase 4 Task 9: When hierarchical, goal achieved when all sub-tasks are complete
+    if (
+      updatedHierarchicalPlan != null &&
+      isHierarchicalPlanComplete(updatedHierarchicalPlan)
+    ) {
+      goalAchieved = true
+      log.info("All sub-tasks complete; setting goalAchieved=true")
+    }
 
     const verificationResult: VerificationResult = {
       success: result.success,
@@ -89,19 +151,26 @@ export async function verificationNode(
       expectedState: result.expectedState as unknown as Record<string, unknown>,
       actualState: result.actualState as unknown as Record<string, unknown>,
       comparison: result.comparison as unknown as Record<string, unknown>,
-      goalAchieved: result.goalAchieved,
+      goalAchieved,
+      action_succeeded: result.action_succeeded,
+      task_completed: result.task_completed,
+      sub_task_completed: result.sub_task_completed,
       semanticSummary: result.semanticSummary,
     }
 
-    if (result.success) {
-      return { verificationResult, consecutiveFailures: 0, status: "executing" }
-    }
-
-    return {
+    const out: Partial<InteractGraphState> = {
       verificationResult,
-      consecutiveFailures: state.consecutiveFailures + 1,
-      status: "correcting",
+      status: result.success ? "executing" : "correcting",
     }
+    if (result.success) {
+      out.consecutiveFailures = 0
+    } else {
+      out.consecutiveFailures = state.consecutiveFailures + 1
+    }
+    if (updatedHierarchicalPlan !== hierarchicalPlan) {
+      out.hierarchicalPlan = updatedHierarchicalPlan
+    }
+    return out
   } catch (error: unknown) {
     Sentry.captureException(error, {
       tags: { component: "graph-verification" },
@@ -155,7 +224,7 @@ export function routeAfterVerification(
     return "correction"
   }
 
-  // Verification engine set goalAchieved=true when semantic LLM returned match=true with high confidence
+  // Verification engine set goalAchieved=true when semantic LLM returned task_completed=true with confidence >= 0.85
   if (verificationResult?.goalAchieved === true) {
     log.info("Routing to goal_achieved (goalAchieved=true)")
     return "goal_achieved"

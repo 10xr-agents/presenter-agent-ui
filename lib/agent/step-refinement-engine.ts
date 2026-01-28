@@ -3,6 +3,7 @@ import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { PlanStep } from "@/lib/models/task"
 import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import type { VerificationSummary } from "@/lib/agent/verification/types"
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 
 /**
@@ -41,6 +42,7 @@ export interface RefinedToolAction {
  * @param previousActions - Previous actions for context
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
+ * @param verificationSummary - Optional verification outcome (action_succeeded, task_completed) for "next step" context
  * @param context - Cost tracking context (optional)
  * @returns Refined tool action
  */
@@ -51,6 +53,7 @@ export async function refineStep(
   previousActions: Array<{ stepIndex: number; thought: string; action: string }> = [],
   ragChunks: ResolveKnowledgeChunk[] = [],
   hasOrgKnowledge = false,
+  verificationSummary?: VerificationSummary,
   context?: RefinementContext
 ): Promise<RefinedToolAction | null> {
   const apiKey = process.env.OPENAI_API_KEY
@@ -132,6 +135,15 @@ Guidelines:
 
   // Build user message with context
   const userParts: string[] = []
+
+  if (
+    verificationSummary?.action_succeeded === true &&
+    verificationSummary?.task_completed === false
+  ) {
+    userParts.push(
+      `Previous action succeeded; the full user goal is not yet achieved. Continue with the next step.\n`
+    )
+  }
 
   userParts.push(`Plan Step to Refine:`)
   userParts.push(`- Description: ${planStep.description}`)

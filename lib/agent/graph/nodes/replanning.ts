@@ -28,7 +28,17 @@ import type { InteractGraphState, ReplanningResult } from "../types"
 export async function replanningNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
-  const { plan, dom, url, previousUrl, previousDom, query, ragChunks, hasOrgKnowledge } = state
+  const {
+    plan,
+    dom,
+    url,
+    previousUrl,
+    previousDom,
+    query,
+    ragChunks,
+    hasOrgKnowledge,
+    verificationResult,
+  } = state
   const log = logger.child({
     process: "Graph:replanning",
     sessionId: state.sessionId,
@@ -129,6 +139,14 @@ export async function replanningNode(
     // Need to regenerate plan
     log.info("Regenerating plan")
     
+    const verificationSummary =
+      verificationResult != null
+        ? {
+            action_succeeded: verificationResult.action_succeeded,
+            task_completed: verificationResult.task_completed,
+          }
+        : undefined
+
     const newPlan = await generatePlan(
       query,
       url,
@@ -141,6 +159,7 @@ export async function replanningNode(
         userId: state.userId,
         sessionId: state.sessionId,
         taskId: state.taskId,
+        verificationSummary,
       }
     )
 

@@ -35,9 +35,29 @@ export type {
   VerificationResult,
 } from "./verification"
 
+/** Minimum confidence for goal achieved when task_completed is true (Task 2: low-confidence completion band). */
+const GOAL_ACHIEVED_MIN_CONFIDENCE = 0.7
+/** Above this confidence we do not log "Low confidence completion". */
+const LOW_CONFIDENCE_COMPLETION_MAX = 0.85
+
+/**
+ * Compute goalAchieved and whether to log low-confidence completion (Task 2).
+ * When task_completed is true and confidence >= 0.70 we set goalAchieved = true (single finish).
+ * When goalAchieved is true and confidence < 0.85 we log "Low confidence completion".
+ */
+export function computeGoalAchieved(
+  task_completed: boolean,
+  confidence: number
+): { goalAchieved: boolean; lowConfidenceCompletion: boolean } {
+  const goalAchieved = task_completed && confidence >= GOAL_ACHIEVED_MIN_CONFIDENCE
+  const lowConfidenceCompletion = goalAchieved && confidence < LOW_CONFIDENCE_COMPLETION_MAX
+  return { goalAchieved, lowConfidenceCompletion }
+}
+
 /**
  * Observation-Based Verification (v3.0): Verify using before/after state comparison.
  * If no changes were observed (URL same, DOM hash same, no client observations), we fail without calling LLM.
+ * Phase 4 Task 9: When subTaskObjective is provided (hierarchical), also evaluates sub_task_completed.
  */
 export async function verifyActionWithObservations(
   beforeState: BeforeState,
@@ -46,7 +66,8 @@ export async function verifyActionWithObservations(
   action: string,
   userGoal: string,
   clientObservations: ClientObservations | undefined,
-  context?: VerificationContext
+  context?: VerificationContext,
+  subTaskObjective?: string
 ): Promise<VerificationResult> {
   const log = logger.child({
     process: "Verification",
@@ -55,7 +76,7 @@ export async function verifyActionWithObservations(
   })
 
   const afterDomHash = computeDomHash(currentDom)
-  const observations = buildObservationList(
+  const { observations, meaningfulContentChange } = buildObservationList(
     beforeState,
     currentUrl,
     afterDomHash,
@@ -65,11 +86,14 @@ export async function verifyActionWithObservations(
   )
 
   const urlChanged = beforeState.url !== currentUrl
-  const domChanged = beforeState.domHash !== afterDomHash
+  // Task 3: skeleton-primary — meaningfulContentChange is true only when skeleton diff had items or (no skeleton) domHash changed; skeleton diff empty but hash changed → false.
   const clientSawSomething =
-    clientObservations?.didNetworkOccur === true || clientObservations?.didDomMutate === true
+    clientObservations?.didNetworkOccur === true ||
+    clientObservations?.didDomMutate === true ||
+    clientObservations?.didUrlChange === true
 
-  if (!urlChanged && !domChanged && !clientSawSomething) {
+  const somethingChanged = urlChanged || meaningfulContentChange || clientSawSomething
+  if (!somethingChanged) {
     log.info("[Observation] No changes detected — failing without LLM")
     const actualState = extractActualState(currentDom, currentUrl)
     return {
@@ -81,45 +105,62 @@ export async function verifyActionWithObservations(
       comparison: { semanticMatch: false, overallMatch: false },
     }
   }
+  if (clientSawSomething && !urlChanged && !meaningfulContentChange) {
+    log.info("[Observation] Client witness override: proceeding with LLM (extension reported change)")
+  }
 
   const semanticResult = await performSemanticVerificationOnObservations(
     userGoal,
     action,
     observations,
-    context
+    context,
+    subTaskObjective
   )
 
   const confidence = semanticResult.confidence
-  const success = confidence >= 0.7
+  const action_succeeded = semanticResult.action_succeeded
+  const task_completed = semanticResult.task_completed
+  // Route to next action when this action did something useful and confidence is sufficient.
+  const success = action_succeeded && confidence >= 0.7
   const actualState = extractActualState(currentDom, currentUrl)
   const reasonParts = [
     ...observations,
     `Semantic verdict: ${semanticResult.reason}`,
     `Confidence: ${(confidence * 100).toFixed(1)}%`,
+    `action_succeeded: ${action_succeeded}`,
+    `task_completed: ${task_completed}`,
   ]
 
-  // Deterministic: goal achieved when semantic LLM said match=true and confidence is high enough.
-  // Graph router uses goalAchieved only (no parsing of reason text).
-  const goalAchieved =
-    success && semanticResult.match === true && confidence >= 0.85
-
+  // Deterministic: goal achieved when semantic LLM said task_completed=true and confidence >= 0.70 (Task 2: includes low-confidence band).
+  const { goalAchieved, lowConfidenceCompletion } = computeGoalAchieved(task_completed, confidence)
+  if (lowConfidenceCompletion) {
+    log.info(
+      `[Observation] Low confidence completion: task_completed=true, confidence=${confidence.toFixed(2)} (in [0.70, 0.85)); setting goalAchieved=true for single finish.`
+    )
+  }
   log.info(
-    `[Observation] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, goalAchieved=${goalAchieved}, ${semanticResult.reason}`
+    `[Observation] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, action_succeeded=${action_succeeded}, task_completed=${task_completed}, goalAchieved=${goalAchieved}, ${semanticResult.reason}`
   )
 
   const semanticSummary =
     semanticResult.reason?.substring(0, 300)?.trim() || undefined
 
-  return {
+  const result: VerificationResult = {
     success,
     confidence,
     reason: reasonParts.join(" | "),
     expectedState: { description: userGoal },
     actualState,
-    comparison: { semanticMatch: semanticResult.match, overallMatch: success },
+    comparison: { semanticMatch: task_completed, overallMatch: success },
     goalAchieved,
+    action_succeeded,
+    task_completed,
     semanticSummary,
   }
+  if (subTaskObjective != null && semanticResult.sub_task_completed !== undefined) {
+    result.sub_task_completed = semanticResult.sub_task_completed
+  }
+  return result
 }
 
 /**
@@ -169,7 +210,13 @@ export async function verifyAction(
   }
 
   const semanticResult: SemanticVerificationResult = isDropdown
-    ? { match: true, reason: "Skipped (dropdown); DOM checks only.", confidence: 1.0 }
+    ? {
+        action_succeeded: true,
+        task_completed: false,
+        match: true,
+        reason: "Skipped (dropdown); DOM checks only.",
+        confidence: 1.0,
+      }
     : await performSemanticVerification(expectedOutcome, actualState, previousUrl, context)
 
   let confidence = calculateConfidence(
@@ -259,6 +306,17 @@ export async function verifyAction(
   const semanticSummary =
     semanticResult.reason?.substring(0, 300)?.trim() || undefined
 
+  const { goalAchieved, lowConfidenceCompletion } = computeGoalAchieved(
+    semanticResult.task_completed === true,
+    confidence
+  )
+  const goalAchievedFinal = finalSuccess && goalAchieved
+  if (lowConfidenceCompletion && goalAchievedFinal) {
+    log.info(
+      `[Verification] Low confidence completion: task_completed=true, confidence=${confidence.toFixed(2)} (in [0.70, 0.85)); setting goalAchieved=true for single finish.`
+    )
+  }
+
   return {
     success: finalSuccess,
     confidence,
@@ -271,6 +329,9 @@ export async function verifyAction(
       nextGoalCheck,
     },
     reason: reasonParts.join(" | "),
+    goalAchieved: goalAchievedFinal,
+    action_succeeded: semanticResult.action_succeeded,
+    task_completed: semanticResult.task_completed,
     semanticSummary,
   }
 }

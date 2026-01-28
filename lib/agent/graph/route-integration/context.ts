@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from "crypto"
+import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import { CorrectionRecord, Message, Task, TaskAction } from "@/lib/models"
 import type { TaskPlan } from "@/lib/models/task"
@@ -17,6 +18,8 @@ import type { PreviousAction } from "../types"
 export interface LoadTaskContextResult {
   task: Record<string, unknown>
   plan?: TaskPlan
+  /** Phase 4 Task 8: Hierarchical plan (sub-tasks). */
+  hierarchicalPlan?: HierarchicalPlan
   previousActions: PreviousAction[]
   previousMessages: Array<{ role: "user" | "assistant"; content: string; timestamp: Date }>
   lastAction?: {
@@ -136,6 +139,7 @@ export async function loadTaskContext(
   return {
     task,
     plan: task.plan as TaskPlan | undefined,
+    hierarchicalPlan: task.hierarchicalPlan as HierarchicalPlan | undefined,
     previousActions,
     previousMessages,
     lastAction,

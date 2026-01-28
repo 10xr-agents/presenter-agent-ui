@@ -20,7 +20,16 @@ import type { InteractGraphState } from "../types"
 export async function stepRefinementNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
-  const { plan, currentStepIndex, dom, url, previousActions, ragChunks, hasOrgKnowledge } = state
+  const {
+    plan,
+    currentStepIndex,
+    dom,
+    url,
+    previousActions,
+    ragChunks,
+    hasOrgKnowledge,
+    verificationResult,
+  } = state
   const log = logger.child({
     process: "Graph:step_refinement",
     sessionId: state.sessionId,
@@ -45,6 +54,14 @@ export async function stepRefinementNode(
 
   log.info(`Refining step ${currentStepIndex}: "${currentStep.description}"`)
 
+  const verificationSummary =
+    verificationResult != null
+      ? {
+          action_succeeded: verificationResult.action_succeeded,
+          task_completed: verificationResult.task_completed,
+        }
+      : undefined
+
   try {
     const refinedAction = await refineStep(
       currentStep,
@@ -53,6 +70,7 @@ export async function stepRefinementNode(
       previousActions,
       ragChunks,
       hasOrgKnowledge,
+      verificationSummary,
       {
         tenantId: state.tenantId,
         userId: state.userId,

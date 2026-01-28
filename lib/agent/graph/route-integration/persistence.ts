@@ -74,16 +74,20 @@ export async function saveGraphResults(
     }
   }
 
-  if (result.plan) {
+  if (result.plan || result.hierarchicalPlan !== undefined) {
+    const update: Record<string, unknown> = {
+      status: result.status === "needs_user_input" ? "active" : "executing",
+    }
+    if (result.plan) {
+      update.plan = result.plan
+    }
+    if (result.hierarchicalPlan !== undefined) {
+      update.hierarchicalPlan = result.hierarchicalPlan
+    }
     await (Task as any)
       .findOneAndUpdate(
         { taskId, tenantId },
-        {
-          $set: {
-            plan: result.plan,
-            status: result.status === "needs_user_input" ? "active" : "executing",
-          },
-        }
+        { $set: update }
       )
       .exec()
   }

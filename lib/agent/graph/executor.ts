@@ -6,6 +6,7 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
+import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
@@ -47,6 +48,8 @@ export interface ExecuteGraphParams {
   // Existing task context (for continuation)
   plan?: TaskPlan
   currentStepIndex?: number
+  /** Phase 4 Task 8: Hierarchical plan (sub-tasks) when decomposition was applied. */
+  hierarchicalPlan?: HierarchicalPlan
   previousActions?: PreviousAction[]
   previousMessages?: Array<{
     role: "user" | "assistant"
@@ -107,6 +110,8 @@ export interface ExecuteGraphResult {
   // Planning
   plan?: TaskPlan
   currentStepIndex: number
+  /** Phase 4 Task 8: Hierarchical plan (sub-tasks). */
+  hierarchicalPlan?: HierarchicalPlan
 
   // Verification
   verificationResult?: VerificationResult
@@ -187,6 +192,7 @@ export async function executeInteractGraph(
       // Existing task context
       plan: params.plan,
       currentStepIndex: params.currentStepIndex || 0,
+      hierarchicalPlan: params.hierarchicalPlan,
       previousActions: params.previousActions || [],
       previousMessages: params.previousMessages || [],
 
@@ -235,6 +241,7 @@ export async function executeInteractGraph(
       // Planning
       plan: result.plan,
       currentStepIndex: result.currentStepIndex || 0,
+      hierarchicalPlan: result.hierarchicalPlan,
 
       // Verification
       verificationResult: result.verificationResult,

@@ -10,6 +10,7 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
+import { decomposePlan } from "@/lib/agent/hierarchical-planning"
 import { generatePlan } from "@/lib/agent/planning-engine"
 import type { TaskPlan } from "@/lib/models/task"
 import { logger } from "@/lib/utils/logger"
@@ -69,9 +70,38 @@ export async function planningNode(
         }
       }
 
+      // Phase 4 Task 8: Optionally decompose into hierarchical sub-tasks when step count or phases warrant
+      let hierarchicalPlan: InteractGraphState["hierarchicalPlan"] = undefined
+      try {
+        hierarchicalPlan = await decomposePlan(
+          generatedPlan,
+          query,
+          {
+            tenantId: state.tenantId,
+            userId: state.userId,
+            sessionId: state.sessionId,
+            taskId: state.taskId,
+          }
+        )
+        if (hierarchicalPlan?.isDecomposed) {
+          log.info(
+            `Hierarchical plan created: ${hierarchicalPlan.subTasks.length} sub-tasks (current: ${hierarchicalPlan.subTasks[0]?.name ?? "—"})`
+          )
+        }
+      } catch (err: unknown) {
+        Sentry.captureException(err, {
+          tags: { component: "graph-planning", operation: "decomposePlan" },
+          extra: { stepCount: generatedPlan.steps.length },
+        })
+        log.warn("Hierarchical decomposition failed, continuing with linear plan", {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      }
+
       return {
         plan: generatedPlan,
         currentStepIndex: 0,
+        hierarchicalPlan,
         status: "executing",
       }
     }

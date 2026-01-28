@@ -105,6 +105,8 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
       // Planning
       plan: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
       currentStepIndex: { value: (a: number, b?: number) => b ?? a, default: () => 0 },
+      // Phase 4 Task 8: Hierarchical plan (sub-tasks)
+      hierarchicalPlan: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
 
       // Previous actions
       previousActions: { value: (a: any[], b?: any[]) => b ?? a, default: () => [] },

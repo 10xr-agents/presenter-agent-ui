@@ -4,6 +4,8 @@
 
 **Roadmap Format:** Vertical slicing approach — complete one feature/framework at a time before moving to the next. Each task includes Objective, Files to Create/Modify, and Definition of Done checklist.
 
+**Focus:** DOM-based features first. Visual/screenshot-based features (Session Replay with screenshot scrubber) are **moved to end of roadmap** — see **§ Deferred: Visual / Screenshot-Based Features** at end of document.
+
 ---
 
 ## Executive Summary
@@ -31,9 +33,9 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  Chats (Activity Log)                                           │
 │  ├── Session List: Active, Completed, Failed (Linear-style)     │
-│  └── Session Replay: 3-panel debug view (LangSmith-style)       │
+│  └── Session Replay: 3-panel debug view (LangSmith-style) — **deferred** (visual/screenshot; see § Deferred) │
 │      ├── Left: Chat / User Instructions                         │
-│      ├── Center: Screenshot Scrubber (DOM snapshots)            │
+│      ├── Center: Screenshot Scrubber (DOM snapshots) — deferred  │
 │      └── Right: Execution Steps / Thought Process               │
 ├─────────────────────────────────────────────────────────────────┤
 │  Knowledge (RAG Manager)                                        │
@@ -69,15 +71,15 @@
 | **New Sidebar & Shell** | ✅ Complete | 1 | Updated navigation with new IA |
 | **Dashboard (Home)** | ✅ Complete | 1 | ROI metrics, Extension CTA implemented |
 | **Chats List (Linear-style)** | 🔲 Planned | 2 | Compact session rows with status icons |
-| **Session Replay (LangSmith-style)** | 🔲 Planned | 2 | 3-panel debug view with screenshot scrubber |
 | **Knowledge List (Supabase-style)** | 🔲 Planned | 2 | Document/link management with status |
 | **Knowledge Playground** | 🔲 Planned | 2 | Test RAG retrieval with similarity scores |
 | **ROI & Usage Analytics** | 🔲 Planned | 3 | Time Saved hero, Developer tab for tokens |
 | **Billing Integration** | 🔲 Planned | 3 | Plans, limits, invoices |
+| **Session Replay (LangSmith-style)** | 🔲 Deferred | — | 3-panel debug view with screenshot scrubber — **visual/screenshot**; see § Deferred at end |
 
 **Legend:** ✅ = Complete | 🔄 = In Progress | 🔲 = Planned
 
-**Critical Path:** ~~Legacy Cleanup~~ → ~~New Shell~~ → ~~Dashboard~~ → Chats → Knowledge → Analytics → Billing
+**Critical Path:** ~~Legacy Cleanup~~ → ~~New Shell~~ → ~~Dashboard~~ → Chats (list) → Knowledge → Analytics → Billing. **Session Replay (screenshot-based)** is at end of roadmap.
 
 ---
 
@@ -453,140 +455,11 @@ Status  Task (truncated userQuery)                 Domain    Timestamp
 
 ---
 
-### Task 2.2: Implement Session Replay View
+### Task 2.2: Session Replay (Deferred — Visual/Screenshot-Based)
 
-**Objective:** Create a "Video Editor" or "Debug Console" style session detail view that allows users to step through the execution history, seeing exactly what the agent saw and did at each step.
+**Status:** **Deferred.** Session Replay (3-panel debug view with **screenshot scrubber**) is a **visual/screenshot-based** feature. Focus is **DOM-based** features first. Full specification moved to **§ Deferred: Visual / Screenshot-Based Features** at end of this document.
 
-**UI Reference:** LangSmith Traces, Sentry Replay, Chrome DevTools
-
-**Files to Create:**
-
-| File | Purpose |
-|------|---------|
-| `app/(app)/chats/[sessionId]/page.tsx` | Session replay page |
-| `components/chats/session-replay.tsx` | Main 3-panel layout container |
-| `components/chats/replay-chat-panel.tsx` | Left panel: Chat/Instructions |
-| `components/chats/replay-screenshot-panel.tsx` | Center panel: Screenshot viewer |
-| `components/chats/replay-steps-panel.tsx` | Right panel: Execution steps |
-| `components/chats/replay-scrubber.tsx` | Bottom scrubber bar |
-| `components/chats/step-detail-card.tsx` | Expandable step with thought/action |
-
-**Files to Modify:**
-
-| File | Change |
-|------|--------|
-| `app/api/session/[sessionId]/route.ts` | Return messages + actions + snapshots |
-| `app/api/session/[sessionId]/messages/route.ts` | Include DOM snapshots per action |
-
-**3-Panel Layout (Desktop):**
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  Session: Add new patient "Jas"                    openemr.io    ✓ Completed │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────┐  ┌───────────────────────────────┐  ┌───────────────────┐  │
-│  │   CHAT      │  │        SCREENSHOT             │  │    STEPS          │  │
-│  │             │  │                               │  │                   │  │
-│  │  User:      │  │   ┌─────────────────────┐    │  │  1. ✓ Open menu   │  │
-│  │  "Add a new │  │   │                     │    │  │  2. ✓ Click New   │  │
-│  │   patient   │  │   │   [DOM Snapshot     │    │  │  3. → Fill name   │  │
-│  │   named     │  │   │    at Step 3]       │    │  │  4. ○ Submit      │  │
-│  │   Jas"      │  │   │                     │    │  │  5. ○ Verify      │  │
-│  │             │  │   │   ► Patient Form    │    │  │                   │  │
-│  │  Assistant: │  │   │     Name: [Jas]     │    │  │  ─────────────    │  │
-│  │  "I'll fill │  │   │     DOB: [___]      │    │  │  Step 3 Details   │  │
-│  │   out the   │  │   │                     │    │  │                   │  │
-│  │   form..."  │  │   └─────────────────────┘    │  │  Thought:         │  │
-│  │             │  │                               │  │  "Found name      │  │
-│  │             │  │                               │  │   field #101"     │  │
-│  │             │  │                               │  │                   │  │
-│  │             │  │                               │  │  Action:          │  │
-│  │             │  │                               │  │  setValue(101,    │  │
-│  │             │  │                               │  │   "Jas")          │  │
-│  └─────────────┘  └───────────────────────────────┘  └───────────────────┘  │
-│                                                                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ◄──●────────────────────────────────────────────────────────────────────►  │
-│   Step 1        Step 2        Step 3*       Step 4        Step 5           │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Scrubber Bar Behavior:**
-
-| Interaction | Result |
-|-------------|--------|
-| Click on step marker | Jump to that step, update all panels |
-| Drag scrubber | Scrub through steps, screenshot updates in real-time |
-| Arrow keys (←/→) | Move to previous/next step |
-| Keyboard `1-9` | Jump to step 1-9 directly |
-
-**Step States:**
-
-| State | Icon | Color | Description |
-|-------|------|-------|-------------|
-| Completed | `CheckCircle` | Green | Step executed successfully |
-| Failed | `XCircle` | Red | Step failed, triggered correction |
-| Current | `ArrowRight` | Blue | Currently viewing this step |
-| Pending | `Circle` | Gray | Step not yet executed (for active sessions) |
-| Corrected | `RefreshCw` | Orange | Step was retried after failure |
-
-**Step Detail Card (Right Panel):**
-
-```
-┌─────────────────────────────────────────┐
-│  Step 3: Fill patient name              │
-├─────────────────────────────────────────┤
-│  Thought:                               │
-│  "I found the patient name input field  │
-│   with id #101. I'll enter 'Jas' as     │
-│   specified in the user's request."     │
-│                                         │
-│  Action:                                │
-│  ┌─────────────────────────────────────┐│
-│  │  setValue(101, "Jas")               ││
-│  └─────────────────────────────────────┘│
-│                                         │
-│  Verification:                          │
-│  ✓ Value set successfully               │
-│  Confidence: 98%                        │
-│                                         │
-│  Tokens: 847 input, 156 output          │
-│  Duration: 1.2s                         │
-└─────────────────────────────────────────┘
-```
-
-**Mobile Layout (Tabs):**
-
-| Tab | Content |
-|-----|---------|
-| Chat | Full chat history |
-| Replay | Screenshot with step overlay |
-| Steps | Vertical step list with details |
-
-**Data Requirements:**
-
-| Field | Source | Required |
-|-------|--------|----------|
-| `messages` | Message model | Yes |
-| `actions` | TaskAction model | Yes |
-| `snapshots` | Stored DOM/screenshots | Optional (graceful fallback) |
-| `thought` | TaskAction.thought | Yes |
-| `verification` | TaskAction.verificationRecord | Yes |
-| `tokenUsage` | TokenUsageLog | Yes |
-
-**Definition of Done:**
-
-- [ ] 3-panel layout displays correctly on desktop
-- [ ] Scrubber bar allows stepping through execution
-- [ ] Screenshot updates when step changes
-- [ ] Step details show thought, action, verification
-- [ ] Keyboard navigation works (arrows, numbers)
-- [ ] Mobile tab layout functional
-- [ ] Loading states with skeleton panels
-- [ ] 404 handling for invalid sessionId
-- [ ] Graceful fallback when no screenshots available
-- [ ] Build passes (`pnpm build`)
+**In Phase 2:** Prefer a **DOM-based session detail** (chat + steps + DOM snapshot text/structure only, no screenshot viewer) if a session detail view is needed before the deferred Session Replay.
 
 ---
 
@@ -943,7 +816,7 @@ interface PlaygroundQueryResponse {
 | Task | Status | Depends On |
 |------|--------|------------|
 | 2.1: Chats List View (Linear-style) | 🔲 | Phase 1 |
-| 2.2: Session Replay (LangSmith-style) | 🔲 | 2.1 |
+| 2.2: Session Replay (LangSmith-style) | 🔲 Deferred | End of roadmap (§ Deferred) |
 | 2.3: Knowledge List (Supabase-style) | 🔲 | Phase 1 |
 | 2.4: Knowledge Upload Flow | 🔲 | 2.3 |
 | 2.5: Knowledge Playground | 🔲 | 2.3, 2.4 |
@@ -951,7 +824,7 @@ interface PlaygroundQueryResponse {
 **Phase 2 Exit Criteria:**
 
 - [ ] Chats list with Linear-style compact rows
-- [ ] Session Replay with 3-panel debug view and scrubber
+- [ ] Session Replay with 3-panel debug view and scrubber — **deferred** (visual/screenshot; see § Deferred)
 - [ ] Knowledge list with status indicators and demo data option
 - [ ] Knowledge upload (documents + links) working
 - [ ] Knowledge Playground for testing RAG retrieval
@@ -1687,7 +1560,7 @@ The UI Revamp is complete when:
 
 **Phase 2: Core Data Views**
 - [ ] Chats list (Linear-style compact rows)
-- [ ] Session Replay (3-panel debug view with scrubber)
+- [ ] Session Replay (3-panel debug view with scrubber) — **deferred** (§ Deferred: Visual / Screenshot-Based)
 - [ ] Knowledge list (Supabase-style with status indicators)
 - [ ] Knowledge upload (documents + links)
 - [ ] Knowledge Playground (RAG testing with similarity scores)
@@ -1707,6 +1580,27 @@ The UI Revamp is complete when:
 - [ ] Build passes (`pnpm build`)
 - [ ] No console errors
 - [ ] Extension API routes still functional
+
+---
+
+## Deferred: Visual / Screenshot-Based Features (End of Roadmap)
+
+**Focus:** We are **DOM-based only** for now. The following are **visual/screenshot-based** and moved to the **end of the roadmap**. Implement after DOM-based features are complete.
+
+### Session Replay (LangSmith-style) — Deferred
+
+**Objective:** Create a 3-panel session detail view with **screenshot scrubber** so users can step through execution history and see what the agent saw at each step (screenshot-based).
+
+**Why deferred:** Center panel is **screenshot viewer** (visual); we prioritize **DOM-based** session detail (chat + steps + DOM snapshot text/structure only) first.
+
+**When un-deferring:** Implement per original Task 2.2 spec:
+
+- **Files:** `app/(app)/chats/[sessionId]/page.tsx`, `session-replay.tsx`, `replay-chat-panel.tsx`, `replay-screenshot-panel.tsx`, `replay-steps-panel.tsx`, `replay-scrubber.tsx`, `step-detail-card.tsx`
+- **API:** `session/[sessionId]` and `messages` routes return messages + actions + snapshots (DOM/screenshots)
+- **Layout:** 3-panel (Chat | **Screenshot** | Steps), scrubber bar; mobile tabs (Chat | Replay | Steps)
+- **DoD:** 3-panel layout, scrubber steps through execution, screenshot updates per step, step details (thought/action/verification), keyboard nav, graceful fallback when no screenshots
+
+**References:** LangSmith Traces, Sentry Replay, Chrome DevTools. Original full spec was in § Task 2.2 (replaced with pointer in Phase 2).
 
 ---
 

@@ -1,16 +1,29 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
-import { connectDB } from "@/lib/db/mongoose"
-import { Session } from "@/lib/models"
 import { auth } from "@/lib/auth"
 import { getSessionFromRequest } from "@/lib/auth/session"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { connectDB } from "@/lib/db/mongoose"
+import { Session } from "@/lib/models"
 import { getPusher } from "@/lib/pusher/server"
-
-const CHANNEL_PREFIX = "private-session-"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
- * Resolve session from Bearer token or cookie (same as WS token).
+ * Pusher/Sockudo private channel prefix. We use private-session-{sessionId} because:
+ * - Pusher private channels require server-side auth; presence/public channels don't fit our model.
+ * - Only the session owner should subscribe (verified by Session lookup + userId match).
+ * - There is no public session channel for message sync; all real-time session data is private.
+ */
+const CHANNEL_PREFIX = "private-session-"
+const isDev = process.env.NODE_ENV === "development"
+
+function forbidden(code: string, message?: string) {
+  const body = isDev ? { code, message: message ?? code } : undefined
+  return NextResponse.json(body ?? "Forbidden", { status: 403 })
+}
+
+/**
+ * Resolve session from Bearer token (extension) or cookie (web). Extension sends Authorization: Bearer <token>.
  */
 async function getSessionForPusherAuth(
   req: NextRequest
@@ -31,8 +44,11 @@ async function getSessionForPusherAuth(
 /**
  * POST /api/pusher/auth
  *
- * Sockudo/Pusher auth endpoint. Client sends form data: socket_id, channel_name.
- * Only private-session-{sessionId} channels are allowed; we verify the user owns the session.
+ * Sockudo/Pusher channel auth. Client sends form: socket_id, channel_name.
+ * Extension sends Authorization: Bearer <token>. We verify the user owns the session.
+ * If the session does not exist yet (e.g. first message before interact creates it), returns 403
+ * SESSION_NOT_FOUND; extension should create the session first or fall back to polling.
+ * In development, 403 responses include { code, message } for debugging.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -50,12 +66,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (!channelName.startsWith(CHANNEL_PREFIX)) {
-      return new NextResponse("Forbidden", { status: 403 })
+      return forbidden(
+        "CHANNEL_FORBIDDEN",
+        "Channel must be private-session-<sessionId>. No public session channel."
+      )
     }
 
     const sessionId = channelName.slice(CHANNEL_PREFIX.length)
     if (!sessionId) {
-      return new NextResponse("Forbidden", { status: 403 })
+      return forbidden("CHANNEL_FORBIDDEN", "Empty sessionId in channel name")
     }
 
     await connectDB()
@@ -65,8 +84,18 @@ export async function POST(req: NextRequest) {
       .lean()
       .exec()
 
-    if (!doc || doc.userId !== session.userId) {
-      return new NextResponse("Forbidden", { status: 403 })
+    if (!doc) {
+      return forbidden(
+        "SESSION_NOT_FOUND",
+        `No session for sessionId=${sessionId} and tenantId=${session.tenantId}. Session may not exist yet or tenantId mismatch.`
+      )
+    }
+
+    if (doc.userId !== session.userId) {
+      return forbidden(
+        "USER_MISMATCH",
+        `Session owned by different user (doc.userId=${doc.userId}, auth userId=${session.userId})`
+      )
     }
 
     const pusher = getPusher()
@@ -77,6 +106,7 @@ export async function POST(req: NextRequest) {
     const authResponse = pusher.authorizeChannel(socketId, channelName)
     return NextResponse.json(authResponse)
   } catch (error: unknown) {
+    Sentry.captureException(error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }

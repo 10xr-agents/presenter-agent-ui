@@ -105,6 +105,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       hasOrgKnowledge,
       plan: taskContext?.plan,
       currentStepIndex: taskContext?.previousActions.length || 0,
+      hierarchicalPlan: taskContext?.hierarchicalPlan,
       previousActions: taskContext?.previousActions || [],
       previousMessages: taskContext?.previousMessages || [],
       lastActionExpectedOutcome: taskContext?.lastAction?.expectedOutcome,

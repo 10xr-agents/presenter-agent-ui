@@ -5,6 +5,7 @@
  * Each node reads from and writes to this state.
  */
 
+import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
@@ -81,9 +82,9 @@ export interface ActionResult {
 
 /**
  * Verification result.
- * goalAchieved is set by the verification engine when semantic LLM returns match=true
- * with sufficient confidence. Router uses this field only to decide task complete.
- * semanticSummary is set by the engine for display (e.g. goal_achieved node); do not parse reason.
+ * goalAchieved is set when semantic LLM returns task_completed=true with confidence >= 0.85.
+ * success is set when action_succeeded=true and confidence >= 0.7 (route to next action vs correction).
+ * Router uses goalAchieved and success only; do not parse reason.
  */
 export interface VerificationResult {
   success: boolean
@@ -92,8 +93,14 @@ export interface VerificationResult {
   expectedState?: Record<string, unknown>
   actualState?: Record<string, unknown>
   comparison?: Record<string, unknown>
-  /** True when engine determined user's goal was achieved (semantic match + confidence). */
+  /** True when engine determined user's goal was achieved (task_completed + confidence). */
   goalAchieved?: boolean
+  /** True when this action did something useful; used with success for routing. */
+  action_succeeded?: boolean
+  /** True when entire user goal is done; used with confidence for goalAchieved. */
+  task_completed?: boolean
+  /** Phase 4 Task 9: True when current sub-task objective was achieved (hierarchical only). */
+  sub_task_completed?: boolean
   /** Short semantic summary for display; set by engine. */
   semanticSummary?: string
 }
@@ -196,6 +203,8 @@ export interface InteractGraphState {
   // Planning
   plan?: TaskPlan
   currentStepIndex: number
+  /** Phase 4 Task 8: Hierarchical plan (sub-tasks) when decomposition was applied. */
+  hierarchicalPlan?: HierarchicalPlan
 
   // Previous actions history
   previousActions: PreviousAction[]

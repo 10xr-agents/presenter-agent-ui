@@ -63,10 +63,23 @@ export interface NextGoalCheckResult {
 }
 
 /**
+ * Summary of verification outcome for planning/step-refinement context.
+ * Passed so prompts can state "Previous action succeeded; full goal not yet achieved."
+ * @see docs/VERIFICATION_PROCESS.md Task 7, docs/PLANNER_PROCESS.md
+ */
+export interface VerificationSummary {
+  /** True when the LLM said this action did something useful (e.g. form opened). */
+  action_succeeded?: boolean
+  /** True when the LLM said the entire user goal is done. */
+  task_completed?: boolean
+}
+
+/**
  * Verification result.
  * goalAchieved is set deterministically from semantic verification: when the LLM
- * returns match=true (user's goal was achieved) and confidence is high enough,
- * we set goalAchieved=true. The graph uses this field only (no parsing of reason).
+ * returns task_completed=true and confidence is high enough, we set goalAchieved=true.
+ * success is set when action_succeeded=true and confidence >= 0.7 (so we route to next
+ * action vs correction). The graph uses goalAchieved and success only (no parsing of reason).
  */
 export interface VerificationResult {
   success: boolean
@@ -82,10 +95,25 @@ export interface VerificationResult {
   reason: string
   /**
    * True when verification passed and semantic verdict indicated the user's goal
-   * was achieved (LLM returned match=true with sufficient confidence).
+   * was achieved (LLM returned task_completed=true with sufficient confidence).
    * Set by the engine; graph router uses this only to decide task complete.
    */
   goalAchieved?: boolean
+  /**
+   * True when the LLM says this action did something useful (e.g. form opened).
+   * Used with success: route to next action when action_succeeded; else correction.
+   */
+  action_succeeded?: boolean
+  /**
+   * True when the LLM says the entire user goal is done (e.g. form submitted, task complete).
+   * Used with confidence >= 0.85 to set goalAchieved.
+   */
+  task_completed?: boolean
+  /**
+   * Phase 4 Task 9: True when current sub-task objective was achieved (hierarchical only).
+   * Used with confidence >= 0.7 to advance to next sub-task or fail sub-task.
+   */
+  sub_task_completed?: boolean
   /**
    * Short semantic summary for display (e.g. in goal_achieved node).
    * Set by the engine from semantic verdict; do not parse reason text for display.
