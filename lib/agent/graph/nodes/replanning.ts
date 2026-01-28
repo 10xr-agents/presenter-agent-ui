@@ -164,6 +164,7 @@ export async function replanningNode(
       replanningResult: {
         ...replanningResult,
         reason: `Plan regenerated (${newPlan.steps.length} steps)`,
+        planRegenerated: true,
       },
       status: "executing",
     }
@@ -210,9 +211,9 @@ export function routeAfterReplanning(
     return "finalize"
   }
 
-  // If plan was regenerated (currentStepIndex reset to 0), go to planning to start fresh
-  if (replanningResult?.reason.includes("regenerated") && state.currentStepIndex === 0) {
-    log.info("Routing to planning (plan regenerated)")
+  // If plan was regenerated (explicit flag; do not parse reason text), go to planning to start fresh
+  if (replanningResult?.planRegenerated === true && state.currentStepIndex === 0) {
+    log.info("Routing to planning (planRegenerated=true)")
     return "planning"
   }
 

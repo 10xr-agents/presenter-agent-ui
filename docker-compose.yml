@@ -5,7 +5,7 @@ services:
   # Next.js Application
   app:
     build: .
-    container_name: modern-boilerplate-app
+    container_name: browser-copilot-app
     ports:
       - "3000:3000"
     volumes:
@@ -27,7 +27,7 @@ services:
   # Background Job Worker
   worker:
     build: .
-    container_name: modern-boilerplate-worker
+    container_name: browser-copilot-worker
     command: pnpm worker
     volumes:
       - .:/app
@@ -41,10 +41,10 @@ services:
       - redis
     restart: unless-stopped
 
-  # Redis for job queues and Soketi
+  # Redis for job queues
   redis:
     image: redis:7-alpine
-    container_name: modern-boilerplate-redis
+    container_name: browser-copilot-redis
     ports:
       - "6379:6379"
     volumes:
@@ -57,31 +57,28 @@ services:
       timeout: 5s
       retries: 5
 
-  # Soketi (Pusher-compatible WebSocket server) for real-time messaging
-  soketi:
-    image: quay.io/soketi/soketi:latest-16-alpine
-    container_name: modern-boilerplate-soketi
+  # Sockudo (Rust, Pusher-compatible WebSocket server) for real-time messaging
+  # Sockudo: Rust, Pusher-compatible WebSocket server; no Node version limits.
+  sockudo:
+    image: sockudo/sockudo:latest
+    container_name: browser-copilot-sockudo
     ports:
       - "3005:3005"
     environment:
-      SOKETI_DEFAULT_APP_ID: "${SOKETI_APP_ID:-app-id}"
-      SOKETI_DEFAULT_APP_KEY: "${SOKETI_APP_KEY:-app-key}"
-      SOKETI_DEFAULT_APP_SECRET: "${SOKETI_APP_SECRET:-app-secret}"
-      SOKETI_HTTP_DEFAULT_HOST: "0.0.0.0"
-      SOKETI_HTTP_DEFAULT_PORT: "3005"
-      DB_REDIS_HOST: "redis"
-      DB_REDIS_PORT: "6379"
-      SOKETI_DEBUG: "0"
-    depends_on:
-      redis:
-        condition: service_healthy
+      HOST: "0.0.0.0"
+      PORT: "3005"
+      SOCKUDO_DEFAULT_APP_ID: "${SOCKUDO_APP_ID:-app-id}"
+      SOCKUDO_DEFAULT_APP_KEY: "${SOCKUDO_APP_KEY:-app-key}"
+      SOCKUDO_DEFAULT_APP_SECRET: "${SOCKUDO_APP_SECRET:-app-secret}"
+      ADAPTER_DRIVER: "local"
+      APP_MANAGER_DRIVER: "memory"
     restart: unless-stopped
 
   # Redis Commander (optional - for debugging)
   # Uncomment to enable web-based Redis UI at http://localhost:8081
   # redis-commander:
   #   image: rediscommander/redis-commander:latest
-  #   container_name: modern-boilerplate-redis-commander
+  #   container_name: browser-copilot-redis-commander
   #   environment:
   #     - REDIS_HOSTS=local:redis:6379
   #   ports:

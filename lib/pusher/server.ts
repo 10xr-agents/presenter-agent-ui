@@ -1,7 +1,11 @@
 /**
- * Pusher server SDK configured for Soketi (Pusher-compatible WebSocket server).
- * Next.js triggers events here; Soketi broadcasts to connected clients.
- * See docs/DEVELOPMENT.md and Soketi + Pusher architecture.
+ * Pusher server SDK for real-time messaging (Sockudo or any Pusher-compatible server).
+ * Next.js triggers events here; the WebSocket server broadcasts to connected clients.
+ *
+ * Real-time is "on" when SOCKUDO_APP_ID, SOCKUDO_APP_KEY, and SOCKUDO_APP_SECRET are set.
+ * Then getPusher() returns a client; otherwise getPusher() is null and triggers are no-ops.
+ * Server is a separate process: local dev = pnpm sockudo:dev (runs Sockudo via Docker), production = sockudo service.
+ * See docs/DEVELOPMENT.md.
  */
 
 import Pusher from "pusher"
@@ -9,18 +13,18 @@ import Pusher from "pusher"
 let pusher: Pusher | null = null
 
 function getConfig() {
-  const appId = process.env.SOKETI_APP_ID
-  const key = process.env.SOKETI_APP_KEY
-  const secret = process.env.SOKETI_APP_SECRET
-  const host = process.env.SOKETI_HOST || "127.0.0.1"
-  const port = process.env.SOKETI_PORT || "3005"
-  const useTLS = process.env.SOKETI_USE_TLS === "true"
+  const appId = process.env.SOCKUDO_APP_ID
+  const key = process.env.SOCKUDO_APP_KEY
+  const secret = process.env.SOCKUDO_APP_SECRET
+  const host = process.env.SOCKUDO_HOST || "127.0.0.1"
+  const port = process.env.SOCKUDO_PORT || "3005"
+  const useTLS = process.env.SOCKUDO_USE_TLS === "true"
   if (!appId || !key || !secret) return null
   return { appId, key, secret, host, port, useTLS }
 }
 
 /**
- * Get Pusher instance for Soketi. Returns null if SOKETI_APP_KEY (and id/secret) are not set.
+ * Get Pusher instance for Sockudo. Returns null if SOCKUDO_APP_KEY (and id/secret) are not set.
  */
 export function getPusher(): Pusher | null {
   if (pusher) return pusher
@@ -33,7 +37,7 @@ export function getPusher(): Pusher | null {
     host: config.host,
     port: config.port,
     useTLS: config.useTLS,
-    cluster: "mt1", // Ignored by Soketi but required by Pusher SDK
+    cluster: "mt1", // Ignored by Sockudo but required by Pusher SDK
   })
   return pusher
 }

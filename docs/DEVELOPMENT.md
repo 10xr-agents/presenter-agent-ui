@@ -55,7 +55,7 @@ pnpm dev
 
 **Optional**:
 - `REDIS_URL` - Redis connection (default: localhost:6379)
-- `SOKETI_*` / `NEXT_PUBLIC_PUSHER_*` - Real-time messaging (Soketi on port 3005)
+- `SOCKUDO_*` / `NEXT_PUBLIC_PUSHER_*` - Real-time messaging (Sockudo on port 3005)
 - `S3_*` - S3 storage configuration
 - `STRIPE_*` - Stripe billing configuration
 - `LIVEKIT_*` - LiveKit video configuration
@@ -89,18 +89,19 @@ pnpm worker
 # - Webhook jobs (10 workers)
 ```
 
-### Real-time messaging (Soketi / Pusher)
+### Real-time messaging (Sockudo / Pusher)
 
-Real-time session messages use **Soketi** (Pusher protocol) on **port 3005**, with Next.js triggering events and authorizing channel access.
+Real-time session messages use **Sockudo** (Rust, Pusher-compatible WebSocket server) on **port 3005**. No Node version limits; works with Node 20+ and 25+. The app uses it when `SOCKUDO_APP_ID`, `SOCKUDO_APP_KEY`, and `SOCKUDO_APP_SECRET` are set (`lib/pusher/server.ts`: `getPusher()` is non-null); otherwise triggers are no-ops. Sockudo is always a **separate process** (Docker).
 
-- **Soketi**: Run `docker compose up` (soketi + redis). Soketi listens on **3005**. Set `SOKETI_APP_ID`, `SOKETI_APP_KEY`, `SOKETI_APP_SECRET`, `SOKETI_HOST` (e.g. `127.0.0.1`), `SOKETI_PORT=3005`, and client vars `NEXT_PUBLIC_PUSHER_KEY`, `NEXT_PUBLIC_PUSHER_WS_HOST`, `NEXT_PUBLIC_PUSHER_WS_PORT=3005`. Next.js triggers via the Pusher server SDK; clients use `pusher-js` with `authEndpoint: '/api/pusher/auth'` to subscribe to `private-session-{sessionId}`.
+- **Local dev:** In a separate terminal run `pnpm sockudo:dev`. This starts Sockudo via Docker on port 3005 (requires Docker). Set `SOCKUDO_HOST=127.0.0.1`, `SOCKUDO_PORT=3005` in `.env.local` when the app runs on the host.
+- **Docker (dev or production):** The **Dockerfile** only builds the Next.js app image. Use **docker-compose** for the full stack: `docker compose up` starts app, worker, redis, and **sockudo**. When the app runs inside Docker, set `SOCKUDO_HOST=sockudo` so the app container can reach Sockudo. Client vars: `NEXT_PUBLIC_PUSHER_KEY`, `NEXT_PUBLIC_PUSHER_WS_HOST`, `NEXT_PUBLIC_PUSHER_WS_PORT=3005`.
 - **Auth**: `POST /api/pusher/auth` receives form data `socket_id` and `channel_name`; we verify the user owns the session and return `pusher.authorizeChannel(socketId, channel)`.
-- **Client hook**: `useSessionMessagesWs(sessionId)` connects to Soketi (requires `NEXT_PUBLIC_PUSHER_KEY` and related env).
+- **Client hook**: `useSessionMessagesWs(sessionId)` connects to Sockudo (requires `NEXT_PUBLIC_PUSHER_KEY` and related env).
 
 ### Docker Development
 
 ```bash
-# Start all services (app + worker + redis)
+# Start all services (app + worker + redis + sockudo)
 docker compose up
 
 # Start specific service

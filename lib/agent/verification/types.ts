@@ -63,7 +63,10 @@ export interface NextGoalCheckResult {
 }
 
 /**
- * Verification result
+ * Verification result.
+ * goalAchieved is set deterministically from semantic verification: when the LLM
+ * returns match=true (user's goal was achieved) and confidence is high enough,
+ * we set goalAchieved=true. The graph uses this field only (no parsing of reason).
  */
 export interface VerificationResult {
   success: boolean
@@ -77,6 +80,17 @@ export interface VerificationResult {
     nextGoalCheck?: NextGoalCheckResult
   }
   reason: string
+  /**
+   * True when verification passed and semantic verdict indicated the user's goal
+   * was achieved (LLM returned match=true with sufficient confidence).
+   * Set by the engine; graph router uses this only to decide task complete.
+   */
+  goalAchieved?: boolean
+  /**
+   * Short semantic summary for display (e.g. in goal_achieved node).
+   * Set by the engine from semantic verdict; do not parse reason text for display.
+   */
+  semanticSummary?: string
 }
 
 /**

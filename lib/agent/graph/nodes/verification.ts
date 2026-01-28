@@ -79,7 +79,7 @@ export async function verificationNode(
     )
 
     log.info(
-      `Verification ${result.success ? "SUCCESS" : "FAILED"}: confidence=${result.confidence.toFixed(2)}, reason=${result.reason}`
+      `Verification ${result.success ? "SUCCESS" : "FAILED"}: confidence=${result.confidence.toFixed(2)}, goalAchieved=${result.goalAchieved === true}, reason=${result.reason}`
     )
 
     const verificationResult: VerificationResult = {
@@ -89,6 +89,8 @@ export async function verificationNode(
       expectedState: result.expectedState as unknown as Record<string, unknown>,
       actualState: result.actualState as unknown as Record<string, unknown>,
       comparison: result.comparison as unknown as Record<string, unknown>,
+      goalAchieved: result.goalAchieved,
+      semanticSummary: result.semanticSummary,
     }
 
     if (result.success) {
@@ -127,7 +129,7 @@ export async function verificationNode(
  */
 export function routeAfterVerification(
   state: InteractGraphState
-): "correction" | "planning" | "finalize" {
+): "correction" | "planning" | "goal_achieved" | "finalize" {
   const { verificationResult, consecutiveFailures, correctionAttempts } = state
   const log = logger.child({
     process: "Graph:router",
@@ -151,6 +153,12 @@ export function routeAfterVerification(
   if (verificationResult && !verificationResult.success) {
     log.info("Routing to correction (verification failed)")
     return "correction"
+  }
+
+  // Verification engine set goalAchieved=true when semantic LLM returned match=true with high confidence
+  if (verificationResult?.goalAchieved === true) {
+    log.info("Routing to goal_achieved (goalAchieved=true)")
+    return "goal_achieved"
   }
 
   // Verification succeeded or skipped - continue to planning/action

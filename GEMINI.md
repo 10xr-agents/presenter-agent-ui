@@ -4,9 +4,9 @@ This file provides guidance to Gemini AI (Antigravity) agents when working with 
 
 ## Project Overview
 
-**Modern Next.js Boilerplate** - A production-ready Next.js starter with authentication, MongoDB, background job processing, and modern tooling. Built with Next.js 16, React 19, and Tailwind CSS v4.
+**Browser Copilot** - A production-ready Next.js application with authentication, MongoDB, background job processing, and modern tooling. Built with Next.js 16, React 19, and Tailwind CSS v4.
 
-### What This Boilerplate Provides
+### What This Application Provides
 
 | Feature | Technology | Description |
 |---------|------------|-------------|
@@ -128,7 +128,7 @@ Protected routes are configured in `proxy.ts`. Add routes to `protectedRoutes` a
 
 ### Database
 
-This boilerplate uses a **hybrid database approach**:
+This application uses a **hybrid database approach**:
 
 **Prisma (Better Auth)**:
 - Managed in `lib/db/prisma.ts`

@@ -1,4 +1,4 @@
-# Modern Next.js Boilerplate - Development Dockerfile
+# Browser Copilot - Development Dockerfile
 FROM node:22-alpine
 
 # Install dependencies for native modules

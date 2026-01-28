@@ -54,6 +54,11 @@ export interface PlanValidationResult {
   reason: string
   /** Suggested modifications to plan steps */
   suggestedChanges?: string[]
+  /**
+   * True when suggestedChanges are all minor (skip/adjust/change step).
+   * Set when building the result; determineReplanAction uses this only (no parsing of reason text).
+   */
+  minorModificationsOnly?: boolean
   /** New plan if regeneration is needed */
   newPlan?: TaskPlan
   /** Whether re-planning occurred */
@@ -337,11 +342,25 @@ export async function validatePlanHealth(
     context
   )
   
+  const suggestedChanges = validationResult.suggestedChanges
+  const minorModificationsOnly =
+    suggestedChanges &&
+    suggestedChanges.length > 0 &&
+    suggestedChanges.every((c) => {
+      const lower = c.toLowerCase()
+      return (
+        lower.includes("skip") ||
+        lower.includes("adjust") ||
+        lower.includes("change step")
+      )
+    })
+
   return {
     validationTriggered: true,
     planValid: validationResult.valid,
     reason: validationResult.reason,
-    suggestedChanges: validationResult.suggestedChanges,
+    suggestedChanges,
+    minorModificationsOnly: suggestedChanges?.length ? minorModificationsOnly : undefined,
     rePlanning: !validationResult.valid,
     triggerReasons: triggerCheck.reasons,
     domSimilarity: triggerCheck.domSimilarity,
@@ -404,7 +423,8 @@ export function applyPlanModifications(
 }
 
 /**
- * Determine the appropriate re-planning action
+ * Determine the appropriate re-planning action.
+ * Uses only minorModificationsOnly (set when building PlanValidationResult); no parsing of reason text.
  *
  * @param validationResult - Result from plan validation
  * @returns Action to take: 'continue', 'modify', or 'regenerate'
@@ -415,18 +435,10 @@ export function determineReplanAction(
   if (validationResult.planValid) {
     return "continue"
   }
-  
-  if (validationResult.suggestedChanges && validationResult.suggestedChanges.length > 0) {
-    // Check if modifications are minor enough to apply
-    const minorModifications = validationResult.suggestedChanges.every((c) => {
-      const lower = c.toLowerCase()
-      return lower.includes("skip") || lower.includes("adjust") || lower.includes("change step")
-    })
-    
-    if (minorModifications) {
-      return "modify"
-    }
+
+  if (validationResult.minorModificationsOnly === true && validationResult.suggestedChanges?.length) {
+    return "modify"
   }
-  
+
   return "regenerate"
 }

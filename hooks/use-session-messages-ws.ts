@@ -30,7 +30,7 @@ export interface UseSessionMessagesWsResult {
 }
 
 /**
- * Real-time session messages via Soketi (Pusher protocol) on port 3005.
+ * Real-time session messages via Sockudo (Pusher protocol) on port 3005.
  * Requires NEXT_PUBLIC_PUSHER_KEY, NEXT_PUBLIC_PUSHER_WS_HOST, NEXT_PUBLIC_PUSHER_WS_PORT.
  * Auth: POST /api/pusher/auth. Channel: private-session-{sessionId}.
  */

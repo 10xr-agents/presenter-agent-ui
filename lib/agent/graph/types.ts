@@ -80,7 +80,10 @@ export interface ActionResult {
 }
 
 /**
- * Verification result
+ * Verification result.
+ * goalAchieved is set by the verification engine when semantic LLM returns match=true
+ * with sufficient confidence. Router uses this field only to decide task complete.
+ * semanticSummary is set by the engine for display (e.g. goal_achieved node); do not parse reason.
  */
 export interface VerificationResult {
   success: boolean
@@ -89,6 +92,10 @@ export interface VerificationResult {
   expectedState?: Record<string, unknown>
   actualState?: Record<string, unknown>
   comparison?: Record<string, unknown>
+  /** True when engine determined user's goal was achieved (semantic match + confidence). */
+  goalAchieved?: boolean
+  /** Short semantic summary for display; set by engine. */
+  semanticSummary?: string
 }
 
 /**
@@ -124,6 +131,11 @@ export interface ReplanningResult {
   urlChanged: boolean
   /** Suggested modifications (if plan can be salvaged) */
   suggestedChanges?: string[]
+  /**
+   * True when a new plan was generated (step index reset to 0).
+   * Router uses this only to route to planning; do not parse reason text.
+   */
+  planRegenerated?: boolean
 }
 
 /**
@@ -275,6 +287,7 @@ export type NodeName =
   | "step_refinement"
   | "action_generation"
   | "verification"
+  | "goal_achieved" // When verification indicates user goal was achieved
   | "correction"
   | "direct_action"
   | "outcome_prediction"

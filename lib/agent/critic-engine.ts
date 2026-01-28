@@ -213,6 +213,10 @@ When uncertain, approve with lower confidence.`
     const durationMs = Date.now() - startTime
     const content = response.choices[0]?.message?.content || ""
 
+    // Parse response first (deterministic: approved from <Approved>YES|NO</Approved> only)
+    const result = parseCriticResponse(content)
+    result.durationMs = durationMs
+
     // Track cost
     if (context?.tenantId && context?.userId && response.usage) {
       recordUsage({
@@ -229,16 +233,12 @@ When uncertain, approve with lower confidence.`
         metadata: {
           goal: input.goal,
           action: input.action,
-          approved: content.includes("<Approved>YES</Approved>"),
+          approved: result.approved,
         },
       }).catch((err: unknown) => {
         console.error("[Critic] Cost tracking error:", err)
       })
     }
-
-    // Parse response
-    const result = parseCriticResponse(content)
-    result.durationMs = durationMs
 
     if (!result.approved) {
       console.log(
@@ -264,12 +264,13 @@ When uncertain, approve with lower confidence.`
 }
 
 /**
- * Parse critic LLM response
+ * Parse critic LLM response.
+ * Deterministic: approved is set only from <Approved>YES</Approved> or <Approved>NO</Approved>.
+ * No fallback to free-text (e.g. "APPROVED>YES"); routing uses this boolean only.
  */
 function parseCriticResponse(content: string): CriticResult {
-  const approved =
-    content.includes("<Approved>YES</Approved>") ||
-    content.toUpperCase().includes("APPROVED>YES")
+  const approvedMatch = content.match(/<Approved>\s*(YES|NO)\s*<\/Approved>/i)
+  const approved = approvedMatch?.[1]?.toUpperCase() === "YES"
 
   const confidenceMatch = content.match(/<Confidence>([\d.]+)<\/Confidence>/i)
   const confidence = confidenceMatch ? parseFloat(confidenceMatch[1] || "0.5") : 0.5

@@ -98,9 +98,17 @@ export async function verifyActionWithObservations(
     `Confidence: ${(confidence * 100).toFixed(1)}%`,
   ]
 
+  // Deterministic: goal achieved when semantic LLM said match=true and confidence is high enough.
+  // Graph router uses goalAchieved only (no parsing of reason text).
+  const goalAchieved =
+    success && semanticResult.match === true && confidence >= 0.85
+
   log.info(
-    `[Observation] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, ${semanticResult.reason}`
+    `[Observation] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, goalAchieved=${goalAchieved}, ${semanticResult.reason}`
   )
+
+  const semanticSummary =
+    semanticResult.reason?.substring(0, 300)?.trim() || undefined
 
   return {
     success,
@@ -109,6 +117,8 @@ export async function verifyActionWithObservations(
     expectedState: { description: userGoal },
     actualState,
     comparison: { semanticMatch: semanticResult.match, overallMatch: success },
+    goalAchieved,
+    semanticSummary,
   }
 }
 
@@ -246,6 +256,9 @@ export async function verifyAction(
   reasonParts.push(`Confidence: ${(confidence * 100).toFixed(1)}%`)
   reasonParts.push(`Overall: ${semanticResult.reason}`)
 
+  const semanticSummary =
+    semanticResult.reason?.substring(0, 300)?.trim() || undefined
+
   return {
     success: finalSuccess,
     confidence,
@@ -258,5 +271,6 @@ export async function verifyAction(
       nextGoalCheck,
     },
     reason: reasonParts.join(" | "),
+    semanticSummary,
   }
 }

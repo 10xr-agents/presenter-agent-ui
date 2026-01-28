@@ -2,12 +2,12 @@
 
 **Document Version:** 1.5  
 **Last Updated:** January 28, 2026  
-**Status:** Backend complete (Soketi-only); client integration with backend pending  
+**Status:** Backend complete (Sockudo-only); client integration with backend pending  
 **Purpose:** Roadmap for migrating from poll-based to push-based message retrieval using WebSockets
 
-**Changelog (1.5):** **Soketi-only backend.** No raw WebSocket or in-process server; no `GET /api/ws/token` or `pnpm ws`. Added **Client-side changes required (summary)** with a concise checklist. Clarified that the extension must use a **Pusher transport** (pusher-js) to connect; existing raw WebSocket service cannot talk to the current server. Removed optional "dual path" from Client TODO; backend is Soketi only.
+**Changelog (1.5):** **Sockudo-only backend.** No raw WebSocket or in-process server; no `GET /api/ws/token` or `pnpm ws`. Added **Client-side changes required (summary)** with a concise checklist. Clarified that the extension must use a **Pusher transport** (pusher-js) to connect; existing raw WebSocket service cannot talk to the current server. Removed optional "dual path" from Client TODO; backend is Sockudo only.
 
-**Changelog (1.4):** **Server implementation complete.** Backend uses **Soketi** (Pusher protocol) on **port 3005** with Next.js as trigger + auth. Added **Section 11.11 (Server Implementation Summary)**, **Protocol Mapping** table (server events ↔ client expectations), and **Client (Chrome Extension) TODO List** for finishing extension-side integration.
+**Changelog (1.4):** **Server implementation complete.** Backend uses **Sockudo** (Pusher protocol) on **port 3005** with Next.js as trigger + auth. Added **Section 11.11 (Server Implementation Summary)**, **Protocol Mapping** table (server events ↔ client expectations), and **Client (Chrome Extension) TODO List** for finishing extension-side integration.
 
 **Changelog (1.3):** Added **Implementation Progress** section (client completion summary, test coverage, remaining work). Expanded **Backend Requirements** (Section 11) for Next.js: WebSocket hosting options, auth, session subscription, message protocol (no code snippets), heartbeat, errors, scaling, and CORS for the extension.
 
@@ -21,9 +21,9 @@
 
 ## Implementation Progress
 
-**Backend (Next.js) — complete.** Real-time messaging uses **Soketi only** (Pusher protocol) on **port 3005**. There is no raw WebSocket endpoint, no in-process server, and no `GET /api/ws/token`. See Section 11.11 and **Client-side changes required (summary)** below.
+**Backend (Next.js) — complete.** Real-time messaging uses **Sockudo only** (Pusher protocol) on **port 3005**. There is no raw WebSocket endpoint, no in-process server, and no `GET /api/ws/token`. See Section 11.11 and **Client-side changes required (summary)** below.
 
-**Client (extension) — partial.** Tasks 1–7 (WebSocket service, Message Sync Manager, polling fallback, UI) are implemented for a **raw WebSocket** protocol. The **current server speaks only Soketi/Pusher**, so the extension must add a **Pusher-based transport** and event mapping; the existing raw WebSocket service cannot connect to this backend. See **Client-side changes required (summary)** and **Client (Chrome Extension) TODO List** (§ after Section 11).
+**Client (extension) — partial.** Tasks 1–7 (WebSocket service, Message Sync Manager, polling fallback, UI) are implemented for a **raw WebSocket** protocol. The **current server speaks only Sockudo/Pusher**, so the extension must add a **Pusher-based transport** and event mapping; the existing raw WebSocket service cannot connect to this backend. See **Client-side changes required (summary)** and **Client (Chrome Extension) TODO List** (§ after Section 11).
 
 | Area | Status | Notes |
 |------|--------|-------|
@@ -32,8 +32,8 @@
 | **Task 5** | ✅ Done | Polling fallback: adaptive intervals (3s active, 30s idle), start/stop, merge into store with dedup and sort. |
 | **Task 6** | ✅ Done | ConnectionStatusBadge (Connected / Connecting / Reconnecting / Polling / Disconnected / Offline), TypingIndicator, TaskUI wiring (startSync/stopSync, visibility-based reconnect). |
 | **Task 7** | ✅ Done | Unit tests: websocketService (11), messageSyncService (6), pollingFallbackService (4). Total 28 tests across 5 suites; `yarn test` uses `jest.config.js`. |
-| **Backend** | ✅ Done | Soketi (Pusher) on port 3005, Next.js trigger + `/api/pusher/auth`. Events: `new_message`, `interact_response`. See §11.11. |
-| **Client ↔ Backend** | ⏳ Pending | Extension must add Pusher/Soketi transport and event mapping; see **Client TODO List** below. |
+| **Backend** | ✅ Done | Sockudo (Pusher) on port 3005, Next.js trigger + `/api/pusher/auth`. Events: `new_message`, `interact_response`. See §11.11. |
+| **Client ↔ Backend** | ⏳ Pending | Extension must add Pusher/Sockudo transport and event mapping; see **Client TODO List** below. |
 | **Manual QA** | ⏳ Pending | Checklist in Section 10.1 (badge states, typing, session switch, etc.). |
 
 **Deliverables in repo:** `websocketService.ts`, `websocketTypes.ts`, `messageSyncService.ts`, `pollingFallbackService.ts`, `ConnectionStatusBadge.tsx`, `TypingIndicator.tsx`, three test files, `jest.config.js`; changes in `currentTask.ts`, `store.ts`, `TaskUI.tsx`, `webpack.config.js`.
@@ -42,15 +42,15 @@
 
 ### Client-side changes required (summary)
 
-The server exposes **only Soketi (Pusher protocol)** on port 3005. The extension cannot use the existing raw WebSocket flow (`GET /api/ws/token` + `ws://...?token=...` + SUBSCRIBE) because that API and server path have been removed. The following client changes are required:
+The server exposes **only Sockudo (Pusher protocol)** on port 3005. The extension cannot use the existing raw WebSocket flow (`GET /api/ws/token` + `ws://...?token=...` + SUBSCRIBE) because that API and server path have been removed. The following client changes are required:
 
 | What | Action |
 |------|--------|
-| **Transport** | Add a **Pusher-based transport** (e.g. `pusher-js`): connect to Soketi with `wsHost`, `wsPort: 3005`, `authEndpoint: '/api/pusher/auth'`. Subscribe to channel `private-session-<sessionId>`. Do **not** use `GET /api/ws/token` or a raw WebSocket URL. |
+| **Transport** | Add a **Pusher-based transport** (e.g. `pusher-js`): connect to Sockudo with `wsHost`, `wsPort: 3005`, `authEndpoint: '/api/pusher/auth'`. Subscribe to channel `private-session-<sessionId>`. Do **not** use `GET /api/ws/token` or a raw WebSocket URL. |
 | **Auth** | When subscribing to a private channel, Pusher will call `POST /api/pusher/auth` with form data `socket_id`, `channel_name`. Send the same Bearer token used for REST (e.g. `auth: { headers: { Authorization: 'Bearer ' + accessToken } }` in pusher-js). Ensure CORS allows the extension origin for that endpoint. |
 | **Events** | Bind to Pusher events **`new_message`** and **`interact_response`**. Map `new_message` payload `{ type, sessionId, message }` to the client’s `ChatMessage` (e.g. `id` ← `message.messageId`) and feed into Message Sync Manager. Handle `interact_response` as assistant turn (update store or refresh from REST). |
 | **Connection state** | Drive ConnectionStatusBadge from Pusher connection state. Keep polling fallback when Pusher is unavailable. |
-| **Env / build** | Set `PUSHER_KEY`, `PUSHER_WS_HOST`, `PUSHER_WS_PORT` (3005) in extension env; inject into webpack (e.g. `WEBPACK_PUSHER_*`) so the transport uses the correct Soketi URL. |
+| **Env / build** | Set `PUSHER_KEY`, `PUSHER_WS_HOST`, `PUSHER_WS_PORT` (3005) in extension env; inject into webpack (e.g. `WEBPACK_PUSHER_*`) so the transport uses the correct Sockudo URL. |
 
 **Deprecated / removed on server:** Raw WebSocket endpoint, `GET /api/ws/token`, in-process WebSocket server, `pnpm ws` script, `WS_PORT` / `NEXT_PUBLIC_WS_URL`. The extension must **not** rely on these.
 
@@ -1578,7 +1578,7 @@ The backend is assumed to run on **Next.js** (App Router or Pages). These requir
 
 Next.js serves HTTP by default. WebSockets require a long-lived connection, so the WebSocket endpoint cannot be implemented as a standard API Route handler (which is request/response).
 
-**Current implementation:** The backend uses **Soketi only** (a separate, Pusher-compatible WebSocket server on port 3005). Next.js does not expose a raw WebSocket path like `/ws/session/:sessionId`; there is no in-process WebSocket server and no `GET /api/ws/token`. The client must use a **Pusher protocol client** (e.g. `pusher-js`) to connect to Soketi; see **Section 11.11** for details.
+**Current implementation:** The backend uses **Sockudo only** (a separate, Pusher-compatible WebSocket server on port 3005). Next.js does not expose a raw WebSocket path like `/ws/session/:sessionId`; there is no in-process WebSocket server and no `GET /api/ws/token`. The client must use a **Pusher protocol client** (e.g. `pusher-js`) to connect to Sockudo; see **Section 11.11** for details.
 
 The following paragraphs (§11.2–11.10) describe a generic raw WebSocket protocol for reference. The **actual** server behaviour is documented in **§11.11**.
 
@@ -1704,22 +1704,22 @@ The extension loads in a `chrome-extension://` origin. Your WebSocket server (or
 
 ---
 
-### 11.11 Server Implementation Summary (Current — Soketi only)
+### 11.11 Server Implementation Summary (Current — Sockudo only)
 
-The backend has **one** real-time implementation: **Soketi** (Pusher-compatible WebSocket server) on **port 3005**, with **Next.js** triggering events and authorizing channel access. There is no raw WebSocket endpoint, no in-process server, and no `GET /api/ws/token`. The extension must use a **Pusher/Soketi client** (e.g. `pusher-js`) to connect.
+The backend has **one** real-time implementation: **Sockudo** (Pusher-compatible WebSocket server) on **port 3005**, with **Next.js** triggering events and authorizing channel access. There is no raw WebSocket endpoint, no in-process server, and no `GET /api/ws/token`. The extension must use a **Pusher/Sockudo client** (e.g. `pusher-js`) to connect.
 
 | Item | Implementation |
 |------|----------------|
-| **WebSocket server** | **Soketi** (Docker), port **3005**. Redis used by Soketi for scaling. |
+| **WebSocket server** | **Sockudo** (Docker), port **3005**. Uses local adapter (no Redis); Redis optional for horizontal scaling. |
 | **Connection URL** | `ws://<host>:3005` (dev) or `wss://<host>:3005` (prod). No path like `/ws/session/:sessionId`; session is expressed via **channel** name. |
 | **Channels** | One **private** channel per session: `private-session-<sessionId>`. Subscription requires auth. |
 | **Authentication** | **POST /api/pusher/auth** (Next.js API route). Client sends **form data**: `socket_id`, `channel_name`. Server validates session (Bearer or cookie), verifies user owns the session (DB lookup), returns `pusher.authorizeChannel(socketId, channel)` response. |
 | **Client SDK** | Extension must use **pusher-js** (or equivalent Pusher protocol client). Configure: `key`, `wsHost`, `wsPort: 3005`, `authEndpoint: '/api/pusher/auth'` (same-origin to Next.js or CORS-enabled). |
 | **Server events (triggered by Next.js)** | **`new_message`** — when a user message is persisted (POST /api/agent/interact). Payload: `{ type: "new_message", sessionId, message }` where `message` has `messageId`, `role`, `content`, `sequenceNumber`, `timestamp`, `status?`, `actionString?`, `domSummary?`, `metadata?`. **`interact_response`** — when an assistant turn is returned (same interact call). Payload: `{ type: "interact_response", sessionId, data }` with `taskId`, `action`, `thought`, `status`, `currentStepIndex`, `verification`, `correction`. |
-| **Heartbeat** | Soketi/Pusher handles connection keepalive. No separate PING/PONG in application protocol. |
-| **Env (server)** | `SOKETI_APP_ID`, `SOKETI_APP_KEY`, `SOKETI_APP_SECRET`, `SOKETI_HOST` (e.g. `127.0.0.1`), `SOKETI_PORT` (3005). |
+| **Heartbeat** | Sockudo/Pusher handles connection keepalive. No separate PING/PONG in application protocol. |
+| **Env (server)** | `SOCKUDO_APP_ID`, `SOCKUDO_APP_KEY`, `SOCKUDO_APP_SECRET`, `SOCKUDO_HOST` (e.g. `127.0.0.1`), `SOCKUDO_PORT` (3005). |
 | **Env (client)** | `NEXT_PUBLIC_PUSHER_KEY` (= app key), `NEXT_PUBLIC_PUSHER_WS_HOST`, `NEXT_PUBLIC_PUSHER_WS_PORT` (3005). |
-| **Files (server)** | `lib/pusher/server.ts` (getPusher, triggerNewMessage, triggerInteractResponse), `app/api/pusher/auth/route.ts`, `app/api/agent/interact/route.ts` (calls trigger* after persist/response), `docker-compose.yml` (soketi service on 3005). |
+| **Files (server)** | `lib/pusher/server.ts` (getPusher, triggerNewMessage, triggerInteractResponse), `app/api/pusher/auth/route.ts`, `app/api/agent/interact/route.ts` (calls trigger* after persist/response), `docker-compose.yml` (sockudo service on 3005). |
 
 ---
 
@@ -1731,16 +1731,16 @@ The backend has **one** real-time implementation: **Soketi** (Pusher-compatible 
 | **MESSAGE_UPDATE** (messageId, status, updatedAt, error?) | Not yet sent by server (only new_message and interact_response are triggered). | Optional: treat **interact_response** as a cue to refresh messages from REST or to add an “assistant turn” in the store. |
 | **TYPING** (isTyping, context?) | Not sent by server. | Optional: infer “typing” between sending a user message and receiving **interact_response**; or keep polling/UI as-is. |
 | **SESSION_UPDATE** | Not sent by server. | Use existing REST/session APIs if needed. |
-| **PONG** | Handled by Soketi/Pusher; no app-level PING/PONG. | Rely on Pusher connection state; no custom heartbeat needed. |
-| **ERROR** | Pusher auth returns 401/403; Soketi may send connection errors. | Map to client `stateChange` / `fallback` or show in ConnectionStatusBadge. |
+| **PONG** | Handled by Sockudo/Pusher; no app-level PING/PONG. | Rely on Pusher connection state; no custom heartbeat needed. |
+| **ERROR** | Pusher auth returns 401/403; Sockudo may send connection errors. | Map to client `stateChange` / `fallback` or show in ConnectionStatusBadge. |
 
 ---
 
 ### Client (Chrome Extension) TODO List
 
-Use this checklist to finish extension-side integration with the **current** backend (Soketi/Pusher on port 3005).
+Use this checklist to finish extension-side integration with the **current** backend (Sockudo/Pusher on port 3005).
 
-1. **Add Pusher/Soketi transport**
+1. **Add Pusher/Sockudo transport**
    - [ ] Add dependency: `pusher-js` (or use existing if already added for web).
    - [ ] Create a **Pusher-based transport** (e.g. `pusherTransport.ts` or extend `websocketService.ts`) that:
      - Connects using `Pusher(key, { wsHost, wsPort: 3005, authEndpoint, ... })`.
@@ -1749,7 +1749,7 @@ Use this checklist to finish extension-side integration with the **current** bac
    - [ ] Use **same auth as REST**: `/api/pusher/auth` accepts **Bearer** (via `Authorization` header) and **cookie** (same-origin). For the extension (cross-origin), pass the same token used for REST: e.g. with `pusher-js`, use `auth: { headers: { Authorization: 'Bearer ' + accessToken } }` when creating the Pusher instance so the auth endpoint receives the token. Ensure CORS on Next.js allows the extension origin for `POST /api/pusher/auth` if needed.
 
 2. **Environment / build configuration**
-   - [ ] Add env vars for Soketi/Pusher: `PUSHER_KEY` (or `NEXT_PUBLIC_PUSHER_KEY`), `PUSHER_WS_HOST`, `PUSHER_WS_PORT` (3005). In webpack, inject e.g. `WEBPACK_PUSHER_KEY`, `WEBPACK_PUSHER_WS_HOST`, `WEBPACK_PUSHER_WS_PORT`.
+   - [ ] Add env vars for Sockudo/Pusher: `PUSHER_KEY` (or `NEXT_PUBLIC_PUSHER_KEY`), `PUSHER_WS_HOST`, `PUSHER_WS_PORT` (3005). In webpack, inject e.g. `WEBPACK_PUSHER_KEY`, `WEBPACK_PUSHER_WS_HOST`, `WEBPACK_PUSHER_WS_PORT`.
    - [ ] Ensure **authEndpoint** points to the Next.js app (e.g. `https://yourapp.com/api/pusher/auth`) so the extension’s auth request succeeds (CORS and credentials if needed).
 
 3. **Event mapping (Pusher → internal)**
@@ -1761,7 +1761,7 @@ Use this checklist to finish extension-side integration with the **current** bac
    - [ ] Keep **polling fallback** when Pusher is not configured or connection fails; use existing `pollingFallbackService` and state (`fallback`) so the UI still works without real-time.
 
 5. **Manual QA**
-   - [ ] With Soketi and Next.js running (e.g. `docker compose up` soketi + redis, and Next.js with `SOKETI_APP_KEY` set), open extension, select a session, and confirm connection state becomes “Connected.”
+   - [ ] With Sockudo and Next.js running (e.g. `docker compose up` sockudo + redis, and Next.js with `SOCKUDO_APP_KEY` set), open extension, select a session, and confirm connection state becomes “Connected.”
    - [ ] Send a message via interact; confirm **new_message** and **interact_response** appear in the UI (or messages list updates) without refresh.
    - [ ] Switch session; confirm subscription changes and messages for the new session stream correctly.
    - [ ] Run through Section 10.1 verification checklist (badge states, typing, session switch, etc.).
@@ -1790,7 +1790,7 @@ Use this checklist to finish extension-side integration with the **current** bac
 **Phase 4: Polish (Tasks 6-7)** — ✅ **COMPLETE**
 6. [x] **Task 6:** UI Integration & Status Indicators — ✅ **COMPLETE**
 7. [x] **Task 7:** Testing & Verification — ✅ **COMPLETE** (unit tests)
-8. [x] **Backend:** Soketi (Pusher) on port 3005, Next.js trigger + `/api/pusher/auth` — ✅ **COMPLETE** (see §11.11)
+8. [x] **Backend:** Sockudo (Pusher) on port 3005, Next.js trigger + `/api/pusher/auth` — ✅ **COMPLETE** (see §11.11)
 9. [ ] **Client ↔ Backend:** Extension Pusher transport, auth, event mapping — ⏳ **PENDING** (see **Client TODO List** above)
 10. [ ] **Manual QA:** Verification checklist (Section 10.1) — ⏳ **PENDING**
 
@@ -1805,7 +1805,7 @@ Use this checklist to finish extension-side integration with the **current** bac
 | 5 | Task 5: Polling Fallback | ✅ COMPLETE | Task 4 |
 | 6 | Task 6: UI Integration | ✅ COMPLETE | Task 5 |
 | 7 | Task 7: Testing | ✅ COMPLETE | Tasks 1-6 |
-| 8 | Backend (Soketi/Pusher) | ✅ COMPLETE | Server-side |
+| 8 | Backend (Sockudo/Pusher) | ✅ COMPLETE | Server-side |
 | 9 | Client Pusher transport & mapping | ⏳ PENDING | Backend, extension |
 
 ---
@@ -1823,7 +1823,7 @@ Use this checklist to finish extension-side integration with the **current** bac
 | **Zustand Integration** | ✅ Implemented | Task 4 — `messageSyncService.ts` |
 | **Polling Fallback** | ✅ Implemented | Task 5 — `pollingFallbackService.ts` |
 | **UI Status Indicators** | ✅ Implemented | Task 6 — ConnectionStatusBadge, TypingIndicator |
-| **Backend (Soketi/Pusher)** | ✅ Implemented | Port 3005, `/api/pusher/auth`, events `new_message`, `interact_response` (§11.11) |
+| **Backend (Sockudo/Pusher)** | ✅ Implemented | Port 3005, `/api/pusher/auth`, events `new_message`, `interact_response` (§11.11) |
 | **Client ↔ Backend** | ⏳ Pending | Extension: add Pusher transport, auth, event mapping (see Client TODO List) |
 
 ### 13.2 Implementation Files Reference

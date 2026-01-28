@@ -59,6 +59,7 @@ import { outcomePredictionNode, routeAfterOutcomePrediction } from "./nodes/outc
 import { planningNode, routeAfterPlanning } from "./nodes/planning"
 import { replanningNode, routeAfterReplanning } from "./nodes/replanning" // Phase 3 Task 2
 import { routeAfterStepRefinement, stepRefinementNode } from "./nodes/step-refinement"
+import { goalAchievedNode } from "./nodes/goal-achieved"
 import { routeAfterVerification, verificationNode } from "./nodes/verification"
 import { DEFAULT_GRAPH_CONFIG } from "./types"
 import type { ComplexityLevel, GraphTaskStatus, InteractGraphConfig, InteractGraphState, NodeName } from "./types"
@@ -156,6 +157,7 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
   graph.addNode("direct_action", directActionNode)
   graph.addNode("action_generation", actionGenerationNode)
   graph.addNode("verification", verificationNode)
+  graph.addNode("goal_achieved", goalAchievedNode)
   graph.addNode("correction", correctionNode)
   graph.addNode("outcome_prediction", outcomePredictionNode)
   graph.addNode("finalize", finalizeNode)
@@ -229,16 +231,21 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
   )
 
   // Add conditional edges from verification
-  // Phase 3 Task 2: Route to replanning instead of planning for DOM/URL change handling
+  // When verification indicates goal achieved, complete task (goal_achieved → finalize)
+  // Phase 3 Task 2: Otherwise route to replanning for DOM/URL change handling
   typedGraph.addConditionalEdges(
     "verification",
     routeAfterVerification,
     {
       "correction": "correction",
+      "goal_achieved": "goal_achieved",
       "planning": "replanning", // Route through replanning node
       "finalize": "finalize",
     }
   )
+
+  // goal_achieved sets actionResult to finish() and goes to finalize
+  typedGraph.addEdge("goal_achieved", "finalize")
 
   // Phase 3 Task 2: Add conditional edges from replanning
   typedGraph.addConditionalEdges(

@@ -1,8 +1,35 @@
 # Verification Process: Step-by-Step Walkthrough
 
-**Purpose:** Explain how the verification system determines whether an action succeeded after the Chrome extension executes it. This document is the **canonical** flow description and **implementation roadmap** for the verification process.
+**Purpose:** Explain how the verification system determines whether an action succeeded after the Chrome extension executes it. This document is the **canonical** flow description and **implementation roadmap** for the verification process. **Many errors originate here** — keep this doc in sync with code and use it as the single source of truth.
 
-**Example flow:** Extension executes `click(169)` → sends updated DOM/URL → backend verifies if the click achieved its goal.
+**Example flow:** Extension executes `click(169)` → sends updated DOM/URL → backend verifies if the click achieved its goal → if **goalAchieved** is true, task completes with `finish()` (no word-based parsing).
+
+---
+
+## Critical: Deterministic Task Complete (goalAchieved)
+
+**Do not** decide "task complete" by parsing the verification **reason** text (e.g. looking for "successful", "completed", "aligns with the user's goal"). Wording changes break routing.
+
+**Contract:**
+
+1. **Semantic LLM** returns JSON: `{ "match": true|false, "confidence": 0.0-1.0, "reason": "..." }`.
+   - **`match`** = true **only** when the user's goal was achieved (e.g. they asked to go to overview and the page now shows overview). The system uses **`match`** deterministically to decide task complete.
+   - **`reason`** is for logs and UI only; routing must **not** depend on its wording.
+
+2. **Verification engine** sets **`goalAchieved`** on the result:
+   - `goalAchieved = success && (semanticResult.match === true) && (confidence >= 0.85)`.
+   - So: verification passed (confidence ≥ 0.70), LLM said **match = true**, and confidence ≥ 0.85.
+
+3. **Graph router** uses **only** `verificationResult.goalAchieved === true` to route to **goal_achieved** (task complete). No parsing of `reason`.
+
+**Files:** `lib/agent/verification-engine.ts` (sets goalAchieved), `lib/agent/verification/semantic-verification.ts` (LLM contract), `lib/agent/graph/nodes/verification.ts` (router checks goalAchieved only), `lib/agent/graph/nodes/goal-achieved.ts` (sets actionResult to finish()).
+
+**Other deterministic patterns (do not parse reason text for routing):**
+
+- **Replanning:** Router uses **only** `replanningResult.planRegenerated === true` to route to planning after a regenerated plan (not `reason.includes("regenerated")`). Modify vs regenerate uses **only** `validationResult.minorModificationsOnly === true` (set when building PlanValidationResult from suggestedChanges); no parsing of change text in `determineReplanAction`. See `lib/agent/replanning-engine.ts` (PlanValidationResult.minorModificationsOnly, determineReplanAction).
+- **Semantic verification fallback:** When the LLM returns invalid JSON, we default to `match: false` (not inferred from free text) so we never treat a malformed response as goal achieved. See `lib/agent/verification/semantic-verification.ts` (catch block).
+- **Critic approval:** Approved is set **only** from `<Approved>YES</Approved>` or `<Approved>NO</Approved>` (regex capture). No fallback to free-text (e.g. "APPROVED>YES"). See `lib/agent/critic-engine.ts` (parseCriticResponse).
+- **Goal_achieved display:** Description for expectedOutcome uses **semanticSummary** (set by engine from semantic verdict); do not parse `reason` (e.g. "Semantic verdict: ...") for display. See `lib/agent/verification/types.ts` (semanticSummary), `lib/agent/graph/nodes/goal-achieved.ts`.
 
 ---
 
@@ -23,6 +50,8 @@
 | **Observation-Based Verification** | ✅ Implemented | 3.0 | DOM diff + observation list + semantic verdict |
 | **beforeState on TaskAction** | ✅ Implemented | 3.0 | URL + domHash (+ optional semanticSkeleton) when action generated |
 | **clientObservations in request** | ✅ Implemented | 3.0 | Extension witnessed: didNetworkOccur, didDomMutate, didUrlChange |
+| **goalAchieved (deterministic)** | ✅ Implemented | 3.0.2 | Set from LLM `match` + confidence; router uses only this (no reason parsing) |
+| **goal_achieved node** | ✅ Implemented | 3.0.2 | When goalAchieved=true → sets actionResult=finish() → finalize → status completed |
 
 **Legend:** ✅ = Complete | 🔄 = In Progress | 🔲 = Planned
 
@@ -40,8 +69,9 @@ Verification is **observation-based only**. The client sends DOM on every call; 
 4. **Backend** loads task context: previous action and **beforeState** (url, domHash, optional semanticSkeleton from when that action was generated).
 5. **Verification Engine** compares beforeState vs current (url, domHash, and when available semantic skeleton), builds an **observation list**, then asks the LLM for a **semantic verdict** (on observations only — no full DOM).
 6. **Router** decides based on result:
-   - Success (confidence ≥ 70%) → Generate next action or `finish()`
-   - Failure (confidence < 70%) → Route to correction node
+   - **goalAchieved === true** (set by engine when success && LLM `match` === true && confidence ≥ 0.85) → Route to **goal_achieved** node → sets `actionResult = finish()` → **finalize** → status **completed** (task ends; no more actions).
+   - Success but goalAchieved !== true → Generate next action (planning → step_refinement / action_generation).
+   - Failure (confidence < 70%) → Route to correction node.
 
 ### Visual Flow
 
@@ -65,9 +95,12 @@ Extension                      Server                       Verification Engine
     │                            │     LLM verdict on observations  │
     │                            │                                  │
     │                            │ ◀──────────────────────────────────
-    │                            │    { success, confidence, reason }
+    │                            │    { success, confidence, reason, goalAchieved }
+    │                            │    (goalAchieved = success && match && confidence≥0.85)
     │                            │                                  │
-    │ ◀──────────────────────────│  5. Route: next action or correct
+    │                            │  5. Route: goal_achieved (if goalAchieved) else
+    │                            │     next action or correct
+    │ ◀──────────────────────────│
     │    { action, thought }     │
 ```
 
@@ -104,9 +137,11 @@ Example: user goal **"Go to overview, then open the Settings tab"** — two acti
   - Integrate `clientObservations` (network, DOM mutate, URL change).
   - If **no change at all** (URL same, domHash same, no client observations) → fail without LLM.
   - Else → LLM semantic verdict on observation list only → success if confidence ≥ 0.70.
-- Generate next action (e.g. "Settings" tab) and save new TaskAction with new beforeState.
+  - **goalAchieved** = success && (LLM returned **match** = true) && (confidence ≥ 0.85). Set on VerificationResult; router uses **only** this (no parsing of reason text).
+- **If goalAchieved === true:** Route to **goal_achieved** → set actionResult to `finish()` → finalize → status **completed** (task ends).
+- **Else:** Generate next action (e.g. "Settings" tab) and save new TaskAction with new beforeState.
 
-**Server responds:** `{ taskId, action, thought }` or finish if task complete.
+**Server responds:** `{ taskId, action, thought }` or finish if task complete (goalAchieved was true).
 
 ---
 
@@ -187,9 +222,28 @@ If `lastAction` exists but `beforeState` is missing (e.g. migration), verificati
      - **Hash-only path:** If beforeState.domHash ≠ afterDomHash → "Page content updated (DOM changed)". Else → "Page content did not change (DOM hash identical)".
    - **Focus:** If activeElement changed, add observation.
    - **Client witness:** If clientObservations.didNetworkOccur → add "Background network activity detected"; if didDomMutate → "DOM was mutated"; if didUrlChange defined → "Extension reported URL changed: true/false".
-3. **No change at all:** If URL did not change, domHash is identical, and no client observation (no network, no DOM mutate) → **return failure without calling the LLM** (confidence 0.2, reason includes observation list).
-4. **Semantic verdict:** Call LLM with **only** user goal, action, and observation list (no full DOM). LLM returns match, confidence, reason.
-5. **Result:** success = (confidence ≥ 0.70); return VerificationResult with success, confidence, reason (observation list + semantic verdict + confidence).
+3. **No change at all:** If URL did not change, domHash is identical, and no client observation (no network, no DOM mutate) → **return failure without calling the LLM** (confidence 0.2, reason includes observation list). Do **not** set goalAchieved.
+4. **Semantic verdict:** Call LLM with **only** user goal, action, and observation list (no full DOM). LLM returns **match** (boolean), confidence, reason. **Contract (see Semantic Verification LLM below):** `match` = true only when the user's goal was achieved; the system uses `match` deterministically — do not rely on wording in `reason`.
+5. **Result:** success = (confidence ≥ 0.70). Set **goalAchieved** = success && (semanticResult.match === true) && (confidence ≥ 0.85). Return VerificationResult with success, confidence, reason, comparison.semanticMatch, and **goalAchieved**.
+6. **Graph router (verification node):** Uses **only** `verificationResult.goalAchieved === true` to route to **goal_achieved**. No parsing of `reason` (no word-based signals). If goalAchieved → goal_achieved node → sets actionResult = { action: "finish()", thought: "..." } → finalize → status **completed**.
+
+---
+
+## Semantic Verification LLM Contract
+
+**Where:** `lib/agent/verification/semantic-verification.ts` — `performSemanticVerificationOnObservations`.
+
+**Input:** User goal, action executed, observation list (URL change, element appeared/disappeared, clientObservations, etc.). No full DOM.
+
+**Output (JSON only):** `{ "match": true|false, "confidence": 0.0-1.0, "reason": "Brief explanation" }`.
+
+**Contract (must be reflected in the prompt):**
+
+- **`match`**: Set to **true** only when the observed changes indicate that the **user's goal was achieved** (e.g. user asked "go to overview" and the page now shows overview content or URL changed to overview). Set to **false** otherwise.
+- The system uses **`match`** deterministically to decide task complete (goalAchieved). Do **not** rely on wording in **`reason`** for routing — if the LLM says "completed" or "successful" in reason but returns match=false, the task will not complete; if match=true, the task completes regardless of reason text.
+- **`reason`**: User-friendly explanation for logs and UI only. Avoid changing routing logic based on reason strings (e.g. no scanning for "successful" vs "completed").
+
+**Guidelines in prompt:** URL changed + navigation goal → match true; page content updated + goal to see new content → match true; no changes → match false. Be decisive; high confidence when observations clearly support success or failure.
 
 ---
 
@@ -285,9 +339,38 @@ When observation-based verification fails (confidence < 70%), the correction nod
 ## Data Structures (Logical)
 
 - **beforeState (TaskAction):** `{ url, domHash, activeElement?, semanticSkeleton? }`. Captured when the action is generated. Verification compares this to current url/dom/skeleton.
-- **VerificationResult:** success (confidence ≥ 0.70), confidence, reason, expectedState, actualState, comparison (domChecks, semanticMatch, overallMatch, nextGoalCheck).
+- **VerificationResult (engine):** success (confidence ≥ 0.70), confidence, reason, expectedState, actualState, comparison (domChecks, semanticMatch, overallMatch, nextGoalCheck), **goalAchieved**, **semanticSummary**. **goalAchieved** = success && (semanticResult.match === true) && (confidence ≥ 0.85). **semanticSummary** = first 300 chars of semantic verdict reason (for display only). Set by engine only; graph uses goalAchieved only to route; goal_achieved node uses semanticSummary for description (no parsing of reason).
+- **VerificationResult (graph state):** Same shape; goalAchieved and semanticSummary passed through from engine. Router checks **only** `verificationResult.goalAchieved === true`.
 - **ClientObservations (request):** Optional `{ didNetworkOccur?, didDomMutate?, didUrlChange? }` from the extension.
 - **ExpectedOutcome:** Used for correction and prediction-based path; includes description, domChanges (elementShouldExist, urlShouldChange, attributeChanges, elementsToAppear), nextGoal.
+
+---
+
+## Goal_Achieved Node and Task Complete Flow
+
+**Where:** `lib/agent/graph/nodes/goal-achieved.ts`, `lib/agent/graph/interact-graph.ts`.
+
+**When:** Router sees `verificationResult.goalAchieved === true` after the verification node.
+
+**What:** goal_achieved node sets:
+- **actionResult** = `{ thought: "Task complete. ...", action: "finish()" }`.
+- **expectedOutcome** = description from **verificationResult.semanticSummary** (set by engine); fallback to reason substring if semanticSummary missing. Do not parse reason text (e.g. "Semantic verdict: ...") for display.
+- Then graph edges: goal_achieved → **finalize**. Finalize node sees actionResult.action.startsWith("finish(") and sets status to **completed**.
+
+**Why:** Stops the "multiple time" loop: without this, after verification passed the graph always went to planning → action_generation and produced another click (e.g. click(169) again). With goalAchieved and the goal_achieved node, we complete the task once when the semantic LLM says match=true with high confidence.
+
+**Critical:** Do not replace this with word-based checks on reason (e.g. "successful", "completed"). Use only the **goalAchieved** flag set by the engine from the LLM's **match** field.
+
+---
+
+## Common Errors and Pitfalls
+
+1. **Parsing `reason` to decide task complete:** Do not scan for words like "successful", "completed", "aligns with the user's goal" in verificationResult.reason. The LLM may use different wording; routing must use only **goalAchieved** (which is set from the LLM's **match** boolean and confidence).
+2. **Relying on LLM wording in `reason`:** The prompt must state that **match** is the contract for "goal achieved". If the prompt does not make this clear, the LLM might set match=false but write "task completed" in reason — routing would then fail to complete the task.
+3. **Missing goalAchieved on error path:** If verification throws, the catch block returns a synthetic success (e.g. confidence 0.5). Do **not** set goalAchieved in that path (leave undefined) so we don't complete the task on error.
+4. **Skipping verification when beforeState is missing:** If lastAction exists but beforeState is missing, we skip verification and continue (log warning). In that case verificationResult is undefined; goalAchieved is not set; router goes to planning. Document this so future changes don't assume verificationResult is always present after verification node.
+5. **Changing confidence threshold without doc:** goalAchieved uses confidence ≥ 0.85. If this threshold is changed in code, update this doc and the "Configuration" section.
+6. **Parsing critic or replanning text for routing:** Critic approval must come only from `<Approved>YES|NO</Approved>`. Replanning modify vs regenerate must use `minorModificationsOnly` only (set when building PlanValidationResult); do not re-parse suggestedChanges strings in determineReplanAction.
 
 ---
 
@@ -295,12 +378,15 @@ When observation-based verification fails (confidence < 70%), the correction nod
 
 - **VERIFICATION_MODEL:** Model for semantic verification (default e.g. gpt-4o-mini).
 - **Success threshold:** 0.70 (confidence ≥ 0.70 → success).
+- **Goal-achieved threshold:** 0.85 (goalAchieved = success && match && confidence ≥ 0.85). Used only for routing to goal_achieved; do not confuse with success threshold.
 - Observation-based path: no change (URL same, hash same, no client observations) → fail without LLM.
 
 ---
 
 ## Changelog (Summary)
 
+- **v3.0.3:** **Broader deterministic patterns:** (1) **Critic:** approved set only from `<Approved>YES|NO</Approved>` (no free-text fallback). (2) **Replanning:** `PlanValidationResult.minorModificationsOnly` set when building result; `determineReplanAction` uses only this for modify vs regenerate (no parsing of suggestedChanges text). (3) **Verification display:** `VerificationResult.semanticSummary` set by engine; goal_achieved node uses semanticSummary for description (no parsing of reason for "Semantic verdict: ...").
+- **v3.0.2:** **Deterministic task complete:** VerificationResult has **goalAchieved** (set by engine when success && LLM **match** === true && confidence ≥ 0.85). Graph router uses **only** goalAchieved to route to **goal_achieved** node; no parsing of reason text. **goal_achieved** node sets actionResult = finish() → finalize → status completed. Semantic verification prompt updated: contract that **match** = true only when user's goal achieved; system uses match deterministically. Stops "multiple time" loop (repeated click(169)/click(170)). See "Critical: Deterministic Task Complete" and "Common Errors and Pitfalls".
 - **v3.0.1:** Verification node uses **only** observation-based verification (`verifyActionWithObservations`). If beforeState is missing, verification is skipped (log warning). Client must send DOM on every call.
 - **v3.0:** beforeState (url, domHash, optional semanticSkeleton), clientObservations, buildObservationList, semantic verdict on observations only, verifyActionWithObservations; no full DOM in observation path.
 - **v2.1.1:** URL change handling fixes, action type for `<a>` as navigation, "Not Found" penalty exception when URL changed.
@@ -309,4 +395,4 @@ When observation-based verification fails (confidence < 70%), the correction nod
 
 ---
 
-*Document maintained by Engineering. For implementation details, see `lib/agent/verification-engine.ts`, `lib/agent/verification/`, and `lib/agent/observation/diff-engine.ts`.*
+*Document maintained by Engineering. For implementation details, see `lib/agent/verification-engine.ts`, `lib/agent/verification/` (including `semantic-verification.ts` for LLM contract), `lib/agent/graph/nodes/verification.ts` (router), `lib/agent/graph/nodes/goal-achieved.ts`, and `lib/agent/observation/diff-engine.ts`. This doc is the single source of truth for verification and task-complete logic; keep it in sync to avoid errors.*

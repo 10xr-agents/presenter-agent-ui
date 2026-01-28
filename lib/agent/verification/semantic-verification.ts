@@ -160,11 +160,12 @@ Remember: Focus on whether the user would see the expected result. Ignore techni
         confidence: result.confidence ?? (result.match ? 1.0 : 0.0),
       }
     } catch {
-      const match = content.toLowerCase().includes("match") && content.toLowerCase().includes("true")
+      // Deterministic: do not infer match from free text. Default to false so routing never
+      // treats malformed LLM response as goal achieved.
       return {
-        match,
+        match: false,
         reason: content.substring(0, 200),
-        confidence: match ? 0.7 : 0.3,
+        confidence: 0.3,
       }
     }
   } catch (error: unknown) {
@@ -211,10 +212,12 @@ ${observations.map((o) => `- ${o}`).join("\n")}
 **Task:** Did these observed changes indicate that the user's goal was achieved? Answer with JSON only:
 {"match": true/false, "confidence": 0.0-1.0, "reason": "Brief explanation"}
 
+**Contract:** Set "match" to true only when the user's goal was achieved (e.g. they asked to go to overview and the page now shows overview). Set "match" to false otherwise. The system uses "match" deterministically to decide task complete—do not rely on wording in "reason".
+
 Guidelines:
-- If URL changed and the goal was navigation (e.g. "go to overview"), that's a strong success signal.
-- If page content updated and the goal was to see new content, that's a success signal.
-- If nothing changed (URL same, DOM same, no network), the action likely failed.
+- If URL changed and the goal was navigation (e.g. "go to overview"), that's a strong success signal → match: true.
+- If page content updated and the goal was to see new content, that's a success signal → match: true.
+- If nothing changed (URL same, DOM same, no network), the action likely failed → match: false.
 - Be decisive: high confidence when observations clearly support success or failure.`
 
   try {

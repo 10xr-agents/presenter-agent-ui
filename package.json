@@ -1,5 +1,5 @@
 {
-  "name": "nextjs_fullstack_boilerplate",
+  "name": "browser-copilot",
   "version": "0.0.0",
   "private": true,
   "scripts": {
@@ -21,6 +21,7 @@
     "e2e:headless": "playwright test",
     "e2e:ui": "playwright test --ui",
     "worker": "npx tsx scripts/worker.ts",
+    "sockudo:dev": "npx tsx scripts/sockudo-dev.ts",
     "seed": "tsx scripts/seed.ts",
     "migrate": "tsx scripts/migrate.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
@@ -189,7 +190,7 @@
     "webpack": "5.104.0"
   },
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=25"
   },
   "packageManager": "pnpm@10.28.1",
   "pnpm": {

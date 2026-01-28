@@ -31,7 +31,7 @@ async function getSessionForPusherAuth(
 /**
  * POST /api/pusher/auth
  *
- * Soketi/Pusher auth endpoint. Client sends form data: socket_id, channel_name.
+ * Sockudo/Pusher auth endpoint. Client sends form data: socket_id, channel_name.
  * Only private-session-{sessionId} channels are allowed; we verify the user owns the session.
  */
 export async function POST(req: NextRequest) {
