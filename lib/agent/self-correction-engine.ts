@@ -1,10 +1,12 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { VerificationResult } from "./verification-engine"
 import type { PlanStep } from "@/lib/models/task"
 import type { CorrectionStrategy } from "@/lib/models/correction-record"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
+import { classifyActionType } from "./action-type"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { recordUsage } from "@/lib/cost"
 
 /**
  * Self-Correction Engine (Task 8)
@@ -12,6 +14,16 @@ import { getAvailableActionsPrompt, validateActionName } from "./action-config"
  * Analyzes verification failures and generates alternative approaches.
  * Creates corrected steps with new strategies for retry.
  */
+
+/**
+ * Context for cost tracking (optional)
+ */
+export interface CorrectionContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+}
 
 /**
  * Correction result
@@ -47,7 +59,9 @@ export async function generateCorrection(
   currentUrl: string,
   ragChunks: ResolveKnowledgeChunk[] = [],
   hasOrgKnowledge = false,
-  failedAction?: string
+  failedAction?: string,
+  previousCorrections: Array<{ action: string; strategy: string }> = [],
+  context?: CorrectionContext
 ): Promise<CorrectionResult | null> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -56,12 +70,21 @@ export async function generateCorrection(
     throw new Error("OpenAI API key not configured")
   }
 
-  const openai = new OpenAI({
-    apiKey,
+  // Use traced OpenAI client for LangFuse observability
+  const openai = getTracedOpenAIWithConfig({
+    generationName: "self_correction",
+    sessionId: context?.sessionId,
+    userId: context?.userId,
+    tags: ["correction"],
+    metadata: {
+      failedAction,
+      previousCorrectionsCount: previousCorrections.length,
+    },
   })
 
   // Use lightweight model for correction to reduce cost
   const model = process.env.CORRECTION_MODEL || "gpt-4o-mini"
+  const startTime = Date.now()
 
   const systemPrompt = `You are a self-correction AI that analyzes failed actions and generates alternative approaches.
 
@@ -86,7 +109,12 @@ Available Correction Strategies:
 If the failed action was clicking a **dropdown/popup** button (e.g. Patient, Fees, Visits) and the page now shows a **menu** with options like "New/Search", "Dashboard", "Visits", "Records":
 - The correct fix is to **select an option FROM the dropdown** (e.g. click the element for "New/Search" to add a patient), NOT to click a **different top-level nav button**.
 - Use ALTERNATIVE_SELECTOR to pick the **menu item** element ID (e.g. the one for "New/Search" or "Dashboard"), not a sibling nav button.
-- Example: For "add a new patient", prefer clicking "New/Search" in the Patient menu over clicking "Visits".
+- **IMPORTANT**: If you're trying to click a menu item (e.g., "New/Search") after a dropdown opened:
+  1. First ensure you waited briefly after the dropdown opened (use wait(0.5) if needed)
+  2. Find the menu item element ID by searching the DOM for the menu item's text (e.g., "New/Search")
+  3. Menu items often have different IDs than the dropdown button - look for elements with role="menuitem", role="listitem", or elements containing the menu item text
+  4. Make sure you're clicking the actual menu item element, not the dropdown button again
+- Example: For "add a new patient", the workflow should be: click(PatientButtonId) → wait(0.5) → click(NewSearchMenuItemId)
 
 Response Format:
 You must respond in the following format:
@@ -181,10 +209,27 @@ Guidelines:
   userParts.push(`- URL: ${currentUrl}`)
   userParts.push(`- Page Structure Preview: ${domPreview.substring(0, 2000)}`)
 
+  const actionType = failedAction ? classifyActionType(failedAction, currentDom) : undefined
   const looksLikeMenu = /New\/Search|Dashboard|menuEntries|role=["']?(list|listitem|menu)["']?/i.test(domPreview.substring(0, 3000))
-  if (failedAction?.startsWith("click(") && looksLikeMenu) {
+
+  if (actionType === "dropdown") {
+    userParts.push(
+      `\n⚠️ DROPDOWN CONTEXT: The failed action was a **dropdown** click (element has aria-haspopup). You MUST select a **menu item** from the open dropdown (e.g. New/Search for adding a patient), NOT another top-level nav button (e.g. Visits). Use ALTERNATIVE_SELECTOR with the menu item's element ID.`
+    )
+  } else if (failedAction?.startsWith("click(") && looksLikeMenu) {
     userParts.push(
       `\n⚠️ DROPDOWN CONTEXT: The failed action was a click and the page shows menu-like options (e.g. New/Search, Dashboard). Prefer selecting a **menu item** (e.g. New/Search for adding a patient) over clicking another nav button (e.g. Visits).`
+    )
+  }
+
+  // Add previous correction attempts to prevent repeating failed actions
+  if (previousCorrections.length > 0) {
+    userParts.push(`\n⚠️ PREVIOUS CORRECTION ATTEMPTS (DO NOT REPEAT THESE):`)
+    previousCorrections.forEach((correction, idx) => {
+      userParts.push(`${idx + 1}. Strategy: ${correction.strategy}, Action: ${correction.action} - This also failed`)
+    })
+    userParts.push(
+      `\nCRITICAL: You MUST generate a DIFFERENT action than any of the previous attempts above. Do NOT repeat the same action or a very similar action. Try a completely different approach.`
     )
   }
 
@@ -213,7 +258,30 @@ Remember: Write your <Analysis>, <Reason>, and <CorrectedDescription> in user-fr
       max_tokens: 1000,
     })
 
+    const durationMs = Date.now() - startTime
     const content = response.choices[0]?.message?.content
+
+    // Track cost (dual-write to MongoDB + LangFuse)
+    if (context?.tenantId && context?.userId && response.usage) {
+      recordUsage({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        taskId: context.taskId,
+        provider: "openai",
+        model,
+        actionType: "SELF_CORRECTION",
+        inputTokens: response.usage.prompt_tokens,
+        outputTokens: response.usage.completion_tokens,
+        durationMs,
+        metadata: {
+          failedAction,
+          previousCorrectionsCount: previousCorrections.length,
+        },
+      }).catch((err: unknown) => {
+        console.error("[Self-Correction] Cost tracking error:", err)
+      })
+    }
 
     if (!content) {
       Sentry.captureException(new Error("Empty correction LLM response"))
@@ -221,7 +289,7 @@ Remember: Write your <Analysis>, <Reason>, and <CorrectedDescription> in user-fr
     }
 
     // Parse correction from LLM response
-    const correction = parseCorrectionResponse(content, failedStep)
+    const correction = parseCorrectionResponse(content, failedStep, previousCorrections, failedAction)
 
     if (!correction) {
       Sentry.captureException(new Error("Failed to parse correction response"))
@@ -240,7 +308,9 @@ Remember: Write your <Analysis>, <Reason>, and <CorrectedDescription> in user-fr
  */
 function parseCorrectionResponse(
   content: string,
-  failedStep: PlanStep
+  failedStep: PlanStep,
+  previousCorrections: Array<{ action: string; strategy: string }> = [],
+  failedAction?: string
 ): CorrectionResult | null {
   // Extract strategy
   const strategyMatch = content.match(/<Strategy>([\s\S]*?)<\/Strategy>/i)
@@ -268,6 +338,52 @@ function parseCorrectionResponse(
 
   if (!retryAction) {
     // If no corrected action provided, return null
+    return null
+  }
+
+  // CRITICAL: Check if this action was already tried (prevent infinite loops)
+  if (previousCorrections.some((prev) => prev.action === retryAction)) {
+    const errorMessage = `Self-correction generated a duplicate action that was already tried: "${retryAction}". Previous attempts: ${previousCorrections.map((p) => p.action).join(", ")}`
+    Sentry.captureException(new Error(errorMessage), {
+      tags: {
+        component: "self-correction-engine",
+        action: retryAction,
+        strategy,
+        duplicate: true,
+      },
+      extra: {
+        failedStep: {
+          description: failedStep.description,
+          toolType: failedStep.toolType,
+        },
+        previousCorrections,
+      },
+    })
+    console.error(`[Self-Correction] ${errorMessage}`)
+    // Return null to reject duplicate action
+    return null
+  }
+
+  // Also check if it's the same as the original failed action
+  if (failedAction && retryAction === failedAction) {
+    const errorMessage = `Self-correction generated the same action that already failed: "${retryAction}"`
+    Sentry.captureException(new Error(errorMessage), {
+      tags: {
+        component: "self-correction-engine",
+        action: retryAction,
+        strategy,
+        sameAsFailed: true,
+      },
+      extra: {
+        failedStep: {
+          description: failedStep.description,
+          toolType: failedStep.toolType,
+        },
+        failedAction,
+      },
+    })
+    console.error(`[Self-Correction] ${errorMessage}`)
+    // Return null to reject same action
     return null
   }
 

@@ -10,6 +10,11 @@ import mongoose, { Schema } from "mongoose"
  * - Status tracks lifecycle: active → completed/failed/interrupted
  * - All accesses scoped by tenantId
  *
+ * Domain-Aware Sessions:
+ * - domain: Root domain extracted from URL (e.g., "google.com")
+ * - title: Session title with format "{domain}: {task description}"
+ * - isRenamed: Flag to prevent auto-title updates when user manually renames
+ *
  * Tenant ID: userId (normal mode) or organizationId (organization mode)
  */
 
@@ -20,6 +25,9 @@ export interface ISession extends mongoose.Document {
   userId: string // User who owns the session
   tenantId: string // userId or organizationId
   url: string // Initial URL where the task started
+  domain?: string // Root domain extracted from URL (e.g., "google.com")
+  title?: string // Session title with format "{domain}: {task description}"
+  isRenamed?: boolean // Whether user manually renamed the session
   status: SessionStatus // Session status
   createdAt: Date // When session was created
   updatedAt: Date // Last update timestamp
@@ -52,6 +60,20 @@ const SessionSchema = new Schema<ISession>(
       type: String,
       required: true,
     },
+    domain: {
+      type: String,
+      required: false,
+      index: true,
+    },
+    title: {
+      type: String,
+      required: false,
+    },
+    isRenamed: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
     status: {
       type: String,
       enum: ["active", "completed", "failed", "interrupted", "archived"],
@@ -73,6 +95,9 @@ const SessionSchema = new Schema<ISession>(
 // Note: sessionId already has unique: true which creates an index automatically
 SessionSchema.index({ userId: 1, createdAt: -1 })
 SessionSchema.index({ tenantId: 1, status: 1, createdAt: -1 })
+// Domain-aware session indexes
+SessionSchema.index({ tenantId: 1, domain: 1, status: 1 })
+SessionSchema.index({ domain: 1, status: 1, updatedAt: -1 })
 
 export const Session =
   mongoose.models.Session || mongoose.model<ISession>("Session", SessionSchema)

@@ -145,7 +145,15 @@ Common patterns:
 - Comboboxes with hasPopup="listbox" open option lists
 - Buttons with hasPopup="dialog" open modal dialogs
 
-**Important:** If you click a button with a popup and the dropdown appears, that's success! Don't mark it as a failure just because the URL didn't change. The next step is to select an option from the dropdown.
+**CRITICAL: Clicking Menu Items After Dropdown Opens**
+- After clicking a dropdown button (e.g., "Patient"), the menu items (e.g., "New/Search", "Dashboard") will appear
+- **ALWAYS wait briefly** (use wait(0.5) or wait(1)) after the dropdown opens before clicking a menu item
+- This ensures the menu is fully rendered and interactive
+- Look for menu items in the DOM by searching for their text content (e.g., "New/Search") or by finding elements with role="menuitem", role="listitem", or role="list"
+- The element ID for menu items is usually different from the dropdown button ID - find the specific menu item element in the DOM
+- Example workflow: click(PatientButtonId) → wait(0.5) → click(NewSearchMenuItemId)
+
+**Important:** If you click a button with a popup and the dropdown appears, that's success! Don't mark it as a failure just because the URL didn't change. The next step is to wait briefly, then select an option from the dropdown.
 
 ## Response Format
 

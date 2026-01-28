@@ -67,16 +67,19 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const startTime = Date.now()
+  Sentry.logger.info("Session list: request received")
 
   try {
     // Apply rate limiting
     const rateLimitResponse = await applyRateLimit(req, "/api/session")
     if (rateLimitResponse) {
+      Sentry.logger.warn("Session list: rate limit exceeded")
       return rateLimitResponse
     }
 
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
+      Sentry.logger.info("Session list: unauthorized")
       const debugInfo = buildErrorDebugInfo(new Error("Missing or invalid Authorization header"), {
         code: "UNAUTHORIZED",
         statusCode: 401,
@@ -105,6 +108,7 @@ export async function GET(req: NextRequest) {
     const validationResult = listQueryParamsSchema.safeParse(queryParams)
 
     if (!validationResult.success) {
+      Sentry.logger.info("Session list: query validation failed")
       const debugInfo = buildErrorDebugInfo(new Error("Query parameter validation failed"), {
         code: "VALIDATION_ERROR",
         statusCode: 400,
@@ -165,8 +169,11 @@ export async function GET(req: NextRequest) {
 
         return {
           sessionId: session.sessionId,
+          title: session.title || undefined,
+          domain: session.domain || undefined,
           url: session.url,
           status: session.status,
+          isRenamed: session.isRenamed || false,
           createdAt: session.createdAt ? new Date(session.createdAt).toISOString() : new Date().toISOString(),
           updatedAt: session.updatedAt ? new Date(session.updatedAt).toISOString() : new Date().toISOString(),
           messageCount,
@@ -185,10 +192,15 @@ export async function GET(req: NextRequest) {
       },
     }
 
+    Sentry.logger.info("Session list: returning sessions", {
+      count: sessionsWithCounts.length,
+      total,
+    })
     const duration = Date.now() - startTime
     const res = successResponse(response, undefined, 200)
     return addCorsHeaders(req, res)
   } catch (error: unknown) {
+    Sentry.logger.info("Session list: internal error")
     Sentry.captureException(error, {
       tags: { component: "session-list", endpoint: "/api/session" },
     })
@@ -207,16 +219,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now()
+  Sentry.logger.info("Session archive: request received")
 
   try {
     // Apply rate limiting
     const rateLimitResponse = await applyRateLimit(req, "/api/session")
     if (rateLimitResponse) {
+      Sentry.logger.warn("Session archive: rate limit exceeded")
       return rateLimitResponse
     }
 
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
+      Sentry.logger.info("Session archive: unauthorized")
       const debugInfo = buildErrorDebugInfo(new Error("Missing or invalid Authorization header"), {
         code: "UNAUTHORIZED",
         statusCode: 401,
@@ -238,6 +253,7 @@ export async function POST(req: NextRequest) {
     const validationResult = archiveBodySchema.safeParse(requestBody)
 
     if (!validationResult.success) {
+      Sentry.logger.info("Session archive: body validation failed")
       const debugInfo = buildErrorDebugInfo(new Error("Request validation failed"), {
         code: "VALIDATION_ERROR",
         statusCode: 400,
@@ -264,6 +280,7 @@ export async function POST(req: NextRequest) {
       .exec()
 
     if (!targetSession) {
+      Sentry.logger.info("Session archive: session not found")
       const debugInfo = buildErrorDebugInfo(new Error(`Session ${sessionId} not found for tenant`), {
         code: "SESSION_NOT_FOUND",
         statusCode: 404,
@@ -279,6 +296,7 @@ export async function POST(req: NextRequest) {
 
     // Security check: ensure user owns session
     if (targetSession.userId !== userId) {
+      Sentry.logger.info("Session archive: forbidden (not owner)")
       const debugInfo = buildErrorDebugInfo(new Error("Unauthorized session access"), {
         code: "UNAUTHORIZED",
         statusCode: 403,
@@ -292,6 +310,7 @@ export async function POST(req: NextRequest) {
       return addCorsHeaders(req, err)
     }
 
+    Sentry.logger.info("Session archive: archiving session")
     // Archive the session (update status to 'archived')
     await (Session as any)
       .findOneAndUpdate(
@@ -312,9 +331,11 @@ export async function POST(req: NextRequest) {
       message: "Session archived successfully",
     }
 
+    Sentry.logger.info("Session archive: completed")
     const res = successResponse(response, "Session archived successfully", 200)
     return addCorsHeaders(req, res)
   } catch (error: unknown) {
+    Sentry.logger.info("Session archive: internal error")
     Sentry.captureException(error, {
       tags: { component: "session-archive", endpoint: "/api/session" },
     })

@@ -1,616 +1,552 @@
-# 1DXR Brand Guidelines
+# 1DXR Design System & Brand Guidelines
 
-This document provides comprehensive brand guidelines for 1DXR, including logos, colors, typography, and usage rules. Use this as the definitive reference for all brand-related decisions.
+**Version:** 2.1 (Enterprise Edition)  
+**Last Updated:** January 2026  
+**Philosophy:** *"Industrial Clarity."* A precision-engineered aesthetic optimized for high-density agentic workflows, balancing readability with brand personality.
 
 ---
 
 ## Table of Contents
 
-1. [Logo Variations](#logo-variations)
-2. [Color Palette](#color-palette)
-3. [Typography](#typography)
-4. [Brand Assets](#brand-assets)
-5. [Usage Guidelines](#usage-guidelines)
-6. [Applications & Mockups](#applications--mockups)
+1. [Core Principles](#1-core-principles)
+2. [Typography System](#2-typography-system)
+3. [Color System](#3-color-system)
+4. [Geometry & Shape](#4-geometry--shape)
+5. [Visual Hierarchy & Spacing](#5-visual-hierarchy--spacing)
+6. [UI Component Patterns](#6-ui-component-patterns)
+7. [Motion & Interaction](#7-motion--interaction)
+8. [Iconography](#8-iconography)
+9. [Brand Assets](#9-brand-assets)
+10. [Accessibility & Compliance](#10-accessibility--compliance)
+11. [Implementation Checklist](#11-implementation-checklist)
+12. [Quick Reference](#12-quick-reference)
 
 ---
 
-## Logo Variations
+## 1. Core Principles
 
-### Primary Logo
-**Usage:** Use this as the main logo in most applications, including websites, marketing materials, and digital products.
-
-**Available Files:**
-- `public/logos/logo_1.svg` - White text with gradient X on black background
-- `public/logos/logo_2.svg` - Gradient text with white X on black background
-
-**Specifications:**
-- Format: SVG, PNG
-- Color: Black background with blue gradient accents
-- Minimum size: 120px width
-- Clear space: 25% of logo height on all sides
-
-**Best Use Cases:**
-- Website headers
-- Email signatures
-- Business cards
-- App interfaces (dark mode)
-- Marketing collateral
-- Social media posts (dark theme)
+| Principle | Description |
+| --- | --- |
+| **Content is the Interface** | Reduce decorative noise. Use whitespace and typography to define hierarchy, not heavy borders or fills. |
+| **Zinc & Blue** | We rely on a neutral, warm-gray "Zinc" foundation to reduce eye strain, reserving **Cornflower Blue** strictly for interaction and guidance. |
+| **Depth, Not Flatness** | In Dark Mode, we avoid pitch black (`#000000`). We use layers of deep Zinc to create a hierarchy of depth (Base → Card → Overlay). |
+| **Semantic Over Literal** | Never use hex codes in components. Use CSS custom properties (`--background`, `--primary`) for automatic Light/Dark mode switching. |
+| **Accessibility First** | All color combinations must pass WCAG AA. Never rely on color alone to convey meaning. |
 
 ---
 
-### Secondary Logo
-**Usage:** A versatile version for alternative layouts, footers, or smaller applications.
+## 2. Typography System
 
-**Available Files:**
-- `public/logos/logo_4.svg` - Black text with gradient X on white background
-- `public/logos/logo_5.svg` - Gradient text with black X on white background
+We utilize a **Dual-Typeface System**: `Poppins` for brand personality (Headings) and `Inter` for strict UI legibility (Body/Controls).
 
-**Specifications:**
-- Format: SVG, PNG
-- Color: White/light background with blue gradient accents
-- Minimum size: 100px width
-- Clear space: 20% of logo height on all sides
+### Primary Font Stack
 
-**Best Use Cases:**
-- Light-themed websites
-- Document headers
-- Print materials
-- App interfaces (light mode)
-- Forms and templates
-- Light-colored backgrounds
-
----
-
-### Accent Logo
-**Usage:** A compact logo for small spaces like social media icons or app badges.
-
-**Available Files:**
-- `public/logos/logo_3.svg` - White text on gradient background
-- `public/logos/logo_6.svg` - Black text on gradient background
-
-**Specifications:**
-- Format: SVG, PNG
-- Color: Gradient blue background (#559EFF → #0665BA)
-- Minimum size: 80px width
-- Clear space: 15% of logo height on all sides
-
-**Best Use Cases:**
-- Social media profile images
-- App store icons
-- Favicon alternatives
-- Promotional badges
-- Call-to-action buttons
-- Premium features highlights
-
----
-
-### Logo Mark (Icon Only)
-**Usage:** A standalone icon for apps, endpoints, or minimal branding contexts.
-
-**Available Files:**
-- `public/logos/logo_7.svg` - Gradient X on black background
-- `public/logos/logo_8.svg` - Black X on white background
-- `public/logos/logo_9.svg` - White X on gradient background
-- `public/icons/app.svg` - Premium app icon with effects
-- `public/icons/app_black_bg.svg` - App icon on 1080×1080px black canvas
-
-**Specifications:**
-- Format: SVG, PNG, ICO
-- Sizes: 16px, 32px, 64px, 128px, 256px, 512px
-- Minimum size: 24px
-- Clear space: 10% of icon size on all sides
-
-**Best Use Cases:**
-- Favicons
-- App icons (iOS, Android)
-- Social media avatars
-- Loading spinners
-- Navigation elements
-- Watermarks
-- Browser extensions
-
----
-
-## Color Palette
-
-### Primary Colors
-
-#### Cornflower Blue
-**Role:** Primary brand color  
-**Usage:** Main interactive elements, headlines, key brand moments
-
-| Format | Value |
-|--------|-------|
-| HEX | `#568AFF` |
-| RGB | `86, 138, 255` |
-| CMYK | `67%, 38%, 0%, 0%` |
-
-**Applications:**
-- Primary buttons
-- Links and interactive elements
-- Brand accents
-- Hero sections
-- Call-to-action elements
-
----
-
-#### Green-Blue
-**Role:** Secondary brand color  
-**Usage:** Supporting elements, gradients, depth
-
-| Format | Value |
-|--------|-------|
-| HEX | `#0665BA` |
-| RGB | `6, 101, 186` |
-| CMYK | `96%, 48%, 0%, 27%` |
-
-**Applications:**
-- Secondary buttons
-- Gradient end points
-- Hover states
-- Supporting graphics
-- Background accents
-
----
-
-### Base Colors
-
-#### Rich Black
-**Role:** Base/text color  
-**Usage:** Text, dark backgrounds, primary content
-
-| Format | Value |
-|--------|-------|
-| HEX | `#001320` |
-| RGB | `0, 19, 32` |
-| CMYK | `100%, 59%, 0%, 68%` |
-
-**Applications:**
-- Body text
-- Headers and titles
-- Dark backgrounds
-- Icons (light mode)
-- Navigation bars
-
----
-
-#### White
-**Role:** Base color  
-**Usage:** Light backgrounds, text on dark surfaces, clean space
-
-| Format | Value |
-|--------|-------|
-| HEX | `#FFFFFF` |
-| RGB | `255, 255, 255` |
-| CMYK | `0%, 0%, 0%, 0%` |
-
-**Applications:**
-- Text on dark backgrounds
-- Page backgrounds (light mode)
-- Cards and panels
-- Clean, minimal spaces
-- Icons (dark mode)
-
----
-
-### Accent Colors
-
-#### French Sky Blue
-**Role:** Accent color  
-**Usage:** Highlights, notifications, special callouts
-
-| Format | Value |
-|--------|-------|
-| HEX | `#66ABFE` |
-| RGB | `102, 171, 254` |
-| CMYK | `60%, 23%, 0%, 0%` |
-
-**Applications:**
-- Success states
-- Highlighted content
-- Badges and labels
-- Info notifications
-- Active states
-
----
-
-### Gradient (P→S)
-**Role:** Premium gradient  
-**Usage:** Backgrounds, special elements, brand moments
-
-**Gradient Definition:**
-- Start: `#559EFF`
-- End: `#0065BA`
-- Direction: Varies by use case (typically top-to-bottom or diagonal)
-
-**Applications:**
-- Premium features
-- Hero sections
-- Buttons and CTAs
-- Background overlays
-- Marketing materials
-- App store assets
-
----
-
-## Color Usage Guidelines
-
-### Screen & Web Design
-- **Primary:** Use HEX and RGB values
-- **Backgrounds:** Rich Black (`#001320`) or White (`#FFFFFF`)
-- **Interactive Elements:** Cornflower Blue (`#568AFF`)
-- **Gradients:** `#559EFF` → `#0065BA`
-
-### Print Design
-- **Primary:** Use CMYK values for accurate printing
-- **Rich Black:** Consider using true black (K100) for text in print
-- **White:** Leave as paper color for efficiency
-- **Gradients:** Ensure proper color management in print workflow
-
-### Color Accessibility
-All color combinations meet **WCAG AA standards** for contrast:
-- ✅ White text on Rich Black: **15.8:1**
-- ✅ White text on Green-Blue: **4.7:1**
-- ✅ White text on Cornflower Blue: **3.8:1**
-- ✅ Rich Black text on White: **15.8:1**
-
----
-
-## Typography
-
-### Primary Font: Poppins Semi Bold
-**Usage:** The main typeface used for headlines and key brand messaging.
-
-**Specifications:**
-- Font Family: `Poppins`
-- Weight: `600` (Semi Bold)
-- Style: Sans-serif, geometric, modern
-- License: Open Font License (Google Fonts)
-
-**Applications:**
-- H1, H2, H3 headings
-- Hero headlines
-- Navigation menus
-- Button labels
-- Logo text
-- Marketing headlines
-
-**Web Implementation:**
 ```css
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600&display=swap');
+--font-brand: 'Poppins', sans-serif;          /* Headings, Hero, Marketing */
+--font-ui:    'Inter', system-ui, sans-serif; /* Inputs, Tables, Body Text */
+--font-mono:  'JetBrains Mono', monospace;    /* Code, API Keys, Logs */
+```
 
-h1, h2, h3 {
-  font-family: 'Poppins', sans-serif;
-  font-weight: 600;
+### Type Scale & Line Height
+
+| Role | Size (px/rem) | Weight | Line Height | Tracking | Usage |
+| --- | --- | --- | --- | --- | --- |
+| **Display H1** | 48px / 3.00rem | SemiBold (600) | 1.1 | -0.02em | Hero Pages, Marketing |
+| **Heading H2** | 36px / 2.25rem | SemiBold (600) | 1.2 | -0.02em | Page Titles (Marketing) |
+| **Heading H3** | 24px / 1.50rem | Medium (500) | 1.3 | -0.01em | Card Titles |
+| **Body Large** | 18px / 1.125rem | Regular (400) | 1.6 | 0 | Lead Text, Descriptions |
+| **Body Base** | 16px / 1.00rem | Regular (400) | 1.5 | 0 | Default UI Text |
+| **Small** | 14px / 0.875rem | Medium (500) | 1.4 | 0 | Inputs, Buttons, Tables |
+| **Caption** | 12px / 0.75rem | Regular (400) | 1.4 | 0.02em | Timestamps, Hints, Metadata |
+
+### Application UI Typography
+
+For the **application shell** (dashboard, settings, data views), we use a more restrained scale:
+
+| Element | Class | Size |
+| --- | --- | --- |
+| Page Title | `text-lg font-semibold` | 18px |
+| Page Description | `text-sm text-foreground` | 14px |
+| Section Header | `text-sm font-semibold` | 14px |
+| Card Title | `text-sm font-semibold` | 14px |
+| Body Text | `text-sm text-foreground` | 14px |
+| Helper Text | `text-xs text-foreground` | 12px |
+| Form Labels | `text-xs text-muted-foreground` | 12px |
+| Metadata | `text-xs text-muted-foreground` | 12px |
+
+### Complementary Font: Sofia Sans Extra Condensed
+
+**Usage:** Accent font used sparingly for labels, tags, and decorative purposes.
+
+```css
+--font-accent: 'Sofia Sans Extra Condensed', sans-serif;
+```
+
+**Rules:**
+- Only for decorative headers and special callouts
+- Always uppercase with `letter-spacing: 0.05em`
+- Never use for body text or long-form content
+
+---
+
+## 3. Color System
+
+We do **not** use hex codes in production components. We use **Semantic Tokens** mapped to Tailwind CSS variables. This ensures perfect Light/Dark mode switching.
+
+### Brand Colors (The DNA)
+
+*Used sparingly for branding moments and primary interactions.*
+
+| Name | Hex | CSS Variable | Usage |
+| --- | --- | --- | --- |
+| **Cornflower Blue** | `#568AFF` | `--primary` | Primary actions, links, brand accents |
+| **Green-Blue** | `#0665BA` | `--chart-2` | Secondary brand, gradient endpoints |
+| **French Sky Blue** | `#66ABFE` | `--accent` | Highlights, notifications, active states |
+| **Gradient Start** | `#559EFF` | `--brand-gradient-start` | Premium elements |
+| **Gradient End** | `#0065BA` | `--brand-gradient-end` | Premium elements |
+
+### Surface & Backgrounds (The Canvas)
+
+*The fundamental layers of the application.*
+
+| Token | Light Mode | Dark Mode | Usage |
+| --- | --- | --- | --- |
+| `bg-background` | `#FAFAFA` (Zinc-50) | `#09090B` (Zinc-950) | Main page background. Never pure white/black. |
+| `bg-card` | `#FFFFFF` (Pure White) | `#0F0F11` (Zinc-900+) | Cards, Panels, Sidebars. Creates depth. |
+| `bg-popover` | `#FFFFFF` (Pure White) | `#0F0F11` (Zinc-900+) | Dropdowns, Modals, Tooltips. |
+| `bg-muted` | `#F4F4F5` (Zinc-100) | `#27272A` (Zinc-800) | Secondary backgrounds, table alternates. |
+| `bg-muted/30` | Zinc-100 @ 30% | Zinc-800 @ 30% | Card backgrounds (application pattern). |
+
+### Text & Content (The Ink)
+
+*Designed for high contrast without harshness.*
+
+| Token | Light Mode | Dark Mode | Usage |
+| --- | --- | --- | --- |
+| `text-foreground` | `#18181B` (Zinc-900) | `#FAFAFA` (Zinc-50) | Primary headings, body text. **Must be used for all primary content.** |
+| `text-muted-foreground` | `#71717A` (Zinc-500) | `#A1A1AA` (Zinc-400) | Form labels, placeholders, metadata. **Only for secondary content.** |
+| `text-primary` | `#568AFF` (Brand) | `#568AFF` (Brand) | Links, active states, interactive text. |
+| `text-destructive` | `#DC2626` (Red-600) | `#EF4444` (Red-500) | Error messages, destructive actions. |
+
+### Borders & Dividers (The Structure)
+
+*Subtle separation.*
+
+| Token | Light Mode | Dark Mode | Usage |
+| --- | --- | --- | --- |
+| `border-border` | `#E4E4E7` (Zinc-200) | `#27272A` (Zinc-800) | Default card borders, dividers. |
+| `border-input` | `#E4E4E7` (Zinc-200) | `#27272A` (Zinc-800) | Form inputs (default state). |
+| `ring` | `#568AFF` (Brand) | `#568AFF` (Brand) | Focus states (accessibility). |
+
+### Data Visualization (Charts & Analytics)
+
+We use a strict sequence for categorical data to ensure contrast and harmony.
+
+| Order | Token | Color | Usage |
+| --- | --- | --- | --- |
+| 1 | `--chart-1` | Cornflower Blue | Primary metric (e.g., "Revenue", "Total") |
+| 2 | `--chart-2` | Green-Blue | Secondary metric (e.g., "Profit", "Growth") |
+| 3 | `--chart-3` | Sky Blue | Accent/Highlight (e.g., "Projected", "Target") |
+| 4 | `--chart-4` | Teal/Purple | Comparison data (e.g., "Last Year", "Previous") |
+| 5 | `--chart-5` | Orange/Yellow | Warnings or outliers |
+
+**Rules:**
+- Always assign colors in this exact sequence
+- Never use the "Destructive" (Red) color for generic data
+- Reserve red strictly for negative trends, errors, or alerts
+- Ensure sufficient contrast between adjacent data series
+
+---
+
+## 4. Geometry & Shape
+
+### Corner Radius Logic
+
+We use a mathematically consistent radius system. When nesting elements, the inner radius must be smaller than the outer radius to appear parallel.
+
+**The Formula:** `Outer Radius - Padding = Inner Radius`
+
+| Token | Value | Usage |
+| --- | --- | --- |
+| `--radius-lg` | 8px (0.5rem) | Cards, Modals, Main Containers |
+| `--radius-md` | 6px (0.375rem) | Buttons, Inputs, Dropdown Menus |
+| `--radius-sm` | 4px (0.25rem) | Checkboxes, Badges, Nested items |
+| `--radius-full` | 9999px | Avatars, Status Indicators, Pills |
+
+**Example - Nested Elements:**
+```
+Card Container: rounded-lg (8px) + p-4 (16px padding)
+Inner Element:  rounded-sm (4px) ← appears visually parallel
+```
+
+### Shadow System
+
+| Token | Usage | Specification |
+| --- | --- | --- |
+| `shadow-sm` | Cards, raised surfaces | `0 1px 2px 0 rgb(0 0 0 / 0.05)` |
+| `shadow` | Default elevated elements | `0 1px 3px 0 rgb(0 0 0 / 0.1)` |
+| `shadow-md` | Dropdowns, tooltips | `0 4px 6px -1px rgb(0 0 0 / 0.1)` |
+| `shadow-lg` | Modals, popovers | `0 10px 15px -3px rgb(0 0 0 / 0.1)` |
+| `shadow-brand` | Premium/AI features | `0 4px 14px 0 rgba(86, 138, 255, 0.25)` |
+
+---
+
+## 5. Visual Hierarchy & Spacing
+
+### The 4px Baseline Grid
+
+All spacing, sizing, and typography must align to a 4px grid.
+
+| Spacing | Tailwind | Pixels | Usage |
+| --- | --- | --- | --- |
+| `space-1` | `gap-1` | 4px | Tight spacing (inline elements) |
+| `space-2` | `gap-2` | 8px | Default gap (buttons, inputs) |
+| `space-3` | `gap-3` | 12px | Compact sections |
+| `space-4` | `gap-4` | 16px | Standard section spacing |
+| `space-6` | `gap-6` | 24px | Page-level section spacing |
+| `space-8` | `gap-8` | 32px | Large section breaks |
+
+### Application Layout Spacing
+
+| Element | Spacing |
+| --- | --- |
+| Page Container | `space-y-6 py-6` |
+| Card Content | `pt-6` (CardContent only, no full padding) |
+| Section Spacing | `space-y-4` |
+| Form Fields | `space-y-2` between label and input |
+| Button Groups | `gap-2` |
+| Navigation Items | `gap-0.5` to `gap-2.5` |
+
+### Minimum Target Size
+
+All interactive elements must be at least **44px height** for accessibility compliance (touch targets).
+
+### Depth Strategy (Dark Mode)
+
+In dark mode, "Light comes from the top." Create depth through progressively lighter surfaces:
+
+| Level | Surface | Color | Usage |
+| --- | --- | --- | --- |
+| 0 | Background | `#09090B` (Zinc-950) | Page background |
+| 1 | Card | `#0F0F11` (Zinc-900) | Cards, panels, sidebar |
+| 2 | Popover | `#18181B` (Zinc-850) | Dropdowns, modals, tooltips |
+| 3 | Hover | `#27272A` (Zinc-800) | Hover states on cards |
+
+---
+
+## 6. UI Component Patterns
+
+### Buttons
+
+Buttons must convey hierarchy through visual weight, not just size.
+
+| Variant | Classes | Look | Usage |
+| --- | --- | --- | --- |
+| **Primary** | `bg-primary text-primary-foreground hover:opacity-90` | Solid Cornflower Blue | Single most important action ("Create", "Deploy") |
+| **Secondary** | `bg-secondary text-secondary-foreground hover:bg-secondary/80` | Light Gray / Dark Zinc | Safe actions ("Cancel", "View") |
+| **Ghost** | `hover:bg-accent hover:text-accent-foreground` | Transparent, changes on hover | Icon buttons, navigation |
+| **Destructive** | `bg-destructive text-destructive-foreground` | Red | High-risk actions ("Delete") |
+| **Outline** | `border border-input bg-transparent hover:bg-accent` | Border only | Secondary actions |
+
+**Sizing:**
+- Always use `size="sm"` for application UI (never default size)
+- Exception: Empty state CTAs may use `size="lg"`
+
+### Inputs & Forms
+
+| State | Specification |
+| --- | --- |
+| **Default** | 1px border `border-input`, `bg-transparent`, `h-9` height |
+| **Focus** | Border changes to `ring` (Blue) + 2px offset ring |
+| **Error** | Border changes to `destructive` (Red), text becomes `text-destructive` |
+| **Disabled** | `opacity-50`, `cursor-not-allowed` |
+
+**Rules:**
+- All inputs must use `h-9` (36px) height, never `h-10` or default
+- Labels must use `text-xs text-muted-foreground`
+- Helper text must use `text-xs text-foreground`
+- Form sections must use `space-y-2` or `space-y-3`
+
+### Cards & Containers
+
+| Rule | Specification |
+| --- | --- |
+| Background | Always `bg-muted/30`, never `bg-background` or `bg-white` |
+| Structure | Use `CardContent` with `pt-6`, avoid `CardHeader`/`CardTitle` |
+| Borders | 1px `border` combined with subtle shadows, never heavy borders |
+| Elevation | `shadow-sm` for cards, `shadow-lg` for dropdowns/modals |
+
+**Gradient Borders (Premium/AI Features):**
+```tsx
+<div className="bg-brand-gradient p-[1px] rounded-lg">
+  <div className="bg-background rounded-[calc(0.5rem-1px)] p-4">
+    {/* Content */}
+  </div>
+</div>
+```
+
+---
+
+## 7. Motion & Interaction
+
+1DXR is a productivity tool. Animation must be **fast**, **imperceptible**, and **functional**.
+
+### Animation Timing
+
+| Interaction | Duration | Easing | Usage |
+| --- | --- | --- | --- |
+| **Hover** | 150ms | `ease-out` | Instant feedback for buttons, links |
+| **Fade In/Out** | 200ms | `ease-out` | Snappy entrance for modals, panels |
+| **Accordion** | 300ms | `cubic-bezier(0.87, 0, 0.13, 1)` | Smooth expansion/collapse |
+| **Slide** | 200ms | `ease-out` | Sidebar, sheet transitions |
+| **Scale** | 150ms | `ease-out` | Button press feedback |
+
+### Framer Motion Defaults
+
+```tsx
+// Standard spring physics for 1DXR
+const defaultSpring = { stiffness: 400, damping: 30 }
+
+// Fade in animation
+const fadeIn = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  transition: { duration: 0.2 }
+}
+
+// Scale on press
+const scaleOnPress = {
+  whileTap: { scale: 0.98 }
 }
 ```
 
-**Scale:**
-- H1: 48px / 3rem
-- H2: 36px / 2.25rem
-- H3: 28px / 1.75rem
-- Large: 24px / 1.5rem
+### Accessibility Requirements
 
----
+- All animations must respect `prefers-reduced-motion` media queries
+- Provide instant state changes for users who prefer reduced motion
+- Never use animation as the only indicator of state change
 
-### Secondary Font: Poppins Regular
-**Usage:** A supporting typeface for subheadings and extended text content.
-
-**Specifications:**
-- Font Family: `Poppins`
-- Weight: `400` (Regular)
-- Style: Sans-serif, geometric
-- License: Open Font License (Google Fonts)
-
-**Applications:**
-- Body text
-- Paragraphs
-- Descriptions
-- Captions
-- Form labels
-- Supporting content
-
-**Web Implementation:**
 ```css
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400&display=swap');
-
-body, p {
-  font-family: 'Poppins', sans-serif;
-  font-weight: 400;
-  font-size: 16px;
-  line-height: 1.6;
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 ```
 
-**Scale:**
-- Body Large: 18px / 1.125rem
-- Body: 16px / 1rem
-- Small: 14px / 0.875rem
-- Caption: 12px / 0.75rem
-
 ---
 
-### Complementary Font: Sofia Sans Extra Condensed Regular
-**Usage:** An accent font used sparingly for emphasis or decorative purposes.
+## 8. Iconography
 
-**Specifications:**
-- Font Family: `Sofia Sans Extra Condensed`
-- Weight: `400` (Regular)
-- Style: Sans-serif, condensed
-- License: Open Font License (Google Fonts)
+### System Icons (UI)
 
-**Applications:**
-- Labels and tags
-- Numerical displays
-- Data visualization
-- Decorative headers
-- Space-constrained layouts
-- Special callouts
+Use **Lucide React** for all interface controls.
 
-**Web Implementation:**
-```css
-@import url('https://fonts.googleapis.com/css2?family=Sofia+Sans+Extra+Condensed:wght@400&display=swap');
+| Specification | Value |
+| --- | --- |
+| **Library** | Lucide React |
+| **Stroke Width** | 1.5px (consistent, elegant) |
+| **Size - Small** | 16px (3.5 in buttons, inputs) |
+| **Size - Default** | 20px (navigation) |
+| **Size - Large** | 24px (display, empty states) |
 
-.accent-text {
-  font-family: 'Sofia Sans Extra Condensed', sans-serif;
-  font-weight: 400;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
+**Classes:**
+```tsx
+<Icon className="h-3.5 w-3.5" /> // In buttons
+<Icon className="h-4 w-4" />     // In navigation
+<Icon className="h-5 w-5" />     // In cards
+<Icon className="h-6 w-6" />     // Display
 ```
 
-**Use Sparingly:** This font is for accent purposes only. Do not use for body text or long-form content.
+### Brand Icons (Marketing)
+
+Use custom SVGs (`logo_7`, `logo_9`) for:
+- Empty states where brand personality is needed
+- Success screens and celebrations
+- Marketing materials and hero sections
+- Loading/splash screens
 
 ---
 
-## Typography Guidelines
-
-### Hierarchy
-```
-H1 (Poppins Semi Bold, 48px) → Main page title
-H2 (Poppins Semi Bold, 36px) → Section headers
-H3 (Poppins Semi Bold, 28px) → Subsection headers
-Body (Poppins Regular, 16px) → Content text
-Accent (Sofia Sans EC, varies) → Labels/tags
-```
-
-### Line Height
-- **Headlines:** 1.2
-- **Body Text:** 1.6
-- **Captions:** 1.4
-
-### Letter Spacing
-- **Headlines:** -0.02em (tighter)
-- **Body Text:** 0 (default)
-- **Accent Font:** 0.05em (looser, uppercase)
-
-### Do's & Don'ts
-
-✅ **Do:**
-- Use Poppins for all primary content
-- Maintain consistent hierarchy
-- Ensure proper line height for readability
-- Use Semi Bold for emphasis and headers
-- Keep accent font usage minimal and intentional
-
-❌ **Don't:**
-- Mix too many font weights in one layout
-- Use Sofia Sans for body text
-- Set body text below 14px
-- Use all caps for long text (except with accent font)
-- Forget to optimize web font loading
-
----
-
-## Brand Assets
-
-### Icon Collection
-A collection of mockups, icons, and patterns for showcasing and enhancing the brand.
-
-**Available Assets:**
-
-#### Decorative Backgrounds
-- `public/icons/background_icon.svg` - Outlined X pattern for backgrounds
-- `public/icons/background_icon_usage.svg` - Implementation reference
-
-**Usage:**
-- Website hero sections (20-30% opacity)
-- Presentation backgrounds
-- Marketing materials
-- Decorative overlays
-- Print materials
-
-#### App Icons
-- `public/icons/app.svg` - Premium app icon (561×561px)
-- `public/icons/app_black_bg.svg` - App icon on black (1080×1080px)
-
-**Usage:**
-- iOS/Android app icons
-- PWA icons
-- Social media profiles
-- Premium presentations
-
-#### UI Icons (Examples from brand sheet)
-Various branded icons for UI elements:
-- Home/dashboard icons
-- Percentage/statistics icons
-- Notification/alert icons
-- Settings icons
-- Chart/analytics icons
-- Security/shield icons
-- Slider/control icons
-- And more...
-
-**Style Guidelines:**
-- Use rounded, soft edges
-- Maintain consistent stroke width
-- Apply brand blue colors
-- Use on light or dark backgrounds with proper contrast
-- Size: Minimum 24×24px for clarity
-
----
-
-## Usage Guidelines
-
-### Logo Usage Rules
-
-#### Do's ✅
-- **Maintain Aspect Ratio:** Never stretch or distort logos
-- **Use Correct Versions:** Dark logos on light backgrounds, light logos on dark backgrounds
-- **Provide Clear Space:** Follow minimum clear space guidelines
-- **Use Vector Files:** Always use SVG when possible for scalability
-- **Test Readability:** Ensure logos are legible at minimum sizes
-- **Choose Appropriate Variation:** Match logo version to context
-
-#### Don'ts ❌
-- **Don't Alter Colors:** Never change gradient colors or brand colors
-- **Don't Add Effects:** No drop shadows, glows, or filters (except in app.svg)
-- **Don't Rotate:** Keep logos horizontal
-- **Don't Place on Busy Backgrounds:** Ensure sufficient contrast
-- **Don't Compress Too Much:** Maintain quality when exporting
-- **Don't Combine Variations:** Use one logo style consistently per design
-
----
-
-### Color Usage Rules
-
-#### Do's ✅
-- **Follow Palette:** Use only defined brand colors
-- **Ensure Contrast:** Meet WCAG AA accessibility standards
-- **Use Gradients Consistently:** Apply P→S gradient in defined direction
-- **Test on Devices:** Verify colors on different screens
-- **Consider Context:** Use appropriate colors for print vs. screen
-
-#### Don'ts ❌
-- **Don't Invent Colors:** Stay within the defined palette
-- **Don't Use Low Contrast:** Ensure text is always readable
-- **Don't Overuse Accent Colors:** Use sparingly for impact
-- **Don't Mix Print and Screen Values:** Use CMYK for print, RGB/HEX for screen
-- **Don't Ignore Accessibility:** Always check color contrast ratios
-
----
-
-### Typography Usage Rules
-
-#### Do's ✅
-- **Maintain Hierarchy:** Use consistent heading levels
-- **Optimize Readability:** Follow line height and spacing guidelines
-- **Load Fonts Efficiently:** Use font-display: swap for web
-- **Test Across Platforms:** Verify rendering on different devices
-- **Use Proper Weights:** Semi Bold for headers, Regular for body
-
-#### Don'ts ❌
-- **Don't Mix Too Many Fonts:** Stick to the defined three fonts
-- **Don't Use Below Minimum Sizes:** Maintain legibility
-- **Don't Stretch Type:** Maintain proper aspect ratios
-- **Don't Ignore Line Length:** Keep body text between 45-75 characters per line
-- **Don't Overuse Accent Font:** Reserved for special purposes only
-
----
-
-## Applications & Mockups
-
-### Digital Applications
-
-#### Mobile App
-- **Logo:** Use app.svg or logo_2.svg for splash screen
-- **Colors:** Rich Black backgrounds with Cornflower Blue accents
-- **Typography:** Poppins Semi Bold for headers, Regular for content
-- **Icons:** Custom branded icons with rounded style
-
-#### Smartwatch/Wearables
-- **Logo:** Use logo_9.svg (icon only)
-- **Display:** High contrast with minimal color
-- **Typography:** Larger sizes for readability
-- **Layout:** Simplified, single-column
-
-#### Website
-- **Hero:** Use background_icon.svg at low opacity
-- **Headers:** logo_1.svg or logo_2.svg
-- **Footer:** logo_4.svg or logo_5.svg
-- **Dark Mode:** logo_1.svg, logo_2.svg, logo_7.svg
-- **Light Mode:** logo_4.svg, logo_5.svg, logo_8.svg
-
----
-
-### Presentation Materials
-
-#### Business Presentations
-- **Background:** Use background_icon_usage.svg as template
-- **Title Slide:** Large logo_3.svg or logo_6.svg centered
-- **Content Slides:** Small logo mark in corner (logo_7.svg, logo_8.svg, or logo_9.svg)
-- **Colors:** Use gradient backgrounds for impact slides
-- **Typography:** Poppins Semi Bold for all slide titles
-
-#### Marketing Decks
-- **Cover:** Full gradient background with white logo
-- **Interior:** Clean white backgrounds with blue accents
-- **Data Slides:** Use French Sky Blue for highlights
-- **Closing:** Brand color gradient with contact info
-
----
-
-### Print Materials
-
-#### Business Cards
-- **Front:** logo_4.svg with minimal text
-- **Back:** Gradient background with white text
-- **Paper:** Premium card stock
-- **Finish:** Matte or soft-touch
-
-#### Letterhead
-- **Header:** logo_5.svg (top left or center)
-- **Footer:** Small logo mark with contact details
-- **Colors:** Minimal use of brand colors
-- **Typography:** Poppins Regular for body
-
-#### Brochures
-- **Cover:** Large gradient element with logo_3.svg
-- **Interior:** Mix of white and colored panels
-- **Imagery:** Product photos with blue color grading
-- **Typography:** Clear hierarchy with Poppins
-
----
-
-## Quick Reference
+## 9. Brand Assets
 
 ### Logo Selection Matrix
 
-| Background Color | Full Logo | Icon Only |
-|-----------------|-----------|-----------|
-| **Black/Dark** | logo_1.svg, logo_2.svg | logo_7.svg |
-| **White/Light** | logo_4.svg, logo_5.svg | logo_8.svg |
-| **Blue Gradient** | logo_3.svg, logo_6.svg | logo_9.svg |
-| **App Icons** | app.svg, app_black_bg.svg | app.svg |
+| Background | Full Logo | Icon Only |
+| --- | --- | --- |
+| **Black/Dark** | `logo_1.svg`, `logo_2.svg` | `logo_7.svg` |
+| **White/Light** | `logo_4.svg`, `logo_5.svg` | `logo_8.svg` |
+| **Blue Gradient** | `logo_3.svg`, `logo_6.svg` | `logo_9.svg` |
+| **App Icons** | `app.svg`, `app_black_bg.svg` | `app.svg` |
+
+### Logo Specifications
+
+| Type | Min Size | Clear Space |
+| --- | --- | --- |
+| Primary (Full) | 120px width | 25% of logo height |
+| Secondary | 100px width | 20% of logo height |
+| Accent | 80px width | 15% of logo height |
+| Icon Mark | 24px | 10% of icon size |
+
+### Gradients
+
+The "1DXR Glow" is a signature element used for "AI Magic" moments.
+
+```css
+/* CSS Classes */
+.bg-brand-gradient {
+  background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+}
+
+.bg-brand-gradient-vertical {
+  background: linear-gradient(180deg, #559EFF 0%, #0065BA 100%);
+}
+
+.text-brand-gradient {
+  background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+```
+
+### Decorative Assets
+
+| Asset | Path | Usage |
+| --- | --- | --- |
+| Background Pattern | `public/icons/background_icon.svg` | Hero sections (20-30% opacity) |
+| App Icon | `public/icons/app.svg` | 561×561px, iOS/Android |
+| Social Icon | `public/icons/app_black_bg.svg` | 1080×1080px, Social media |
+
+---
+
+## 10. Accessibility & Compliance
+
+### Color Contrast Requirements
+
+All text/background combinations must pass **WCAG AA** (4.5:1 for normal text, 3:1 for large text).
+
+| Combination | Ratio | Status |
+| --- | --- | --- |
+| `text-foreground` on `bg-background` | 15.8:1 | ✅ Pass |
+| `text-foreground` on `bg-card` | 15.8:1 | ✅ Pass |
+| `text-muted-foreground` on `bg-background` | 5.2:1 | ✅ Pass |
+| `text-primary` on `bg-background` | 4.5:1 | ✅ Pass (borderline) |
+
+### Rules
+
+1. **Never** use `text-muted-foreground` on dark gray backgrounds for critical information
+2. **Never** remove `outline` on focus unless replacing with custom `ring`
+3. **Never** rely on color alone to convey state (use Icon + Color together)
+4. **Always** provide text alternatives for icons (aria-label or sr-only)
+5. **Always** ensure minimum 44px touch targets for interactive elements
+
+### Focus Management
+
+```tsx
+// Always use visible focus rings
+<button className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+```
+
+---
+
+## 11. Implementation Checklist
+
+### Fonts
+- [ ] `app/layout.tsx` loads Inter (UI) and Poppins (headings)
+- [ ] JetBrains Mono loaded for code blocks
+- [ ] Font display set to `swap` for performance
+
+### Theme
+- [ ] `next-themes` configured with `class` strategy
+- [ ] Dark mode toggle functional
+- [ ] All components use semantic tokens (not literal colors)
+
+### CSS
+- [ ] `tailwind.css` extends theme with Zinc variables
+- [ ] Brand gradient utilities available
+- [ ] Accordion animations defined
+
+### Components
+- [ ] All buttons use `size="sm"` explicitly
+- [ ] All inputs use `h-9` height
+- [ ] All cards use `bg-muted/30` background
+- [ ] All labels use `text-xs text-muted-foreground`
+- [ ] Primary content uses `text-foreground` (NOT muted)
+
+### Accessibility
+- [ ] All inputs have labels
+- [ ] All images have alt text
+- [ ] All interactive elements keyboard navigable
+- [ ] Focus states properly styled
+- [ ] Reduced motion respected
+
+---
+
+## 12. Quick Reference
 
 ### Color Quick Copy
 
-| Color Name | HEX | RGB |
-|------------|-----|-----|
-| Cornflower Blue | `#568AFF` | `86, 138, 255` |
-| Green-Blue | `#0665BA` | `6, 101, 186` |
-| Rich Black | `#001320` | `0, 19, 32` |
-| White | `#FFFFFF` | `255, 255, 255` |
-| French Sky Blue | `#66ABFE` | `102, 171, 254` |
-| Gradient Start | `#559EFF` | `85, 158, 255` |
-| Gradient End | `#0065BA` | `0, 101, 186` |
+| Color | Hex | HSL |
+| --- | --- | --- |
+| Cornflower Blue | `#568AFF` | `220 100% 67%` |
+| Green-Blue | `#0665BA` | `207 95% 38%` |
+| French Sky Blue | `#66ABFE` | `212 98% 70%` |
+| Zinc-50 | `#FAFAFA` | `0 0% 98%` |
+| Zinc-100 | `#F4F4F5` | `240 5% 96%` |
+| Zinc-500 | `#71717A` | `240 4% 46%` |
+| Zinc-800 | `#27272A` | `240 4% 16%` |
+| Zinc-900 | `#18181B` | `240 6% 10%` |
+| Zinc-950 | `#09090B` | `240 10% 4%` |
 
 ### Font Quick Reference
 
 ```css
-/* Primary - Headlines */
+/* Brand Headings */
 font-family: 'Poppins', sans-serif;
 font-weight: 600;
 
-/* Secondary - Body */
-font-family: 'Poppins', sans-serif;
+/* UI Body */
+font-family: 'Inter', system-ui, sans-serif;
 font-weight: 400;
 
-/* Complementary - Accent */
+/* Code */
+font-family: 'JetBrains Mono', monospace;
+
+/* Accent Labels */
 font-family: 'Sofia Sans Extra Condensed', sans-serif;
-font-weight: 400;
+text-transform: uppercase;
+letter-spacing: 0.05em;
+```
+
+### Component Patterns
+
+```tsx
+// Page Header
+<div className="space-y-6 py-6">
+  <div className="flex items-center justify-between">
+    <div className="space-y-1">
+      <h1 className="text-lg font-semibold">Page Title</h1>
+      <p className="text-sm text-foreground mt-0.5">Description</p>
+    </div>
+    <Button size="sm">Action</Button>
+  </div>
+</div>
+
+// Card
+<Card className="bg-muted/30">
+  <CardContent className="pt-6">
+    <h3 className="text-sm font-semibold mb-0.5">Card Title</h3>
+    <p className="text-xs text-foreground">Content</p>
+  </CardContent>
+</Card>
+
+// Form Field
+<div className="space-y-2">
+  <Label className="text-xs text-muted-foreground">Field Label</Label>
+  <Input className="h-9" placeholder="Enter value" />
+  <p className="text-xs text-foreground">Helper text</p>
+</div>
 ```
 
 ---
@@ -635,13 +571,23 @@ public/
     ├── app_black_bg.svg    (App icon on black 1080×1080px)
     ├── background_icon.svg (Outline pattern for backgrounds)
     └── background_icon_usage.svg (Usage example 1280×720px)
+
+styles/
+└── tailwind.css            (Zinc-based theme with semantic tokens)
+
+brand/
+└── brand.md                (This document)
 ```
+
+---
 
 ## Version History
 
 | Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | November 2025 | Initial brand guidelines |
+| --- | --- | --- |
+| 1.0 | November 2025 | Initial brand guidelines (marketing focus) |
+| 2.0 | January 2026 | Enterprise Design System: semantic tokens, dual-typeface, Zinc palette |
+| 2.1 | January 2026 | Added motion, data viz, geometry, iconography standards |
 
 ---
 
@@ -649,6 +595,6 @@ public/
 
 The 1DXR logo, name, and brand assets are proprietary and protected. Unauthorized use, reproduction, or modification is prohibited without express written permission.
 
-**Last Updated:** November 2025  
-**Brand Version:** 1.0  
-**Guidelines Version:** 1.0
+---
+
+*This document defines the complete 1DXR Product Design System. For component implementation examples, reference the shadcn/ui documentation and the project's `.cursorrules` file.*

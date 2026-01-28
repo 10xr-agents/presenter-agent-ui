@@ -1,19 +1,18 @@
 "use client"
 
-import { Bot, ChevronRight, Plus } from "lucide-react"
+import { ChevronRight, Chrome, Clock, MessageSquare, Zap } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface OverviewMetrics {
-  totalAgents: number
-  activeAgents: number
   totalSessions: number
   recentSessions: number
-  processingAgents: number
+  totalTokens: number
+  estimatedTimeSaved: number // in minutes
 }
 
 interface OverviewDashboardProps {
@@ -79,52 +78,95 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
     )
   }
 
-  const hasAgents = (metrics?.totalAgents || 0) > 0
+  const hasSessions = (metrics?.totalSessions || 0) > 0
 
-  // Empty state - enterprise-grade design
-  if (!hasAgents) {
+  // Empty state - Install Extension CTA
+  if (!hasSessions) {
     return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Bot className="h-5 w-5" />
-          </EmptyMedia>
-          <EmptyTitle className="text-sm font-semibold">No Screen Agents yet</EmptyTitle>
-          <EmptyDescription className="text-xs">
-            Start creating Screen Agents to see insights and manage your AI-powered presentations.
-          </EmptyDescription>
-          <Button asChild size="sm" className="mt-4">
-            <Link href="/screen-agents/new">
-              <Plus className="mr-2 h-3.5 w-3.5" />
-              Create your first agent
-            </Link>
-          </Button>
-        </EmptyHeader>
-      </Empty>
-    )
-  }
-
-  // Dashboard with metrics - Enterprise-grade design
-  return (
-    <div className="space-y-6">
-      {/* Metrics Grid - Professional stat cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-muted/30">
+      <div className="space-y-6">
+        {/* Install Extension CTA */}
+        <Card className="bg-muted/30 border-primary/20">
           <CardContent className="pt-6">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">Total Agents</p>
-              <p className="text-2xl font-semibold">{metrics?.totalAgents || 0}</p>
-              {metrics?.activeAgents !== undefined && metrics.activeAgents > 0 && (
-                <p className="text-xs text-muted-foreground">{metrics.activeAgents} active</p>
-              )}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-primary/10 p-2">
+                  <Chrome className="h-5 w-5 text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <CardTitle className="text-sm font-semibold">Get Started with Browser Copilot</CardTitle>
+                  <CardDescription className="text-xs">
+                    Install the Chrome Extension to start automating your browser tasks with AI
+                  </CardDescription>
+                </div>
+              </div>
+              <Button asChild size="sm">
+                <a
+                  href="https://chrome.google.com/webstore"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Chrome className="mr-2 h-3.5 w-3.5" />
+                  Install Extension
+                </a>
+              </Button>
             </div>
           </CardContent>
         </Card>
 
+        {/* Empty State */}
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MessageSquare className="h-5 w-5" />
+            </EmptyMedia>
+            <EmptyTitle className="text-sm font-semibold">No activity yet</EmptyTitle>
+            <EmptyDescription className="text-xs">
+              Once you install and use the Browser Copilot extension, your activity will appear here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
+    )
+  }
+
+  // Dashboard with metrics
+  return (
+    <div className="space-y-6">
+      {/* Install Extension CTA - Always visible */}
+      <Card className="bg-muted/30 border-primary/20">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-primary/10 p-2">
+                <Chrome className="h-5 w-5 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <CardTitle className="text-sm font-semibold">Browser Copilot Extension</CardTitle>
+                <CardDescription className="text-xs">
+                  Use the Chrome Extension for AI-powered browser automation
+                </CardDescription>
+              </div>
+            </div>
+            <Button asChild size="sm" variant="outline">
+              <a
+                href="https://chrome.google.com/webstore"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Chrome className="mr-2 h-3.5 w-3.5" />
+                Open Extension
+              </a>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Metrics Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-muted/30">
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">Sessions this week</p>
+              <p className="text-xs text-muted-foreground font-medium">Tasks Today</p>
               <p className="text-2xl font-semibold">{metrics?.recentSessions || 0}</p>
             </div>
           </CardContent>
@@ -133,7 +175,7 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
         <Card className="bg-muted/30">
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">Total Sessions</p>
+              <p className="text-xs text-muted-foreground font-medium">Total Tasks</p>
               <p className="text-2xl font-semibold">{metrics?.totalSessions || 0}</p>
             </div>
           </CardContent>
@@ -142,46 +184,43 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
         <Card className="bg-muted/30">
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">In Progress</p>
-              <p className="text-2xl font-semibold">{metrics?.processingAgents || 0}</p>
+              <p className="text-xs text-muted-foreground font-medium">Time Saved</p>
+              <div className="flex items-baseline gap-1">
+                <p className="text-2xl font-semibold">{metrics?.estimatedTimeSaved || 0}</p>
+                <p className="text-xs text-muted-foreground">min</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-muted/30">
+          <CardContent className="pt-6">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground font-medium">Tokens Used</p>
+              <p className="text-2xl font-semibold">
+                {(metrics?.totalTokens || 0).toLocaleString()}
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Primary Action Card */}
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-sm font-semibold">Create a new Screen Agent</CardTitle>
-              <CardDescription className="text-xs">
-                Build an AI agent that presents and navigates your website interactively
-              </CardDescription>
-            </div>
-            <Button asChild size="sm">
-              <Link href="/screen-agents/new">
-                <Plus className="mr-2 h-3.5 w-3.5" />
-                Create agent
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Quick Navigation Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="bg-muted/30 transition-colors hover:bg-muted/50 cursor-pointer group">
           <CardContent className="pt-6">
-            <Link href="/screen-agents" className="block">
+            <Link href="/chats" className="block">
               <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
-                    View all agents
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Manage and configure your Screen Agents
-                  </CardDescription>
+                <div className="flex items-start gap-3">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                      View all chats
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Browse your session history and activity log
+                    </CardDescription>
+                  </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
               </div>
@@ -193,13 +232,16 @@ export function OverviewDashboard({ organizationId, tenantState }: OverviewDashb
           <CardContent className="pt-6">
             <Link href="/analytics" className="block">
               <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
-                    View analytics
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Detailed insights and performance metrics
-                  </CardDescription>
+                <div className="flex items-start gap-3">
+                  <Zap className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
+                      View analytics
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Token usage, costs, and performance metrics
+                    </CardDescription>
+                  </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
               </div>

@@ -1,7 +1,8 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import { classifyActionType, type ActionType } from "./action-type"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { recordUsage } from "@/lib/cost"
 
 /**
  * Verification Engine (Task 7)
@@ -9,6 +10,16 @@ import { classifyActionType, type ActionType } from "./action-type"
  * Compares expected vs actual state after each action.
  * Performs DOM-based checks and semantic verification to determine if actions achieved their expected outcomes.
  */
+
+/**
+ * Context for cost tracking (optional)
+ */
+export interface VerificationContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+}
 
 /**
  * Actual state extracted from DOM
@@ -37,6 +48,15 @@ export interface DOMCheckResults {
 }
 
 /**
+ * Phase 3 Task 3: Next-goal verification result
+ */
+export interface NextGoalCheckResult {
+  available: boolean // Whether the next-goal element/state is available
+  reason: string // Explanation
+  required: boolean // Whether it was required (failure vs warning)
+}
+
+/**
  * Verification result
  */
 export interface VerificationResult {
@@ -48,6 +68,7 @@ export interface VerificationResult {
     domChecks?: DOMCheckResults
     semanticMatch?: boolean // LLM-based semantic verification result
     overallMatch: boolean // Overall match result
+    nextGoalCheck?: NextGoalCheckResult // Phase 3 Task 3: Look-ahead result
   }
   reason: string // Explanation of verification result
 }
@@ -177,7 +198,8 @@ function performDOMChecks(
 async function performSemanticVerification(
   expectedOutcome: ExpectedOutcome,
   actualState: ActualState,
-  previousUrl?: string
+  previousUrl?: string,
+  context?: VerificationContext
 ): Promise<{ match: boolean; reason: string }> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -186,12 +208,20 @@ async function performSemanticVerification(
     throw new Error("OpenAI API key not configured")
   }
 
-  const openai = new OpenAI({
-    apiKey,
+  // Use traced OpenAI client for LangFuse observability
+  const openai = getTracedOpenAIWithConfig({
+    generationName: "semantic_verification",
+    sessionId: context?.sessionId,
+    userId: context?.userId,
+    tags: ["verification"],
+    metadata: {
+      expectedDescription: expectedOutcome.description,
+    },
   })
 
   // Use lightweight model for semantic verification
   const model = process.env.VERIFICATION_MODEL || "gpt-4o-mini"
+  const startTime = Date.now()
 
   const systemPrompt = `You are a verification AI that checks if an action achieved its expected outcome.
 
@@ -249,7 +279,29 @@ Remember: Write the "reason" in user-friendly language. If the action didn't wor
       response_format: { type: "json_object" },
     })
 
+    const durationMs = Date.now() - startTime
     const content = response.choices[0]?.message?.content
+
+    // Track cost (dual-write to MongoDB + LangFuse)
+    if (context?.tenantId && context?.userId && response.usage) {
+      recordUsage({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        taskId: context.taskId,
+        provider: "openai",
+        model,
+        actionType: "VERIFICATION",
+        inputTokens: response.usage.prompt_tokens,
+        outputTokens: response.usage.completion_tokens,
+        durationMs,
+        metadata: {
+          expectedDescription: expectedOutcome.description,
+        },
+      }).catch((err: unknown) => {
+        console.error("[Verification] Cost tracking error:", err)
+      })
+    }
 
     if (!content) {
       return { match: false, reason: "Empty LLM response" }
@@ -276,6 +328,73 @@ Remember: Write the "reason" in user-friendly language. If the action didn't wor
       match: false,
       reason: error instanceof Error ? error.message : "Verification error",
     }
+  }
+}
+
+/**
+ * Phase 3 Task 3: Check if next-goal element/state is available
+ *
+ * Performs look-ahead verification to catch issues before the next step.
+ */
+function checkNextGoalAvailability(
+  nextGoal: NonNullable<ExpectedOutcome["nextGoal"]>,
+  dom: string
+): NextGoalCheckResult {
+  let available = false
+  const checkResults: string[] = []
+  
+  // Check by selector
+  if (nextGoal.selector) {
+    // Check for ID selector
+    if (nextGoal.selector.startsWith("#")) {
+      const id = nextGoal.selector.substring(1)
+      available = dom.includes(`id="${id}"`) || dom.includes(`id='${id}'`)
+      checkResults.push(`selector(${nextGoal.selector}): ${available ? "found" : "not found"}`)
+    }
+    // Check for class selector
+    else if (nextGoal.selector.startsWith(".")) {
+      const className = nextGoal.selector.substring(1)
+      available = dom.includes(`class="${className}"`) ||
+                  dom.includes(`class='${className}'`) ||
+                  dom.includes(` ${className} `) ||
+                  dom.includes(` ${className}"`) ||
+                  dom.includes(` ${className}'`)
+      checkResults.push(`selector(${nextGoal.selector}): ${available ? "found" : "not found"}`)
+    }
+    // Check for tag selector
+    else {
+      available = dom.toLowerCase().includes(`<${nextGoal.selector.toLowerCase()}`)
+      checkResults.push(`selector(${nextGoal.selector}): ${available ? "found" : "not found"}`)
+    }
+  }
+  
+  // Check by text content (if not already found)
+  if (!available && nextGoal.textContent) {
+    available = dom.includes(nextGoal.textContent)
+    checkResults.push(`text("${nextGoal.textContent}"): ${available ? "found" : "not found"}`)
+  }
+  
+  // Check by ARIA role (if not already found)
+  if (!available && nextGoal.role) {
+    const roleRegex = new RegExp(`role=["']?${nextGoal.role}["']?`, "i")
+    available = roleRegex.test(dom)
+    checkResults.push(`role(${nextGoal.role}): ${available ? "found" : "not found"}`)
+  }
+  
+  // If no specific checks but has description, assume available (can't verify)
+  if (checkResults.length === 0 && nextGoal.description) {
+    available = true
+    checkResults.push("no specific selector/text/role to verify")
+  }
+  
+  const reason = available
+    ? `Next-goal available: ${nextGoal.description} (${checkResults.join(", ")})`
+    : `Next-goal NOT available: ${nextGoal.description} (${checkResults.join(", ")})`
+  
+  return {
+    available,
+    reason,
+    required: nextGoal.required,
   }
 }
 
@@ -335,6 +454,7 @@ function calculateConfidence(
  * @param currentUrl - Current URL after action
  * @param previousUrl - Previous URL before action (optional, for URL change check)
  * @param previousAction - The action that was executed (e.g. "click(68)") for action-type-aware verification
+ * @param context - Cost tracking context (optional)
  * @returns Verification result
  */
 export async function verifyAction(
@@ -342,7 +462,8 @@ export async function verifyAction(
   currentDom: string,
   currentUrl: string,
   previousUrl?: string,
-  previousAction?: string
+  previousAction?: string,
+  context?: VerificationContext
 ): Promise<VerificationResult> {
   const actualState = extractActualState(currentDom, currentUrl)
   const actionType =
@@ -350,20 +471,20 @@ export async function verifyAction(
 
   const domChecks = performDOMChecks(expectedOutcome, actualState, previousUrl, actionType)
 
-  // Perform semantic verification
-  const semanticResult = await performSemanticVerification(
-    expectedOutcome,
-    actualState,
-    previousUrl
-  )
+  const domChanges = expectedOutcome.domChanges
+  const isPopupFromOutcome = domChanges ? isPopupExpectation(domChanges) : false
+  const isDropdown = isPopupFromOutcome || actionType === "dropdown"
+
+  // Skip LLM semantic verification for dropdown; use DOM-only. Saves cost and avoids false negatives.
+  const semanticResult = isDropdown
+    ? { match: true, reason: "Skipped (dropdown); DOM checks only." }
+    : await performSemanticVerification(expectedOutcome, actualState, previousUrl, context)
 
   // Calculate confidence score
   let confidence = calculateConfidence(domChecks, semanticResult.match)
 
   // Popup override: dropdown opened = url same + aria-expanded. Don't fail on strict element checks.
-  const domChanges = expectedOutcome.domChanges
-  const isPopupFromOutcome = domChanges ? isPopupExpectation(domChanges) : false
-  const isPopup = isPopupFromOutcome || actionType === "dropdown"
+  const isPopup = isDropdown
   const urlSame =
     domChanges?.urlShouldChange === false &&
     (previousUrl !== undefined ? domChecks.urlChanged === true : true)
@@ -375,11 +496,28 @@ export async function verifyAction(
   // Determine success (confidence >= 0.7 threshold)
   const success = confidence >= 0.7
 
+  // Phase 3 Task 3: Check next-goal availability (look-ahead verification)
+  let nextGoalCheck: NextGoalCheckResult | undefined
+  if (expectedOutcome.nextGoal) {
+    nextGoalCheck = checkNextGoalAvailability(expectedOutcome.nextGoal, actualState.domSnapshot)
+    
+    // If next-goal is required and not available, reduce confidence significantly
+    if (!nextGoalCheck.available && nextGoalCheck.required) {
+      confidence = Math.min(confidence, 0.5) // Cap confidence at 50% if next-goal missing
+    }
+  }
+
+  // Re-evaluate success after next-goal check
+  // Success requires both: previous action verified (confidence >= 0.7) AND next-goal available (if required)
+  const nextGoalOk = !nextGoalCheck || nextGoalCheck.available || !nextGoalCheck.required
+  const finalSuccess = confidence >= 0.7 && nextGoalOk
+
   // Build comparison object
   const comparison = {
     domChecks,
     semanticMatch: semanticResult.match,
-    overallMatch: success,
+    overallMatch: finalSuccess,
+    nextGoalCheck,
   }
 
   // Build reason
@@ -403,13 +541,20 @@ export async function verifyAction(
     reasonParts.push(`Menu items appeared: ${domChecks.elementsAppeared ? "✓" : "✗"}`)
   }
   reasonParts.push(`Semantic match: ${semanticResult.match ? "✓" : "✗"}`)
+  
+  // Add next-goal check result
+  if (nextGoalCheck) {
+    const nextGoalStatus = nextGoalCheck.available ? "✓" : (nextGoalCheck.required ? "✗" : "⚠")
+    reasonParts.push(`Next-goal: ${nextGoalStatus}`)
+  }
+  
   reasonParts.push(`Confidence: ${(confidence * 100).toFixed(1)}%`)
   reasonParts.push(`Overall: ${semanticResult.reason}`)
 
   const reason = reasonParts.join(" | ")
 
   return {
-    success,
+    success: finalSuccess,
     confidence,
     expectedState: expectedOutcome,
     actualState,

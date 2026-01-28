@@ -50,16 +50,19 @@ export async function GET(
 ) {
   const params = await context.params
   const startTime = Date.now()
+  Sentry.logger.info("Session messages: request received")
 
   try {
     // Apply rate limiting
     const rateLimitResponse = await applyRateLimit(req, "/api/session")
     if (rateLimitResponse) {
+      Sentry.logger.warn("Session messages: rate limit exceeded")
       return rateLimitResponse
     }
 
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
+      Sentry.logger.info("Session messages: unauthorized")
       const debugInfo = buildErrorDebugInfo(new Error("Missing or invalid Authorization header"), {
         code: "UNAUTHORIZED",
         statusCode: 401,
@@ -118,21 +121,22 @@ export async function GET(
       .exec()
 
     if (!sessionDoc) {
-      const debugInfo = buildErrorDebugInfo(new Error(`Session ${sessionId} not found for tenant`), {
-        code: "SESSION_NOT_FOUND",
-        statusCode: 404,
-        endpoint: "/api/session/[sessionId]/messages",
+      Sentry.logger.info("Session messages: session not found, returning empty")
+      // Return empty messages array instead of 404 to prevent Chrome extension retry loops
+      // The session may not exist yet (pending creation) or was deleted/archived
+      const emptyResponse = {
         sessionId,
-      })
-      const err = errorResponse("SESSION_NOT_FOUND", 404, {
-        code: "SESSION_NOT_FOUND",
-        message: `Session ${sessionId} not found for tenant`,
-      }, debugInfo)
-      return addCorsHeaders(req, err)
+        messages: [],
+        total: 0,
+        sessionExists: false, // Flag to indicate session doesn't exist
+      }
+      const res = NextResponse.json(emptyResponse, { status: 200 })
+      return addCorsHeaders(req, res)
     }
 
     // Security check: ensure user owns session
     if (sessionDoc.userId !== userId) {
+      Sentry.logger.info("Session messages: forbidden (not owner)")
       const debugInfo = buildErrorDebugInfo(new Error("Unauthorized session access"), {
         code: "UNAUTHORIZED",
         statusCode: 403,
@@ -156,6 +160,7 @@ export async function GET(
     const validationResult = queryParamsSchema.safeParse(queryParams)
 
     if (!validationResult.success) {
+      Sentry.logger.info("Session messages: query validation failed")
       const debugInfo = buildErrorDebugInfo(new Error("Query parameter validation failed"), {
         code: "VALIDATION_ERROR",
         statusCode: 400,
@@ -211,16 +216,22 @@ export async function GET(
         metadata: m.metadata || undefined,
       })),
       total,
+      sessionExists: true, // Flag to indicate session exists (for Chrome extension)
     }
 
     // Validate response against schema
     const validatedResponse = sessionMessagesResponseSchema.parse(response)
 
+    Sentry.logger.info("Session messages: returning messages", {
+      count: response.messages.length,
+      total: response.total,
+    })
     const duration = Date.now() - startTime
     const res = NextResponse.json(validatedResponse, { status: 200 })
 
     return addCorsHeaders(req, res)
   } catch (error: unknown) {
+    Sentry.logger.info("Session messages: internal error")
     Sentry.captureException(error, {
       tags: { component: "session-messages", endpoint: "/api/session/[sessionId]/messages" },
     })

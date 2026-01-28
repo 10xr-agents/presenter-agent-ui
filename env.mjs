@@ -43,6 +43,11 @@ export const env = createEnv({
     // Sentry Error Tracking
     SENTRY_DSN: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),
+    // LangFuse LLM Observability (separate from Sentry - captures LLM traces, not errors)
+    LANGFUSE_PUBLIC_KEY: z.string().optional(),
+    LANGFUSE_SECRET_KEY: z.string().optional(),
+    LANGFUSE_BASE_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
+    ENABLE_LANGFUSE: z.enum(["true", "false"]).optional(),
     // Feature Flags
     FEATURE_FLAGS_ENABLED: z.string().optional(),
     // Browser Automation Service
@@ -97,6 +102,11 @@ export const env = createEnv({
     // Sentry Error Tracking
     SENTRY_DSN: process.env.SENTRY_DSN,
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+    // LangFuse LLM Observability
+    LANGFUSE_PUBLIC_KEY: process.env.LANGFUSE_PUBLIC_KEY,
+    LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY,
+    LANGFUSE_BASE_URL: process.env.LANGFUSE_BASE_URL,
+    ENABLE_LANGFUSE: process.env.ENABLE_LANGFUSE,
     // Feature Flags
     FEATURE_FLAGS_ENABLED: process.env.FEATURE_FLAGS_ENABLED,
     // Prisma Logging

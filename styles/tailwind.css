@@ -3,35 +3,36 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================================================
-   Screen Agent Platform
-   Brand Theme based on brand guidelines (brand/brand.md)
-
-   Screen Agent Platform - Create, distribute, and analyze interactive 
-   AI-powered screen presentations
+   1DXR Design System v2.1
+   Enterprise-grade theme based on brand/brand.md
+   
+   Philosophy: "Industrial Clarity" - Zinc-based neutral foundation
+   with Cornflower Blue for interaction and guidance.
 
    Tailwind CSS v4 + shadcn/ui compatible
    ============================================================================ */
 
 @theme inline {
   /* ==========================================================================
-     Brand Colors (from brand.md)
+     Brand Colors (The DNA)
+     Used sparingly for branding moments and primary interactions.
      ========================================================================== */
 
-  /* Primary: Cornflower Blue - Main interactive elements, headlines */
+  /* Primary: Cornflower Blue - Main interactive elements, CTAs */
   --color-brand-primary: #568AFF;
 
-  /* Secondary: Green-Blue - Supporting elements, gradients, depth */
+  /* Secondary: Green-Blue - Supporting elements, gradient endpoints */
   --color-brand-secondary: #0665BA;
 
-  /* Base: Rich Black - Text, dark backgrounds */
-  --color-brand-dark: #001320;
-
-  /* Accent: French Sky Blue - Highlights, notifications */
+  /* Accent: French Sky Blue - Highlights, notifications, active states */
   --color-brand-accent: #66ABFE;
 
-  /* Gradient endpoints */
+  /* Gradient endpoints (The "1DXR Glow") */
   --color-brand-gradient-start: #559EFF;
   --color-brand-gradient-end: #0065BA;
+
+  /* Legacy: Rich Black (kept for marketing materials only) */
+  --color-brand-dark: #001320;
 
   /* ==========================================================================
      shadcn/ui Semantic Colors (mapped to brand)
@@ -65,32 +66,45 @@
   --color-chart-5: hsl(var(--chart-5));
 
   /* ==========================================================================
-     Border Radius (shadcn defaults)
+     Border Radius (Geometry System)
+     Formula: Outer Radius - Padding = Inner Radius
      ========================================================================== */
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: calc(var(--radius) - 4px);  /* 4px - Checkboxes, badges, nested items */
+  --radius-md: calc(var(--radius) - 2px);  /* 6px - Buttons, inputs, dropdowns */
+  --radius-lg: var(--radius);               /* 8px - Cards, modals, containers */
+  --radius-xl: calc(var(--radius) + 4px);  /* 12px - Large containers */
 
   /* ==========================================================================
-     Typography (from brand.md)
+     Typography (Dual-Typeface System)
+     Poppins for brand personality, Inter for UI legibility
      ========================================================================== */
 
   /* Font families - Using Next.js font CSS variables */
-  /* Note: Update app/layout.tsx to use Inter instead of Poppins for Resend aesthetic */
   --font-sans: var(--font-inter, var(--font-poppins)), ui-sans-serif, system-ui, sans-serif;
+  --font-brand: var(--font-poppins), ui-sans-serif, sans-serif;
   --font-accent: var(--font-sofia), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 
-  /* Font sizes matching brand guidelines */
-  --text-h1: 3rem;      /* 48px */
-  --text-h2: 2.25rem;   /* 36px */
-  --text-h3: 1.75rem;   /* 28px */
-  --text-large: 1.5rem; /* 24px */
-  --text-body-lg: 1.125rem; /* 18px */
-  --text-body: 1rem;    /* 16px */
-  --text-small: 0.875rem; /* 14px */
-  --text-caption: 0.75rem;
+  /* Font sizes - Marketing/Hero scale */
+  --text-h1: 3rem;          /* 48px - Display headings */
+  --text-h2: 2.25rem;       /* 36px - Page titles (marketing) */
+  --text-h3: 1.5rem;        /* 24px - Card titles */
+  --text-large: 1.125rem;   /* 18px - Lead text */
+  --text-body: 1rem;        /* 16px - Default body */
+  --text-small: 0.875rem;   /* 14px - Inputs, buttons, tables */
+  --text-caption: 0.75rem;  /* 12px - Timestamps, metadata */
+
+  /* ==========================================================================
+     Motion & Interaction (Animation Timing)
+     Fast, imperceptible, functional.
+     ========================================================================== */
+
+  --duration-instant: 150ms;  /* Hover states - instant feedback */
+  --duration-fast: 200ms;     /* Modals, panels - snappy entrance */
+  --duration-normal: 300ms;   /* Accordions - smooth expansion */
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-accordion: cubic-bezier(0.87, 0, 0.13, 1);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -146,12 +160,16 @@
   /* Radius - Standard middle ground (Resend-style) */
   --radius: 0.5rem;
 
-  /* Chart colors - Brand aligned */
-  --chart-1: 220 100% 67%;  /* Cornflower Blue */
-  --chart-2: 207 95% 38%;   /* Green-Blue */
-  --chart-3: 212 98% 70%;   /* French Sky Blue */
-  --chart-4: 173 58% 39%;
-  --chart-5: 43 74% 66%;
+  /* ==========================================================================
+     Data Visualization (Chart Colors)
+     Always assign in this exact sequence for contrast and harmony.
+     Never use Destructive (Red) for generic data - reserve for errors.
+     ========================================================================== */
+  --chart-1: 220 100% 67%;  /* Cornflower Blue - Primary metric (Revenue, Total) */
+  --chart-2: 207 95% 38%;   /* Green-Blue - Secondary metric (Profit, Growth) */
+  --chart-3: 212 98% 70%;   /* French Sky Blue - Accent (Projected, Target) */
+  --chart-4: 173 58% 39%;   /* Teal - Comparison data (Last Year, Previous) */
+  --chart-5: 43 74% 66%;    /* Amber - Warnings, outliers */
 
   /* Sidebar (for chat interface) - Zinc-based */
   --sidebar-background: 240 10% 3.9%;  /* Deep zinc */
@@ -207,12 +225,12 @@
   --input: 240 3.7% 15.9%;  /* Zinc-800 equivalent */
   --ring: 220 100% 67%;  /* Cornflower Blue */
 
-  /* Chart colors - Brand aligned */
-  --chart-1: 220 100% 67%;
-  --chart-2: 212 98% 70%;
-  --chart-3: 207 95% 50%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
+  /* Data Visualization - Dark mode optimized for contrast */
+  --chart-1: 220 100% 67%;  /* Cornflower Blue - Primary metric */
+  --chart-2: 212 98% 70%;   /* French Sky Blue - Secondary metric */
+  --chart-3: 207 95% 50%;   /* Green-Blue lighter - Accent */
+  --chart-4: 280 65% 60%;   /* Purple - Comparison data */
+  --chart-5: 340 75% 55%;   /* Pink/Coral - Warnings, outliers */
 
   /* Sidebar (for chat interface) - Zinc-based */
   --sidebar-background: 240 10% 3.9%;  /* Deep Zinc */
@@ -246,12 +264,17 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Typography hierarchy from brand.md */
+  /* ==========================================================================
+     Typography Hierarchy (Dual-Typeface System)
+     Poppins for brand, Inter for UI
+     ========================================================================== */
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-sans);
     font-weight: 600;
     line-height: 1.2;
     letter-spacing: -0.02em;
+    color: hsl(var(--foreground)); /* Always use foreground, never muted */
   }
 
   h1 {
@@ -265,6 +288,23 @@
   h3 {
     font-size: var(--text-h3);
   }
+
+  /* Body text defaults */
+  p {
+    color: hsl(var(--foreground)); /* Primary content is never muted */
+    line-height: 1.6;
+  }
+
+  /* Code blocks */
+  code, pre {
+    font-family: var(--font-mono);
+  }
+
+  /* Selection styling with brand color */
+  ::selection {
+    background-color: rgba(86, 138, 255, 0.2);
+    color: inherit;
+  }
 }
 
 /* =============================================================================
@@ -272,7 +312,12 @@
    ============================================================================= */
 
 @layer utilities {
-  /* Accordion animations */
+  /* ==========================================================================
+     Motion & Interaction Utilities
+     Fast, imperceptible, functional animations.
+     ========================================================================== */
+
+  /* Accordion animations - 300ms with custom easing */
   @keyframes accordion-down {
     from {
       height: 0;
@@ -292,14 +337,33 @@
   }
 
   .animate-accordion-down {
-    animation: accordion-down 0.2s ease-out;
+    animation: accordion-down var(--duration-normal) var(--ease-accordion);
   }
 
   .animate-accordion-up {
-    animation: accordion-up 0.2s ease-out;
+    animation: accordion-up var(--duration-normal) var(--ease-accordion);
   }
 
-  /* Brand gradient backgrounds */
+  /* Transition presets */
+  .transition-instant {
+    transition-duration: var(--duration-instant);
+    transition-timing-function: var(--ease-out);
+  }
+
+  .transition-fast {
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-out);
+  }
+
+  .transition-normal {
+    transition-duration: var(--duration-normal);
+    transition-timing-function: var(--ease-out);
+  }
+
+  /* ==========================================================================
+     Brand Gradient Utilities (The "1DXR Glow")
+     ========================================================================== */
+
   .bg-brand-gradient {
     background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
   }
@@ -320,7 +384,18 @@
     background-clip: text;
   }
 
-  /* Accent font */
+  /* Gradient border wrapper (for premium/AI features) */
+  .gradient-border {
+    background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+    padding: 1px;
+    border-radius: var(--radius-lg);
+  }
+
+  /* ==========================================================================
+     Typography Utilities
+     ========================================================================== */
+
+  /* Accent font (Sofia Sans Extra Condensed) */
   .font-accent {
     font-family: var(--font-accent);
     font-weight: 400;
@@ -328,7 +403,17 @@
     text-transform: uppercase;
   }
 
-  /* Brand shadows */
+  /* Brand headings (Poppins) */
+  .font-brand {
+    font-family: var(--font-brand);
+    font-weight: 600;
+  }
+
+  /* ==========================================================================
+     Shadow Utilities
+     ========================================================================== */
+
+  /* Brand shadows (Cornflower Blue glow) */
   .shadow-brand {
     box-shadow: 0 4px 14px 0 rgba(86, 138, 255, 0.25);
   }
@@ -341,35 +426,103 @@
   .ring-brand {
     --tw-ring-color: #568AFF;
   }
+
+  /* ==========================================================================
+     Accessibility Utilities
+     ========================================================================== */
+
+  /* Respect reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-accordion-down,
+    .animate-accordion-up {
+      animation-duration: 0.01ms !important;
+    }
+
+    .transition-instant,
+    .transition-fast,
+    .transition-normal {
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 /* =============================================================================
-   Component Overrides (shadcn/ui brand alignment)
+   Component Patterns (shadcn/ui brand alignment)
    ============================================================================= */
 
 @layer components {
+  /* ==========================================================================
+     Button Variants
+     ========================================================================== */
+
   /* Primary button with brand gradient on hover */
   .btn-brand {
     background-color: #568AFF;
     color: white;
-    transition: all 0.2s ease;
+    transition: all var(--duration-instant) var(--ease-out);
   }
 
   .btn-brand:hover {
     background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
   }
 
-  /* Card with brand accent border */
+  /* ==========================================================================
+     Card Variants
+     ========================================================================== */
+
+  /* Card with brand accent border (left) */
   .card-brand {
     border-left: 4px solid #568AFF;
   }
+
+  /* Card with gradient border (premium/AI features) */
+  .card-premium {
+    position: relative;
+    background: hsl(var(--card));
+    border-radius: var(--radius-lg);
+  }
+
+  .card-premium::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    background: linear-gradient(135deg, #559EFF 0%, #0065BA 100%);
+    border-radius: calc(var(--radius-lg) + 1px);
+    z-index: -1;
+  }
+
+  /* ==========================================================================
+     Form Patterns
+     ========================================================================== */
 
   /* Input focus with brand ring */
   .input-brand:focus {
     --tw-ring-color: #568AFF;
     border-color: #568AFF;
   }
+
+  /* Form field group */
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem; /* space-y-2 */
+  }
+
+  .form-field label {
+    font-size: 0.75rem; /* text-xs */
+    color: hsl(var(--muted-foreground));
+  }
+
+  .form-field input,
+  .form-field textarea,
+  .form-field select {
+    height: 2.25rem; /* h-9 */
+  }
 }
+
+/* =============================================================================
+   Tailwind Base Layer Reset
+   ============================================================================= */
 
 @layer base {
   * {
@@ -377,5 +530,21 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Minimum touch target size for accessibility (44px) */
+  button,
+  [role="button"],
+  a[href],
+  input,
+  select,
+  textarea {
+    min-height: 2.75rem; /* 44px when needed - can be overridden */
+  }
+
+  /* Focus visible ring for accessibility */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }

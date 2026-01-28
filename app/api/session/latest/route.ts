@@ -36,16 +36,19 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const startTime = Date.now()
+  Sentry.logger.info("Session latest: request received")
 
   try {
     // Apply rate limiting
     const rateLimitResponse = await applyRateLimit(req, "/api/session")
     if (rateLimitResponse) {
+      Sentry.logger.warn("Session latest: rate limit exceeded")
       return rateLimitResponse
     }
 
     const session = await getSessionFromRequest(req.headers)
     if (!session) {
+      Sentry.logger.info("Session latest: unauthorized")
       const debugInfo = buildErrorDebugInfo(new Error("Missing or invalid Authorization header"), {
         code: "UNAUTHORIZED",
         statusCode: 401,
@@ -71,6 +74,7 @@ export async function GET(req: NextRequest) {
     const validationResult = queryParamsSchema.safeParse(queryParams)
 
     if (!validationResult.success) {
+      Sentry.logger.info("Session latest: query validation failed")
       const debugInfo = buildErrorDebugInfo(new Error("Query parameter validation failed"), {
         code: "VALIDATION_ERROR",
         statusCode: 400,
@@ -111,6 +115,7 @@ export async function GET(req: NextRequest) {
       .exec()
 
     if (!latestSession) {
+      Sentry.logger.info("Session latest: no session found", { status })
       // Return 404 if no session found (per specification, not null)
       const debugInfo = buildErrorDebugInfo(new Error("No session found"), {
         code: "SESSION_NOT_FOUND",
@@ -134,10 +139,14 @@ export async function GET(req: NextRequest) {
       .exec()
 
     // Format response (include all fields per specification)
+    // Domain-Aware Sessions: Include title, domain, and isRenamed fields
     const response = {
       sessionId: latestSession.sessionId,
+      title: latestSession.title || undefined,
+      domain: latestSession.domain || undefined,
       url: latestSession.url,
       status: latestSession.status,
+      isRenamed: latestSession.isRenamed || false,
       createdAt: latestSession.createdAt ? new Date(latestSession.createdAt).toISOString() : new Date().toISOString(),
       updatedAt: latestSession.updatedAt ? new Date(latestSession.updatedAt).toISOString() : new Date().toISOString(),
       messageCount,
@@ -147,11 +156,13 @@ export async function GET(req: NextRequest) {
     // Validate response against schema
     const validatedResponse = latestSessionResponseSchema.parse(response)
 
+    Sentry.logger.info("Session latest: returning session")
     const duration = Date.now() - startTime
     const res = NextResponse.json(validatedResponse, { status: 200 })
 
     return addCorsHeaders(req, res)
   } catch (error: unknown) {
+    Sentry.logger.info("Session latest: internal error")
     Sentry.captureException(error, {
       tags: { component: "session-latest", endpoint: "/api/session/latest" },
     })

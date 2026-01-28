@@ -6,16 +6,16 @@ import { auth } from "@/lib/auth"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
- * Dashboard Page - High-Level Overview
+ * Dashboard Page - Browser Copilot Home
  * 
- * Purpose: Fast, executive-style overview with clear next actions.
+ * Purpose: Summary metrics, recent activity, and extension installation CTA.
  * 
  * This is NOT analytics. For deep analytics, see /analytics.
  * 
  * Includes:
- * - High-level metrics (total agents, recent sessions, processing status)
- * - Primary CTAs (create agent, invite members)
- * - Quick links to detailed views
+ * - Summary metrics (tasks completed, time saved, tokens used)
+ * - Recent activity (last 5 sessions)
+ * - Install Extension CTA
  * 
  * Constraints:
  * - No deep analytics
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   return (
     <PageShell
       title="Dashboard"
-      description="Overview of your Screen Agents and activity"
+      description="Your Browser Copilot activity at a glance"
     >
       <OverviewDashboard organizationId={dashboardOrgId} tenantState={tenantState} />
     </PageShell>

@@ -28,9 +28,14 @@ export interface MissingInfo {
 
 /**
  * Context analysis result
+ *
+ * Phase 4 Task 4: Multi-Source Synthesis
+ * - Added `requiredSources` array for multi-source queries
+ * - Single `source` maintained for backward compatibility
  */
 export interface ContextAnalysisResult {
-  source: InformationSource // Where to get the information
+  source: InformationSource // Primary source (backward compatible)
+  requiredSources: InformationSource[] // Phase 4: All sources needed for complex queries
   missingInfo: MissingInfo[] // What information is missing
   searchQuery: string // Refined query for Tavily (if source is WEB_SEARCH)
   reasoning: string // Explanation of the decision
@@ -76,6 +81,7 @@ export async function analyzeContext(
     console.warn("[Context Analyzer] OpenAI API key not configured, defaulting to WEB_SEARCH")
     return {
       source: "WEB_SEARCH",
+      requiredSources: ["WEB_SEARCH"],
       missingInfo: [],
       searchQuery: query,
       reasoning: "OpenAI API key not configured, defaulting to search",
@@ -106,9 +112,14 @@ export async function analyzeContext(
     const knowledgeType = hasOrgKnowledge ? "Organization-specific" : "Public"
 
     // Build prompt for context analysis
-    const systemPrompt = `You are analyzing a user's task request to determine the BEST SOURCE for information.
+    // Phase 4 Task 4: Multi-Source Synthesis - analyze for multiple required sources
+    const systemPrompt = `You are analyzing a user's task request to determine the BEST SOURCE(s) for information.
 
-You must check THREE sources in order:
+IMPORTANT: Complex tasks may require MULTIPLE sources. For example:
+- "Add patient John Doe with his insurance info" may need MEMORY (for prior context) + WEB_SEARCH (for insurance codes)
+- "Fill out the form using the data from our records" may need MEMORY + PAGE
+
+You must check FOUR sources:
 1. MEMORY (Chat History): Has the user already provided this information in previous messages?
 2. PAGE (Current Screen): Is the information visible on the current page (error messages, form fields, displayed text)?
 3. WEB_SEARCH (External Knowledge): Can this information be found via web search (documentation, examples, public knowledge)?
@@ -134,6 +145,7 @@ Analyze this request and determine:
 Respond with JSON:
 {
   "source": "MEMORY" | "PAGE" | "WEB_SEARCH" | "ASK_USER",
+  "requiredSources": ["MEMORY" | "PAGE" | "WEB_SEARCH" | "ASK_USER", ...],
   "missingInfo": [
     {
       "field": string,
@@ -147,19 +159,23 @@ Respond with JSON:
 }
 
 Guidelines:
-- source: Choose the BEST source. If info is in MEMORY or PAGE, use that. Only use WEB_SEARCH if external knowledge is needed. Use ASK_USER for private data.
+- source: Primary source for backward compatibility. Choose the MOST IMPORTANT source.
+- requiredSources: ALL sources needed for this task. Complex queries may need multiple (e.g., ["MEMORY", "WEB_SEARCH"])
+  * If only ONE source is needed, requiredSources = [source]
+  * IMPORTANT: List multiple sources only when genuinely needed - don't pad unnecessarily
 - missingInfo: List ALL missing information, classified as:
   * EXTERNAL_KNOWLEDGE: Can be found via search (e.g., "ICD-10 code for flu", "OpenEMR error 505 solution")
   * PRIVATE_DATA: Only user can provide (e.g., "patient phone number", "user's account ID", "specific error ID from their system")
-- searchQuery: If source is WEB_SEARCH, provide a refined, high-fidelity query (e.g., "OpenEMR billing module error 505 troubleshooting" not just "error 505")
+- searchQuery: If WEB_SEARCH is in requiredSources, provide a refined, high-fidelity query (e.g., "OpenEMR billing module error 505 troubleshooting" not just "error 505")
 - reasoning: Explain your decision clearly
 - confidence: 0.0 to 1.0 (how confident you are in this classification)
 
 Examples:
-- Query: "Add patient Jaswanth" + History shows "Jaswanth's DOB is 1990-01-01" → source: MEMORY (DOB already provided)
-- Query: "Fix the error" + Page shows "Error: Invalid ID format: Must be 9 digits" → source: PAGE (error message visible)
-- Query: "What's the ICD-10 code for flu?" → source: WEB_SEARCH (external knowledge)
-- Query: "Add patient" + Missing DOB that user hasn't provided → source: ASK_USER (private data)`
+- Query: "Add patient Jaswanth" + History shows "Jaswanth's DOB is 1990-01-01" → source: MEMORY, requiredSources: ["MEMORY"]
+- Query: "Fix the error" + Page shows "Error: Invalid ID format: Must be 9 digits" → source: PAGE, requiredSources: ["PAGE"]
+- Query: "What's the ICD-10 code for flu?" → source: WEB_SEARCH, requiredSources: ["WEB_SEARCH"]
+- Query: "Add patient" + Missing DOB that user hasn't provided → source: ASK_USER, requiredSources: ["ASK_USER"]
+- Query: "Add patient John with insurance Blue Cross" + MEMORY has John's DOB but needs insurance codes → source: MEMORY, requiredSources: ["MEMORY", "WEB_SEARCH"]`
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini", // Fast model for analysis
@@ -183,8 +199,21 @@ Examples:
     const validSources: InformationSource[] = ["MEMORY", "PAGE", "WEB_SEARCH", "ASK_USER"]
     const source = validSources.includes(analysis.source) ? analysis.source : "WEB_SEARCH"
 
+    // Phase 4 Task 4: Validate requiredSources array
+    let requiredSources: InformationSource[] = [source] // Default to single source
+    if (Array.isArray(analysis.requiredSources) && analysis.requiredSources.length > 0) {
+      requiredSources = analysis.requiredSources.filter((s): s is InformationSource =>
+        validSources.includes(s as InformationSource)
+      )
+      // Ensure at least one source
+      if (requiredSources.length === 0) {
+        requiredSources = [source]
+      }
+    }
+
     return {
       source,
+      requiredSources,
       missingInfo: Array.isArray(analysis.missingInfo)
         ? analysis.missingInfo.map((info) => ({
             field: String(info.field || ""),
@@ -209,6 +238,7 @@ Examples:
     // Fallback: conservative defaults
     return {
       source: "WEB_SEARCH",
+      requiredSources: ["WEB_SEARCH"],
       missingInfo: [],
       searchQuery: query,
       reasoning: "Analysis failed, defaulting to search for safety",

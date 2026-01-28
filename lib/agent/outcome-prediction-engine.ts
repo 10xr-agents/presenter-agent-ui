@@ -1,8 +1,9 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import { classifyActionType } from "./action-type"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { recordUsage } from "@/lib/cost"
 
 /**
  * Outcome Prediction Engine (Task 9)
@@ -12,6 +13,16 @@ import { classifyActionType } from "./action-type"
  * Uses action-type classification: dropdown actions get a fixed template (no LLM
  * over-specification); others use LLM prediction.
  */
+
+/**
+ * Context for cost tracking (optional)
+ */
+export interface OutcomePredictionContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+}
 
 /** Fixed expected outcome for dropdown/popup clicks. No elementShouldExist, elementShouldNotExist, or elementShouldHaveText. */
 function dropdownExpectedOutcome(thought: string): ExpectedOutcome {
@@ -29,6 +40,18 @@ function dropdownExpectedOutcome(thought: string): ExpectedOutcome {
   }
 }
 
+/** Fixed expected outcome for navigate/goBack. URL should change. */
+function navigationExpectedOutcome(thought: string): ExpectedOutcome {
+  const description =
+    thought && thought.length > 0
+      ? thought.replace(/\s+/g, " ").trim().slice(0, 200)
+      : "The page should navigate to the new URL."
+  return {
+    description,
+    domChanges: { urlShouldChange: true },
+  }
+}
+
 /**
  * Predict expected outcome for an action
  *
@@ -38,6 +61,7 @@ function dropdownExpectedOutcome(thought: string): ExpectedOutcome {
  * @param currentUrl - Current URL
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
+ * @param context - Cost tracking context (optional)
  * @returns Expected outcome structure
  */
 export async function predictOutcome(
@@ -46,12 +70,16 @@ export async function predictOutcome(
   currentDom: string,
   currentUrl: string,
   ragChunks: ResolveKnowledgeChunk[] = [],
-  hasOrgKnowledge = false
+  hasOrgKnowledge = false,
+  context?: OutcomePredictionContext
 ): Promise<ExpectedOutcome | null> {
   const actionType = classifyActionType(action, currentDom)
 
   if (actionType === "dropdown") {
     return dropdownExpectedOutcome(thought)
+  }
+  if (actionType === "navigation") {
+    return navigationExpectedOutcome(thought)
   }
 
   const apiKey = process.env.OPENAI_API_KEY
@@ -61,12 +89,21 @@ export async function predictOutcome(
     throw new Error("OpenAI API key not configured")
   }
 
-  const openai = new OpenAI({
-    apiKey,
+  // Use traced OpenAI client for LangFuse observability
+  const openai = getTracedOpenAIWithConfig({
+    generationName: "outcome_prediction",
+    sessionId: context?.sessionId,
+    userId: context?.userId,
+    tags: ["prediction"],
+    metadata: {
+      action,
+      actionType,
+    },
   })
 
   // Use lightweight model for prediction to reduce cost
   const model = process.env.OUTCOME_PREDICTION_MODEL || "gpt-4o-mini"
+  const startTime = Date.now()
 
   const systemPrompt = `You are an outcome prediction AI that predicts what should happen after an action is executed.
 
@@ -131,6 +168,14 @@ User-friendly description of what should happen after this action (e.g., "The fo
   <Selector>optional-selector</Selector>
 </ElementShouldDisappear>
 </DOMChanges>
+<!-- IMPORTANT: Look-Ahead Verification (predict what's needed for NEXT step) -->
+<NextGoal>
+  <Description>What element or state should be available for the next step</Description>
+  <Selector>CSS selector for the element needed next (optional)</Selector>
+  <TextContent>Text to look for in the next element (optional)</TextContent>
+  <Role>ARIA role of the element needed (optional)</Role>
+  <Required>true|false</Required> <!-- If true, missing next-goal causes failure -->
+</NextGoal>
 
 **Language Guidelines:**
 - ❌ AVOID: "Element with selector 'form' should exist", "DOM structure should change", "Element ID 123 should appear"
@@ -165,24 +210,6 @@ Guidelines:
   userParts.push(`\nCurrent Page State:`)
   userParts.push(`- URL: ${currentUrl}`)
   userParts.push(`- Page Structure Preview: ${domPreview.substring(0, 2000)}`)
-  
-  // CRITICAL: Check if action is clicking an element with hasPopup attribute
-  // Extract element ID from action (e.g., "click(123)" -> 123)
-  const clickMatch = action.match(/^click\((\d+)\)$/)
-  if (clickMatch) {
-    const elementId = clickMatch[1]
-    // Look for element with this ID in DOM and check for hasPopup attributes
-    const elementRegex = new RegExp(`id=["']?${elementId}["']?[^>]*>`, "i")
-    const elementMatch = currentDom.match(elementRegex)
-    if (elementMatch) {
-      const elementHtml = elementMatch[0]
-      const hasPopup = elementHtml.match(/aria-haspopup=["']?([^"'\s>]+)["']?/i) || 
-                       elementHtml.match(/data-has-popup=["']?([^"'\s>]+)["']?/i)
-      if (hasPopup) {
-        userParts.push(`\n⚠️ CRITICAL: The element being clicked has a popup attribute (aria-haspopup="${hasPopup[1]}"). This means clicking it will open a dropdown/popup menu, NOT navigate to a new page. Set URLShouldChange to false and expect aria-expanded to become true, with new menu items appearing.`)
-      }
-    }
-  }
 
   userParts.push(
     `\nBased on the action, reasoning, current page state, and knowledge context, predict what should happen after this action executes. Generate specific page-based expectations that can be verified.
@@ -209,7 +236,30 @@ Remember: Write the <Description> in user-friendly language that a non-technical
       max_tokens: 500,
     })
 
+    const durationMs = Date.now() - startTime
     const content = response.choices[0]?.message?.content
+
+    // Track cost (dual-write to MongoDB + LangFuse)
+    if (context?.tenantId && context?.userId && response.usage) {
+      recordUsage({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        taskId: context.taskId,
+        provider: "openai",
+        model,
+        actionType: "OUTCOME_PREDICTION",
+        inputTokens: response.usage.prompt_tokens,
+        outputTokens: response.usage.completion_tokens,
+        durationMs,
+        metadata: {
+          action,
+          actionType,
+        },
+      }).catch((err: unknown) => {
+        console.error("[Outcome Prediction] Cost tracking error:", err)
+      })
+    }
 
     if (!content) {
       Sentry.captureException(new Error("Empty outcome prediction LLM response"))
@@ -328,8 +378,40 @@ function parseOutcomeResponse(content: string): ExpectedOutcome | null {
     domChanges.elementsToDisappear = elementsToDisappear
   }
 
+  // Phase 3 Task 3: Parse NextGoal for look-ahead verification
+  const nextGoalMatch = content.match(/<NextGoal>([\s\S]*?)<\/NextGoal>/i)
+  let nextGoal: ExpectedOutcome["nextGoal"] | undefined
+  
+  if (nextGoalMatch?.[1]) {
+    const nextGoalContent = nextGoalMatch[1]
+    
+    const ngDescriptionMatch = nextGoalContent.match(/<Description>([\s\S]*?)<\/Description>/i)
+    const ngSelectorMatch = nextGoalContent.match(/<Selector>([\s\S]*?)<\/Selector>/i)
+    const ngTextContentMatch = nextGoalContent.match(/<TextContent>([\s\S]*?)<\/TextContent>/i)
+    const ngRoleMatch = nextGoalContent.match(/<Role>([\s\S]*?)<\/Role>/i)
+    const ngRequiredMatch = nextGoalContent.match(/<Required>([\s\S]*?)<\/Required>/i)
+    
+    const ngDescription = ngDescriptionMatch?.[1]?.trim()
+    const ngSelector = ngSelectorMatch?.[1]?.trim()
+    const ngTextContent = ngTextContentMatch?.[1]?.trim()
+    const ngRole = ngRoleMatch?.[1]?.trim()
+    const ngRequiredStr = ngRequiredMatch?.[1]?.trim()?.toLowerCase()
+    const ngRequired = ngRequiredStr === "true" || ngRequiredStr === "yes"
+    
+    if (ngDescription) {
+      nextGoal = {
+        description: ngDescription,
+        selector: ngSelector || undefined,
+        textContent: ngTextContent || undefined,
+        role: ngRole || undefined,
+        required: ngRequired,
+      }
+    }
+  }
+
   return {
     description,
     ...(Object.keys(domChanges).length > 0 ? { domChanges } : {}),
+    ...(nextGoal ? { nextGoal } : {}),
   }
 }

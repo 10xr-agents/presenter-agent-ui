@@ -1,8 +1,9 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { TaskPlan, PlanStep } from "@/lib/models/task"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { WebSearchResult } from "./web-search"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { recordUsage } from "@/lib/cost"
 
 /**
  * Planning Engine (Task 6)
@@ -10,6 +11,16 @@ import type { WebSearchResult } from "./web-search"
  * Generates high-level action plans from user instructions.
  * Breaks down tasks into logical steps with tool types and expected outcomes.
  */
+
+/**
+ * Context for cost tracking (optional)
+ */
+export interface PlanningContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+}
 
 /**
  * Generate action plan from user instructions.
@@ -20,6 +31,7 @@ import type { WebSearchResult } from "./web-search"
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
  * @param webSearchResult - Web search results (if available, Task 1)
+ * @param context - Cost tracking context (optional)
  * @returns Generated plan or null on error
  */
 export async function generatePlan(
@@ -28,7 +40,8 @@ export async function generatePlan(
   dom: string,
   ragChunks: ResolveKnowledgeChunk[] = [],
   hasOrgKnowledge = false,
-  webSearchResult?: WebSearchResult
+  webSearchResult?: WebSearchResult,
+  context?: PlanningContext
 ): Promise<TaskPlan | null> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -37,12 +50,23 @@ export async function generatePlan(
     throw new Error("OpenAI API key not configured")
   }
 
-  const openai = new OpenAI({
-    apiKey,
+  // Use traced OpenAI client for LangFuse observability
+  const openai = getTracedOpenAIWithConfig({
+    generationName: "task_planning",
+    sessionId: context?.sessionId,
+    userId: context?.userId,
+    tags: ["planning"],
+    metadata: {
+      query,
+      url,
+      hasOrgKnowledge,
+      hasWebSearch: !!webSearchResult,
+    },
   })
 
   // Use lightweight model for planning to reduce cost (as per requirements)
   const model = process.env.PLANNING_MODEL || "gpt-4o-mini"
+  const startTime = Date.now()
 
   // Build planning prompt (Task 2: User-friendly language)
   const systemPrompt = `You are a planning AI that breaks down user tasks into high-level action steps.
@@ -145,7 +169,32 @@ Remember: Write all step descriptions in user-friendly language that a non-techn
       max_tokens: 2000,
     })
 
+    const durationMs = Date.now() - startTime
     const content = response.choices[0]?.message?.content
+
+    // Track cost (dual-write to MongoDB + LangFuse)
+    if (context?.tenantId && context?.userId && response.usage) {
+      recordUsage({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        taskId: context.taskId,
+        provider: "openai",
+        model,
+        actionType: "PLANNING",
+        inputTokens: response.usage.prompt_tokens,
+        outputTokens: response.usage.completion_tokens,
+        durationMs,
+        metadata: {
+          query,
+          url,
+          hasOrgKnowledge,
+          hasWebSearch: !!webSearchResult,
+        },
+      }).catch((err: unknown) => {
+        console.error("[Planning] Cost tracking error:", err)
+      })
+    }
 
     if (!content) {
       Sentry.captureException(new Error("Empty planning LLM response"))

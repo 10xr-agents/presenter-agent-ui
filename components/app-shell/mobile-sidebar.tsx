@@ -1,16 +1,14 @@
 "use client"
 
 import {
-  Activity,
   BarChart3,
   BookOpen,
   CreditCard,
-  LayoutDashboard,
+  Home,
   Menu,
-  Presentation,
+  MessageSquare,
   Settings,
   Users,
-  X,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -28,12 +26,12 @@ const baseNavigation = [
   {
     name: "Dashboard",
     href: "/dashboard",
-    icon: LayoutDashboard,
+    icon: Home,
   },
   {
-    name: "Screen Agents",
-    href: "/screen-agents",
-    icon: Presentation,
+    name: "Chats",
+    href: "/chats",
+    icon: MessageSquare,
   },
   {
     name: "Knowledge",
@@ -46,6 +44,11 @@ const baseNavigation = [
     icon: BarChart3,
   },
   {
+    name: "Billing",
+    href: "/billing",
+    icon: CreditCard,
+  },
+  {
     name: "Settings",
     href: "/settings",
     icon: Settings,
@@ -53,11 +56,6 @@ const baseNavigation = [
 ]
 
 const organizationNavigation = [
-  {
-    name: "Billing",
-    href: "/billing",
-    icon: CreditCard,
-  },
   {
     name: "Teams",
     href: "/teams",

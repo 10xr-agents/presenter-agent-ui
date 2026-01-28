@@ -14,6 +14,7 @@ import mongoose, { Schema } from "mongoose"
  * Tenant ID: userId (normal mode) or organizationId (organization mode)
  */
 // Task 7: Expected outcome structure for verification
+// Phase 3 Task 3: Added nextGoal for look-ahead verification
 export interface ExpectedOutcome {
   description?: string // Natural language description
   domChanges?: {
@@ -37,6 +38,28 @@ export interface ExpectedOutcome {
       role?: string
       selector?: string
     }>
+  }
+  /**
+   * Phase 3 Task 3: Semantic Look-Ahead Verification
+   *
+   * Predicts what element/state should be available for the NEXT step.
+   * Verification checks:
+   * 1. Previous action outcome (standard verification)
+   * 2. Next-goal availability (look-ahead)
+   *
+   * If next-goal is not available, verification fails early (before next step).
+   */
+  nextGoal?: {
+    /** Description of what should be available for next step */
+    description: string
+    /** CSS selector for the element needed for next step */
+    selector?: string
+    /** Text content to look for */
+    textContent?: string
+    /** ARIA role to look for */
+    role?: string
+    /** If false, missing next-goal is a warning, not failure */
+    required: boolean
   }
   [key: string]: unknown // Allow additional fields
 }

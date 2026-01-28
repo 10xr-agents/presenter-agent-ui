@@ -1,8 +1,9 @@
 # Thin Client Implementation: Server-Side Roadmap
 
-**Document Version:** 3.0  
-**Last Updated:** January 27, 2026  
-**Status:** Implementation Complete  
+**Document Version:** 3.1  
+**Last Updated:** January 28, 2026  
+**Status:** Implementation Complete (Tasks 1-18) + Planned (Part E: Tasks 19-22)  
+**Changelog (3.1):** Added **Part E: Batch & Adapt Flow Improvements** (Tasks 19-22) — Action Chaining, Dynamic Re-Planning (Plan Health Check), Complexity Routing (Fast-Path), Semantic Look-Ahead Verification. Canonical implementation roadmap: `INTERACT_FLOW_WALKTHROUGH.md` § Implementation Roadmap: Batch & Adapt. See `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.  
 **Source:** Merged from `THIN_SERVER_ROADMAP.md`, `THIN_SERVER_TO_BE_ROADMAP.md`, and `BACKEND_WEB_SEARCH_CHANGES.md`
 
 **Sync:** This document is the **implementation roadmap**. The **specification** is `SERVER_SIDE_AGENT_ARCH.md`. Keep both in sync; on conflict, prefer ROADMAP + enriched thread (Better Auth adapters, MongoDB/Mongoose, resolve = internal/debugging).
@@ -1026,7 +1027,122 @@ We **reuse** Better Auth (Prisma) for users, sessions, and organizations. **No n
 
 ---
 
-## 20. Task Order and Dependencies
+## Part E: Batch & Adapt Flow Improvements (Tasks 19-22)
+
+**Objective:** Move from **"Step-by-Step"** to **"Batch & Adapt"** for fewer round-trips (Speed) and better adaptation to unexpected UI (Higher Intelligence). The **canonical implementation roadmap** (task list, deliverables, definition of done) lives in **`INTERACT_FLOW_WALKTHROUGH.md`** § Implementation Roadmap: Batch & Adapt Improvements. This section is the **server-side breakdown** for those tasks. See also `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.
+
+| Feature | Current | Improvement | Impact |
+|--------|---------|-------------|--------|
+| **Execution** | 1 request = 1 action | 1 request = **N actions** (chaining) | **~5× speedup** on form-fill |
+| **Planning** | Static (once) | **Dynamic** (plan health check) | **Higher success rate** |
+| **Routing** | One size fits all | **Complexity** (SIMPLE vs COMPLEX) | **Lower latency** (simple) |
+| **Verification** | Previous action only | Previous + **next-goal availability** | **Better reasoning** |
+
+---
+
+## 20. Task 19: Action Chaining (Server)
+
+**Status:** ⏳ **PLANNED**
+
+**Objective:** Allow the backend to return a **chain of actions** (`actions: [...]`) instead of a single `action`. Client executes them sequentially; on first failure, stops and reports state. Reduces N round-trips to 1 for form-fill clusters.
+
+**Deliverable:** Interact API supports optional `actions` array in `NextActionResponse`. Planning LLM (or step refinement) identifies **clusters** of independent actions (e.g. form fields). Each item: `{ type: "click" | "setValue" | "wait" | ..., id?: number, text?: string, ms?: number }`. Legacy single `action` remains supported.
+
+### 19.1 API Changes (Task 19)
+
+- **Response:** Add optional `actions?: Array<{ type: string; id?: number; text?: string; ms?: number }>` to `NextActionResponse`. When present, client executes sequentially; when absent, use existing `action` string.
+- **Request:** Client may send `lastExecutedActionIndex`, `lastActionStatus`, `lastActionError` when chain partially executed and failed. Use for verification and self-correction.
+
+### 19.2 Implementation (Task 19)
+
+- **Planning / refinement:** Extend plan or refinement logic to emit **action clusters** (e.g. "fill name, dob, sex; then submit") and map to `actions[]`.
+- **Outcome prediction:** Predict outcome for the **chain** (e.g. "form submitted, success screen") or per-action as needed for verification.
+- **Verification:** When client reports partial chain execution (failed at index i), verify up to that point; self-correction applies to retry from failure.
+
+### 19.3 Persistence (Task 19)
+
+- **TaskAction / Messages:** Store `actions` (array) when present; retain `action` (string) for backward compatibility. Verification and correction records reference chain index when applicable.
+
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` (implementation roadmap Task 1), `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.
+
+---
+
+## 21. Task 20: Dynamic Re-Planning (Plan Health Check) (Server)
+
+**Status:** ⏳ **PLANNED**
+
+**Objective:** Re-evaluate plan validity when **URL changes** or **DOM similarity drops below 70%**. Run a fast "Plan Validator" prompt before generating the next action; adapt or regenerate plan instead of blindly advancing `currentStepIndex`.
+
+**Deliverable:** Before producing next action, check triggers (URL change vs previous, DOM similarity vs previous). If triggered, call Plan Validator: *"Given the current screen, does the remaining plan still make sense?"* Update or replace plan as needed; then continue with refined step.
+
+### 20.1 Triggers (Task 20)
+
+- **URL change:** Compare current `url` to `previousUrl` (from client or last verification record). If different → trigger.
+- **DOM similarity:** Compute similarity (e.g. hashing, structural diff, or embedding) between current DOM and last stored snapshot. If &lt; 70% → trigger.
+
+### 20.2 Plan Validator (Task 20)
+
+- **Component:** `lib/agent/plan-validator.ts` or equivalent. Lightweight LLM call (e.g. gpt-4o-mini) with prompt: current screen summary, remaining plan steps. Output: plan still valid / invalid; if invalid, optional revised steps or full re-plan.
+- **Integration:** In `POST /api/agent/interact`, after loading task and before refine/LLM action: run validator when triggered. If plan invalid, call `generatePlan` or update `plan.steps`; reset or adjust `currentStepIndex`.
+
+### 20.3 Optional Response (Task 20)
+
+- **`rePlanning?: boolean`** in response when validator ran and plan was updated. Client may show "Re-planning..." (see `INTERACT_FLOW_WALKTHROUGH.md` Task 2).
+
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` (implementation roadmap Task 2), `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.
+
+---
+
+## 22. Task 21: Complexity Routing (Fast-Path for Simple Tasks) (Server)
+
+**Status:** ⏳ **PLANNED**
+
+**Objective:** **Complexity-based routing.** Context Analyzer outputs `complexity: SIMPLE | COMPLEX`. For **SIMPLE** (e.g. "Click the Logout button"), **skip** planning and go straight to `buildActionPrompt` (Direct Action). For **COMPLEX**, keep current flow (plan → refine / LLM).
+
+**Deliverable:** Reduced latency and token use for simple commands; same response shape so client remains compatible.
+
+### 21.1 Context Analyzer Change (Task 21)
+
+- **Output:** Add `complexity: "SIMPLE" | "COMPLEX"` to `analyzeContext` result. Guidelines: single-step, single-element actions (e.g. click, navigate, refresh) → SIMPLE; multi-step, form-fill, or ambiguous → COMPLEX.
+
+### 21.2 Branching in Interact (Task 21)
+
+- **SIMPLE:** Skip `generatePlan`. Create task (minimal), then `buildActionPrompt` + `callActionLLM` directly. No step refinement. Outcome prediction and verification unchanged.
+- **COMPLEX:** Existing flow (plan → refine or LLM → outcome prediction → store action).
+
+### 21.3 Backward Compatibility (Task 21)
+
+- Response format unchanged. Client Task 13 (Compatibility) verifies simple commands work and benefit from fast-path.
+
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` (implementation roadmap Task 3), `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.
+
+---
+
+## 23. Task 22: Semantic Look-Ahead Verification (Server)
+
+**Status:** ⏳ **PLANNED**
+
+**Objective:** When generating an action (e.g. `click(68)` for "Patient"), also predict **target of next step** (e.g. "expect to see 'New/Search'"). Verification checks both **previous outcome** and **next-goal availability**. Catches mismatches (e.g. dropdown opened but 'New/Search' missing) during verification instead of on the next planning step.
+
+**Deliverable:** Outcome prediction or action-generation step produces optional `nextGoalDescription` / `nextGoalSelector`. Verification engine validates: (1) previous action outcome, (2) presence/availability of next goal (e.g. element or text). If (2) fails, treat as verification failure and trigger self-correction.
+
+### 22.1 Outcome / Action Generation (Task 22)
+
+- **Extension:** When producing action, also produce "target of next step" (e.g. "New/Search" or selector hint). Store with `expectedOutcome` or alongside action.
+
+### 22.2 Verification Extension (Task 22)
+
+- **Verification:** After DOM checks for previous action, check **next-goal availability** when `nextGoalDescription` or `nextGoalSelector` is set. Use DOM or lightweight LLM to confirm. If missing → reduce confidence or fail verification → self-correction.
+
+### 22.3 Client (Task 22)
+
+- No API or client changes. Compatibility verified per `INTERACT_FLOW_WALKTHROUGH.md` Task 4.
+
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` (implementation roadmap Task 4), `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.
+
+---
+
+## 24. Task Order and Dependencies
 
 | Order | Task | Depends on | Server delivers |
 |-------|------|------------|-----------------|
@@ -1048,6 +1164,10 @@ We **reuse** Better Auth (Prisma) for users, sessions, and organizations. **No n
 | **16** | Self-Correction Engine | Task 15 | Self-correction engine, correction records, retry logic |
 | **17** | Outcome Prediction | Task 14, Task 15 | Outcome prediction engine, expected outcome generation |
 | **18** | Step Refinement & Tool Routing | Task 14, Task 17 | Step refinement engine, tool routing |
+| **19** | Action Chaining | Task 18 | `actions[]` in response, chain-aware verification |
+| **20** | Dynamic Re-Planning (Plan Health Check) | Task 14, Task 18 | Plan validator, URL/DOM triggers, optional `rePlanning` |
+| **21** | Complexity Routing (Fast-Path) | Task 3, Context Analyzer | `complexity` SIMPLE/COMPLEX, skip plan for SIMPLE |
+| **22** | Semantic Look-Ahead Verification | Task 15, Task 17 | Next-goal prediction, verification of next-goal availability |
 
 **Dependencies:**
 - **Part A (Core):** Tasks 1-4 are sequential
@@ -1058,12 +1178,13 @@ We **reuse** Better Auth (Prisma) for users, sessions, and organizations. **No n
   - Task 16 depends on Task 15 (correction needs verification)
   - Task 17 depends on Task 14 (prediction needs plans)
   - Task 18 depends on Task 14 and Task 17 (refinement needs plans and prediction)
+- **Part E (Batch & Adapt):** Tasks 19-22 depend on Parts C/D. Task 19 (chaining) on Task 18; Task 20 on Task 14/18; Task 21 on Task 3 + context analyzer; Task 22 on Tasks 15, 17. Canonical roadmap: `INTERACT_FLOW_WALKTHROUGH.md` § Implementation Roadmap: Batch & Adapt.
 
 ---
 
-## 21. References
+## 25. References
 
-### 21.1 Internal
+### 25.1 Internal
 
 - **`SERVER_SIDE_AGENT_ARCH.md`** — Specification: Auth API (§2), interact (§4), resolve (§5), RAG, action history. DB stack & tenant (§1.3), interact vs resolve (§5.6), Extension notes (§10), References (§11). **Keep in sync with this roadmap.**
 - **`THIN_CLIENT_ROADMAP_CLIENT.md`** — Extension integration for Tasks 1-3.
@@ -1071,15 +1192,17 @@ We **reuse** Better Auth (Prisma) for users, sessions, and organizations. **No n
 - **`BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`** — **Browser automation / extraction service** `GET /api/knowledge/resolve` request & response schema. Referenced by Task 2 (§3.1, §3.2) and `lib/knowledge-extraction/resolve-client.ts`.
 - **`DEBUG_VIEW_IMPROVEMENTS.md`** — Debug View requirements (client-focused, but server provides debug data).
 - **`MANUS_ORCHESTRATOR_ARCHITECTURE.md`** — Manus orchestrator architecture specification.
+- **`INTERACT_FLOW_WALKTHROUGH.md`** — Step-by-step interact flow (Logic → Plan → Act → Verify). Referenced by Part E (Batch & Adapt).
+- **`SERVER_SIDE_AGENT_ARCH.md` §4.9.3** — Batch & Adapt future improvements (Action Chaining, Dynamic Re-Planning, Complexity Routing, Look-Ahead Verification).
 
-### 21.2 Better Auth
+### 25.2 Better Auth
 
 - [Browser Extension Guide](https://www.better-auth.com/docs/guides/browser-extension-guide) — Extension setup, `trustedOrigins`, `host_permissions`, client `createAuthClient` + `baseURL`.
 - [Bearer Token Authentication](https://beta.better-auth.com/docs/plugins/bearer) — `bearer()` plugin, `set-auth-token` header, `fetchOptions.auth: { type: "Bearer", token }`, `getSession` with Bearer.
 - [Options / trustedOrigins](https://www.better-auth.com/docs/reference/options) — `trustedOrigins` config for extension origins.
 - [Integrations / Next](https://better-auth.com/docs/integrations/next) — `toNextJsHandler(auth)`, App Router `/api/auth/[...all]`.
 
-### 21.3 Next.js
+### 25.3 Next.js
 
 - [App Router](https://nextjs.org/docs/app) — App Router overview.
 - [Middleware](https://nextjs.org/docs/app/building-your-application/routing/middleware) — CORS, preflight, extension origin.
@@ -1087,7 +1210,7 @@ We **reuse** Better Auth (Prisma) for users, sessions, and organizations. **No n
 
 ---
 
-## 22. Summary
+## 26. Summary
 
 This roadmap documents the complete server-side implementation for the Thin Client architecture, including:
 
@@ -1095,5 +1218,6 @@ This roadmap documents the complete server-side implementation for the Thin Clie
 - **Agent Enhancements (Tasks 5-8):** Web search, user-friendly messages, chat persistence, error handling
 - **Debug View Enhancements (Tasks 9-13):** Debug logging, RAG debug data, execution metrics, error details, session export
 - **Manus-Style Orchestrator (Tasks 14-18):** Planning, verification, self-correction, outcome prediction, step refinement
+- **Batch & Adapt Flow Improvements (Tasks 19-22):** Action chaining, dynamic re-planning (plan health check), complexity routing (fast-path), semantic look-ahead verification — **planned**; canonical roadmap: `INTERACT_FLOW_WALKTHROUGH.md` § Implementation Roadmap: Batch & Adapt; see `SERVER_SIDE_AGENT_ARCH.md` §4.9.3
 
-All tasks are **completed** and implementation is verified. The system provides a comprehensive server-side intelligence layer for the Chrome extension client.
+Tasks 1-18 are **completed** and implementation is verified. Tasks 19-22 are **planned** (Part E). The system provides a comprehensive server-side intelligence layer for the Chrome extension client.

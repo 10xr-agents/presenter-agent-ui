@@ -1,8 +1,9 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
 import type { PlanStep } from "@/lib/models/task"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { recordUsage } from "@/lib/cost"
 
 /**
  * Step Refinement Engine (Task 10)
@@ -10,6 +11,16 @@ import { getAvailableActionsPrompt, validateActionName } from "./action-config"
  * Converts high-level plan steps into specific tool actions.
  * Determines tool type (DOM vs SERVER) and generates tool parameters.
  */
+
+/**
+ * Context for cost tracking (optional)
+ */
+export interface RefinementContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+}
 
 /**
  * Refined tool action
@@ -30,6 +41,7 @@ export interface RefinedToolAction {
  * @param previousActions - Previous actions for context
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
+ * @param context - Cost tracking context (optional)
  * @returns Refined tool action
  */
 export async function refineStep(
@@ -38,7 +50,8 @@ export async function refineStep(
   currentUrl: string,
   previousActions: Array<{ stepIndex: number; thought: string; action: string }> = [],
   ragChunks: ResolveKnowledgeChunk[] = [],
-  hasOrgKnowledge = false
+  hasOrgKnowledge = false,
+  context?: RefinementContext
 ): Promise<RefinedToolAction | null> {
   const apiKey = process.env.OPENAI_API_KEY
 
@@ -47,12 +60,22 @@ export async function refineStep(
     throw new Error("OpenAI API key not configured")
   }
 
-  const openai = new OpenAI({
-    apiKey,
+  // Use traced OpenAI client for LangFuse observability
+  const openai = getTracedOpenAIWithConfig({
+    generationName: "step_refinement",
+    sessionId: context?.sessionId,
+    userId: context?.userId,
+    tags: ["refinement"],
+    metadata: {
+      stepIndex: planStep.index,
+      stepDescription: planStep.description,
+      toolType: planStep.toolType,
+    },
   })
 
   // Use lightweight model for refinement to reduce cost
   const model = process.env.STEP_REFINEMENT_MODEL || "gpt-4o-mini"
+  const startTime = Date.now()
 
   const systemPrompt = `You are a step refinement AI that converts high-level plan steps into specific tool actions.
 
@@ -100,6 +123,11 @@ Guidelines:
 - For click(): Extract the element's ID attribute value from the page structure (e.g., if element has id="123", use click(123))
 - For setValue(): Extract element ID and provide the text value to set
 - Be specific about element IDs and values
+- **CRITICAL: Menu Items in Dropdowns**: If the plan step mentions clicking a menu item (e.g., "New/Search") after a dropdown opened:
+  1. Look for the menu item element in the DOM by searching for its text content (e.g., "New/Search")
+  2. Menu items often have different IDs than the dropdown button - find the specific menu item element
+  3. Menu items may have role="menuitem", role="listitem", or be in a list structure
+  4. The element ID for "New/Search" menu item is different from the "Patient" dropdown button ID
 - Remember: The plan step uses user-friendly language - your job is to convert it to a technical action while keeping the user-friendly description in mind`
 
   // Build user message with context
@@ -161,7 +189,31 @@ Note: The plan step description is written in user-friendly language. When gener
       max_tokens: 500,
     })
 
+    const durationMs = Date.now() - startTime
     const content = response.choices[0]?.message?.content
+
+    // Track cost (dual-write to MongoDB + LangFuse)
+    if (context?.tenantId && context?.userId && response.usage) {
+      recordUsage({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        taskId: context.taskId,
+        provider: "openai",
+        model,
+        actionType: "REFINEMENT",
+        inputTokens: response.usage.prompt_tokens,
+        outputTokens: response.usage.completion_tokens,
+        durationMs,
+        metadata: {
+          stepIndex: planStep.index,
+          stepDescription: planStep.description,
+          toolType: planStep.toolType,
+        },
+      }).catch((err: unknown) => {
+        console.error("[Step Refinement] Cost tracking error:", err)
+      })
+    }
 
     if (!content) {
       Sentry.captureException(new Error("Empty step refinement LLM response"))
@@ -236,8 +288,11 @@ function parseRefinementResponse(
   const actionMatch = content.match(/<Action>([\s\S]*?)<\/Action>/i)
   let action = actionMatch?.[1]?.trim() || ""
 
-  if (!action) {
-    // If no action provided, try to construct from toolName and parameters
+  // Check if action is empty or just a tool name without parameters
+  const isJustToolName = action && !action.includes("(")
+  
+  if (!action || isJustToolName) {
+    // If no action provided or action is just tool name, try to construct from toolName and parameters
     if (toolName === "click" && parameters.elementId) {
       action = `click(${parameters.elementId})`
     } else if (toolName === "setValue" && parameters.elementId && parameters.text) {
@@ -246,6 +301,13 @@ function parseRefinementResponse(
       action = "finish()"
     } else if (toolName === "fail" && parameters.reason) {
       action = `fail(${JSON.stringify(parameters.reason)})`
+    } else if (isJustToolName && action === toolName) {
+      // Action is just tool name but we can't construct it - invalid
+      console.error(`[Step Refinement] Action is just tool name "${action}" but missing required parameters`, {
+        toolName,
+        parameters,
+      })
+      return null
     } else {
       return null
     }

@@ -80,4 +80,5 @@ export * from "./correction-record"
 export * from "./session"
 export * from "./message"
 export * from "./snapshot"
-
+export * from "./token-usage-log"
+export * from "./skill" // Phase 4 Task 6: Skills Library

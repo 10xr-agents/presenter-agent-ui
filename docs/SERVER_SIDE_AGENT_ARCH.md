@@ -1,8 +1,10 @@
 # Server-Side Agent Architecture
 
-**Document Version:** 4.1  
+**Document Version:** 4.3  
 **Date:** January 28, 2026  
 **Status:** Technical Specification — All Features Complete  
+**Changelog (4.3):** Added §4.9.3 **Batch & Adapt Flow Improvements (Future)** — Action Chaining, Dynamic Re-Planning, Complexity Routing, Semantic Look-Ahead. **Implementation roadmap:** `INTERACT_FLOW_WALKTHROUGH.md` § Implementation Roadmap: Batch & Adapt. Server breakdown: `THIN_SERVER_ROADMAP.md` Part E (Tasks 19–22). Format reference: `THIN_CLIENT_ROADMAP.md`.  
+**Changelog (4.2):** Optional improvements (§4.9.2): (1) **Navigation** fixed outcome for `navigate`/`goBack` (`urlShouldChange: true`); (2) removed dead hasPopup inject in outcome-prediction LLM path; (3) **semantic verification** skipped for dropdown (DOM-only, saves cost); (4) **previousUrl** for verification: client `previousUrl` → last `VerificationRecord` actualState.url → task baseline.  
 **Changelog (4.1):** Action-type classification (§4.9.1): `lib/agent/action-type.ts` classifies actions (dropdown, navigation, generic). Outcome prediction uses a fixed template for dropdowns (no LLM over-specification). Verification runs only dropdown-relevant checks (url, aria-expanded, menu-like content) for dropdown actions; skips elementShouldExist / elementShouldNotExist / elementShouldHaveText. Prevents false verification failures when e.g. clicking "Patient" opens a dropdown and we wrongly expected navigation or over-specific DOM checks.  
 **Changelog (4.0):** Merged `REASONING_LAYER_IMPROVEMENTS.md` and `THIN_SERVER_ROADMAP.md` into this document. Added comprehensive reasoning layer architecture (§4.7.1-4.7.4), dual-model architecture with confidence routing (§4.7.5), and enhanced implementation details throughout. All features implemented and documented. `REASONING_LAYER_IMPROVEMENTS.md` has been removed as all content is now in this document.  
 **Changelog (3.0):** Merged `BACKEND_MISSING_ITEMS.md` into this document. Added rate limiting (§4.13), production logging (§4.14), data retention & cleanup (§4.15), error handling enhancements (§4.16), and API usage examples (§17). All implementation tasks complete (100%).  
@@ -938,11 +940,10 @@ To avoid false verification failures (e.g. "Patient" click opens a dropdown but 
 
 **2. Outcome prediction (Task 9)**
 
-- **Before** calling the LLM, we classify the action. If **dropdown**, we **skip the LLM** and return a **fixed** `ExpectedOutcome`:
-  - `description`: from `thought` (trimmed) or `"A dropdown menu should open."`
-  - `domChanges`: **only** `urlShouldChange: false`, `attributeChanges: [{ attribute: "aria-expanded", expectedValue: "true" }]`, `elementsToAppear: [{ role: "list" }, { role: "listitem" }]`.
-  - **No** `elementShouldExist`, `elementShouldNotExist`, or `elementShouldHaveText`.
-- For **non-dropdown** actions, the existing LLM-based outcome prediction is used.
+- **Before** calling the LLM, we classify the action.
+  - **Dropdown:** **Skip the LLM** and return a **fixed** `ExpectedOutcome`: `urlShouldChange: false`, `attributeChanges` (aria-expanded), `elementsToAppear` (list/listitem). No `elementShouldExist` / `elementShouldNotExist` / `elementShouldHaveText`.
+  - **Navigation** (`navigate(...)`, `goBack()`): **Skip the LLM** and return a **fixed** `ExpectedOutcome`: `urlShouldChange: true`, description from `thought` or `"The page should navigate to the new URL."`
+  - **Generic:** Use the existing LLM-based outcome prediction. The dead **hasPopup** inject (user prompt) was removed; dropdown/navigation are short-circuited.
 
 **3. Verification (Task 7)**
 
@@ -951,11 +952,12 @@ To avoid false verification failures (e.g. "Patient" click opens a dropdown but 
 - **Dropdown mode** (from `expectedOutcome` popup hints **or** `actionType === 'dropdown'`):
   - **Run only:** `urlChanged`, `attributeChanged` (aria-expanded), `elementsToAppear` (list/listitem/menuitem).
   - **Skip:** `elementShouldExist`, `elementShouldNotExist`, `elementShouldHaveText`.
+  - **Semantic verification:** **Skipped** for dropdown. We use DOM-only checks and `{ match: true, reason: "Skipped (dropdown); DOM checks only." }`. Saves LLM cost and avoids false negatives.
 - **Popup override:** When dropdown and `url` unchanged and `aria-expanded` present, we boost confidence to ≥ 0.75 so we don’t fail on remaining checks.
 
 **4. Self-correction (Task 8)**
 
-- When verification fails **and** the failed action was a dropdown click **and** the page shows menu-like options (e.g. "New/Search", "Dashboard"), we instruct the correction engine to **select a menu item** (e.g. "New/Search") rather than clicking another nav button (e.g. "Visits"). See self-correction prompts and dropdown-context hints.
+- When verification fails, we pass **`failedAction`** (e.g. `"click(68)"`) to the correction engine. We use **`classifyActionType(failedAction, currentDom)`** to detect dropdown clicks. If **`actionType === 'dropdown'`**, we inject a **strong** hint: "You MUST select a **menu item** from the open dropdown (e.g. New/Search), NOT another top-level nav button. Use ALTERNATIVE_SELECTOR with the menu item's element ID." If not classified as dropdown but the page shows menu-like options (heuristic), we inject a softer dropdown-context hint. This ensures corrections prefer **selecting a menu item** over clicking another nav button when a dropdown was opened.
 
 **5. Benefits**
 
@@ -964,6 +966,49 @@ To avoid false verification failures (e.g. "Patient" click opens a dropdown but 
 - **Backward compatible:** Legacy `expectedOutcome` with extra checks still work; we skip strict checks when `actionType === 'dropdown'` or when `expectedOutcome` indicates popup.
 
 **File locations:** `lib/agent/action-type.ts`, `lib/agent/outcome-prediction-engine.ts`, `lib/agent/verification-engine.ts`, `lib/agent/self-correction-engine.ts`, `app/api/agent/interact/route.ts`.
+
+#### 4.9.2 Optional Improvements (Post–4.1)
+
+The following optional upgrades are implemented (4.2+):
+
+**1. Navigation fixed outcome**
+
+- For **`navigate(...)`** and **`goBack()`**, outcome prediction uses a **fixed** template: `urlShouldChange: true`, description from `thought` or `"The page should navigate to the new URL."` No LLM call. Verification already handles URL-change checks via DOM logic.
+
+**2. Removed dead hasPopup inject (outcome prediction)**
+
+- The LLM user prompt previously injected a "CRITICAL: element has popup" warning when `click(id)` targeted an element with `aria-haspopup` / `data-has-popup`. Dropdowns are now **short-circuited** (fixed template), so that path is never used. The inject was removed to avoid dead code.
+
+**3. Semantic verification skipped for dropdown**
+
+- When the verified action is a **dropdown** (action-type or `expectedOutcome` popup hints), we **skip** `performSemanticVerification` (no LLM call). We use `{ match: true, reason: "Skipped (dropdown); DOM checks only." }` and rely on DOM checks + popup override. Reduces cost and avoids semantic false negatives for dropdowns.
+
+**4. previousUrl for verification (URL-change checks)**
+
+- **Source** (priority order): (1) **Client** — optional `previousUrl` in `POST /api/agent/interact` body (valid URL). (2) **Last verification record** — when verifying step N (N > 0), we use `VerificationRecord` for step N−1 and take `actualState.url` (URL after that step). (3) **Task baseline** — `tasks.url` when the task was created.
+- **Schema:** `interactRequestBodySchema` includes optional `previousUrl` (Zod URL refinement). The extension may send it when it knows the URL before executing the previous action.
+- **Use case:** More accurate URL-change verification when the "previous" URL is not the task baseline (e.g. multi-step navigations).
+
+#### 4.9.3 Batch & Adapt Flow Improvements (Future Roadmap)
+
+The current flow (Logic → Plan → Act → Verify) is structurally sound. To achieve **"Least Number of Steps"** (Speed) and **"Higher Intelligence"** (Adaptability), the following **Batch & Adapt** improvements are planned. The **implementation roadmap** (task-level details, deliverables, definition of done) lives in **`INTERACT_FLOW_WALKTHROUGH.md`** § Implementation Roadmap: Batch & Adapt Improvements. `THIN_SERVER_ROADMAP.md` Part E (Tasks 19–22) is the server-side breakdown; format follows `THIN_CLIENT_ROADMAP.md` for best practices.
+
+| Feature | Current Status | Proposed Improvement | Impact |
+|--------|----------------|----------------------|--------|
+| **Execution** | 1 Request = 1 Action | 1 Request = **N Actions** (Action Chaining) | **~5× speedup** on form-fill flows |
+| **Planning** | Static (created once) | **Dynamic** (Plan Health Check on URL/DOM change) | **Higher success rate** on unexpected UI |
+| **Routing** | One size fits all | **Complexity-based** (SIMPLE vs COMPLEX) | **Lower latency** for simple commands |
+| **Verification** | Checks previous action only | Previous + **Next-goal availability** (look-ahead) | **Better reasoning** before next step |
+
+**1. Action Chaining (Speed)** — See `INTERACT_FLOW_WALKTHROUGH.md` Task 1, `THIN_SERVER_ROADMAP.md` Task 19.
+
+**2. Dynamic Re-Planning (Plan Health Check)** — See `INTERACT_FLOW_WALKTHROUGH.md` Task 2, `THIN_SERVER_ROADMAP.md` Task 20.
+
+**3. Complexity Routing / Fast-Path (Simple vs Complex)** — See `INTERACT_FLOW_WALKTHROUGH.md` Task 3, `THIN_SERVER_ROADMAP.md` Task 21.
+
+**4. Semantic Look-Ahead Verification** — See `INTERACT_FLOW_WALKTHROUGH.md` Task 4, `THIN_SERVER_ROADMAP.md` Task 22.
+
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` (canonical flow + implementation roadmap), `THIN_SERVER_ROADMAP.md` Part E (server tasks 19–22), `THIN_CLIENT_ROADMAP.md` (roadmap format reference).
 
 ### 4.10 Enhanced Error Handling
 
@@ -1486,6 +1531,7 @@ RAG and action history MUST use **Tenant ID** and **Active Domain** as above to 
 | Document | Purpose |
 |----------|---------|
 | **`THIN_SERVER_ROADMAP.md`** | Implementation roadmap: MongoDB, Mongoose, Better Auth, Next.js, all tasks (auth, resolve, interact, preferences, web search, chat persistence, debug, orchestrator). **Content merged into this document.** |
+| **`INTERACT_FLOW_WALKTHROUGH.md`** | Step-by-step walkthrough of `POST /api/agent/interact`: from first request (new task) through verification, self-correction, and loop until `finish()` / `fail()`. Example: "Add a new patient with name 'Jas'." |
 | **`ARCHITECTURE.md`** | Hybrid DB (Prisma + Mongoose), tenant model (user / organization), multi-tenancy. |
 | **`BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`** | **Browser automation / extraction service** `GET /api/knowledge/resolve` request & response schema. Used when Next.js proxies resolve (§5); referenced by Task 2 and `lib/knowledge-extraction/resolve-client.ts`. |
 | **`DEBUG_VIEW_IMPROVEMENTS.md`** | Debug View requirements (client-focused, but server provides debug data). |
