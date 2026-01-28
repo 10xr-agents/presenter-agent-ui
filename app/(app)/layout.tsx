@@ -5,8 +5,8 @@ import { MobileSidebar } from "@/components/app-shell/mobile-sidebar"
 import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { auth } from "@/lib/auth"
 import { isOnboardingComplete } from "@/lib/onboarding/flow"
-import { getTenantState } from "@/lib/utils/tenant-state"
 import { userHasPassword } from "@/lib/utils/password-check"
+import { getTenantState } from "@/lib/utils/tenant-state"
 
 // Force dynamic rendering - this layout uses headers() for session checking
 export const dynamic = "force-dynamic"

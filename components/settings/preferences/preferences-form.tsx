@@ -7,7 +7,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Spinner } from "@/components/ui/spinner"
 import {
   Select,
   SelectContent,
@@ -15,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "@/lib/utils/toast"
 

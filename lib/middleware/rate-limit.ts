@@ -1,9 +1,9 @@
+import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { rateLimit as baseRateLimit, RateLimitOptions } from "@/lib/rate-limit/middleware"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders } from "@/lib/utils/cors"
-import * as Sentry from "@sentry/nextjs"
 import { logger } from "@/lib/utils/logger"
 
 /**

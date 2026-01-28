@@ -11,16 +11,17 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
-import { callActionLLM } from "@/lib/agent/llm-client"
 import { validateActionName } from "@/lib/agent/action-config"
 import {
-  parseChainFromLLMResponse,
+  type ActionChain,
   enhancePromptForChaining,
   identifyChainableGroups,
-  type ActionChain,
+  parseChainFromLLMResponse,
 } from "@/lib/agent/chaining"
-import type { InteractGraphState, ChainedActionResult, ChainMetadataResult } from "../types"
+import { callActionLLM } from "@/lib/agent/llm-client"
+import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
+import { logger } from "@/lib/utils/logger"
+import type { ChainedActionResult, ChainMetadataResult, InteractGraphState } from "../types"
 
 /**
  * Action generation node - generates action via LLM
@@ -49,8 +50,13 @@ export async function actionGenerationNode(
     verificationResult,
     correctionResult,
   } = state
+  const log = logger.child({
+    process: "Graph:action_generation",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
-  console.log(`[Graph:action_generation] Generating action via LLM`)
+  log.info("Generating action via LLM")
 
   const startTime = Date.now()
 
@@ -103,15 +109,14 @@ export async function actionGenerationNode(
     if (canAttemptChaining && currentPlanStep) {
       chainOpportunity = identifyChainableGroups(currentPlanStep, dom, query)
       if (chainOpportunity.canChain) {
-        console.log(
-          `[Graph:action_generation] Chaining opportunity detected: ${chainOpportunity.reason}, ` +
-          `${chainOpportunity.elementIds.length} elements`
+        log.info(
+          `Chaining opportunity detected: ${chainOpportunity.reason}, ${chainOpportunity.elementIds.length} elements`
         )
       }
     }
 
     // Build prompt (enhanced with chain instructions if opportunity detected)
-    let { system, user } = buildActionPrompt({
+    const { system, user } = buildActionPrompt({
       query,
       currentTime: new Date().toISOString(),
       previousActions,
@@ -122,12 +127,12 @@ export async function actionGenerationNode(
     })
 
     // Enhance prompt for chaining if opportunity detected
-    if (chainOpportunity.canChain) {
-      system = enhancePromptForChaining(system, currentPlanStep, dom)
-    }
+    const systemPrompt = chainOpportunity.canChain
+      ? enhancePromptForChaining(system, currentPlanStep, dom)
+      : system
 
     // Call LLM with cost tracking context
-    const llmResponse = await callActionLLM(system, user, {
+    const llmResponse = await callActionLLM(systemPrompt, user, {
       generationName: chainOpportunity.canChain ? "action_generation_chain" : "action_generation",
       tenantId: state.tenantId,
       userId: state.userId,
@@ -147,7 +152,7 @@ export async function actionGenerationNode(
     const llmDuration = Date.now() - startTime
 
     if (!llmResponse) {
-      console.error(`[Graph:action_generation] LLM returned null response`)
+      log.error("LLM returned null response")
       return {
         error: "LLM returned null response",
         status: "failed",
@@ -159,9 +164,8 @@ export async function actionGenerationNode(
     if (chainOpportunity.canChain) {
       actionChain = parseChainFromLLMResponse(llmResponse.thought, dom)
       if (actionChain) {
-        console.log(
-          `[Graph:action_generation] Chain parsed: ${actionChain.actions.length} actions, ` +
-          `reason=${actionChain.metadata.chainReason}`
+        log.info(
+          `Chain parsed: ${actionChain.actions.length} actions, reason=${actionChain.metadata.chainReason}`
         )
       }
     }
@@ -170,14 +174,14 @@ export async function actionGenerationNode(
     const parsedResponse = parseActionResponse(llmResponse.thought)
 
     if (!parsedResponse) {
-      console.error(`[Graph:action_generation] Failed to parse LLM response`)
+      log.error("Failed to parse LLM response")
       return {
         error: "Failed to parse LLM response",
         status: "failed",
       }
     }
 
-    let { thought, action } = parsedResponse
+    const { thought, action } = parsedResponse
 
     // Handle special actions
     
@@ -188,7 +192,7 @@ export async function actionGenerationNode(
 
     // Validate action name
     if (!validateActionName(action)) {
-      console.error(`[Graph:action_generation] Invalid action name: ${action}`)
+      log.error(`Invalid action name: ${action}`)
       return {
         error: `Invalid action: ${action}`,
         status: "failed",
@@ -229,12 +233,11 @@ export async function actionGenerationNode(
         actionResult.action = firstChainAction.action
       }
 
-      console.log(
-        `[Graph:action_generation] Generated chain of ${actionChain.actions.length} actions ` +
-        `(${llmDuration}ms)`
+      log.info(
+        `Generated chain of ${actionChain.actions.length} actions (${llmDuration}ms)`
       )
     } else {
-      console.log(`[Graph:action_generation] Generated single action: ${action} (${llmDuration}ms)`)
+      log.info(`Generated single action: ${action} (${llmDuration}ms)`)
     }
 
     return {
@@ -248,7 +251,7 @@ export async function actionGenerationNode(
       tags: { component: "graph-action-generation" },
       extra: { query, url },
     })
-    console.error(`[Graph:action_generation] Error:`, error)
+    log.error("Error", error)
 
     return {
       error: error instanceof Error ? error.message : "Unknown error in action generation",
@@ -266,11 +269,16 @@ export async function actionGenerationNode(
 export function routeAfterActionGeneration(
   state: InteractGraphState
 ): "outcome_prediction" | "finalize" {
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
   if (state.status === "failed" || !state.actionResult) {
-    console.log(`[Graph:router] Routing to finalize (action generation failed)`)
+    log.info("Routing to finalize (action generation failed)")
     return "finalize"
   }
 
-  console.log(`[Graph:router] Routing to outcome_prediction`)
+  log.info("Routing to outcome_prediction")
   return "outcome_prediction"
 }

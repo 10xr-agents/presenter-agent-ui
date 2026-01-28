@@ -4,8 +4,9 @@ import { Globe, Plus, RefreshCw, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { KnowledgeSearchFilters } from "@/components/knowledge/knowledge-search-filters"
+import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +17,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Skeleton } from "@/components/ui/skeleton"
-import { KnowledgeSearchFilters } from "@/components/knowledge/knowledge-search-filters"
-import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
-import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
+import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
+import { WebsiteKnowledgeProgress } from "@/components/website-knowledge/website-knowledge-progress"
 import { cn } from "@/lib/utils"
 
 interface WebsiteKnowledge {

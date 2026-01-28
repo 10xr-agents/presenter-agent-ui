@@ -1,12 +1,15 @@
 "use client"
 
-import { AlertCircle, ExternalLink, Globe, RefreshCw, Square, X, Trash2 } from "lucide-react"
+import { AlertCircle, ExternalLink, Globe, RefreshCw, Square, Trash2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
+import { KnowledgeConfiguration } from "@/components/knowledge/knowledge-configuration"
+import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
+import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
+import { KnowledgeSyncActivity } from "@/components/knowledge/knowledge-sync-activity"
+import { KnowledgeValidationStatus } from "@/components/knowledge/knowledge-validation-status"
+import { KnowledgeVisualization } from "@/components/knowledge/knowledge-visualization"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +20,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Table,
   TableBody,
@@ -27,14 +35,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { KnowledgeStatusBadge } from "@/components/knowledge/knowledge-status-badge"
-import { KnowledgeSyncActivity } from "@/components/knowledge/knowledge-sync-activity"
-import { KnowledgeConfiguration } from "@/components/knowledge/knowledge-configuration"
-import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
-import { KnowledgeValidationStatus } from "@/components/knowledge/knowledge-validation-status"
-import { KnowledgeVisualization } from "@/components/knowledge/knowledge-visualization"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 interface KnowledgeSource {

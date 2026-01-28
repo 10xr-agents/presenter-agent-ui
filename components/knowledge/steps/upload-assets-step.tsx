@@ -1,13 +1,13 @@
 "use client"
 
-import { AlertCircle, FileText, Globe, Upload, Video, X, Music, File } from "lucide-react"
+import { AlertCircle, File, FileText, Globe, Music, Upload, Video, X } from "lucide-react"
+import type { Asset, AssetType, FileAsset, UrlAsset } from "@/components/knowledge/knowledge-types"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import type { AssetType, FileAsset, UrlAsset, Asset } from "@/components/knowledge/knowledge-types"
 
 interface UploadAssetsStepProps {
   assets: Asset[]

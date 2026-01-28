@@ -1,7 +1,6 @@
 "use client"
 
 import { Mail, UserPlus } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -23,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
 import { authClient } from "@/lib/auth/client"
 import { toast } from "@/lib/utils/toast"
 

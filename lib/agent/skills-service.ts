@@ -15,15 +15,15 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import {
-  Skill,
-  normalizeGoal,
-  type ISkill,
-  type CreateSkillInput,
-  type SkillLookupInput,
-  type SkillHint,
-} from "@/lib/models/skill"
 import connectMongoose from "@/lib/db/mongoose"
+import {
+  type CreateSkillInput,
+  type ISkill,
+  normalizeGoal,
+  Skill,
+  type SkillHint,
+  type SkillLookupInput,
+} from "@/lib/models/skill"
 
 // =============================================================================
 // Constants

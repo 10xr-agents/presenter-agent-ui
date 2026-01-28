@@ -1,14 +1,14 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
-import * as Sentry from "@sentry/nextjs"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 import {
-  uploadFileToS3,
   generateS3Key,
-  validateFileType,
   getFileSizeLimit,
+  uploadFileToS3,
+  validateFileType,
 } from "@/lib/storage/s3-client"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/knowledge/upload-to-s3

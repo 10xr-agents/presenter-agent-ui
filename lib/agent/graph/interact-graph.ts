@@ -46,22 +46,22 @@
  *   verification → correction → outcome_prediction → finalize
  */
 
-import { StateGraph, END, START } from "@langchain/langgraph"
-import type { InteractGraphState, InteractGraphConfig, NodeName, ComplexityLevel, GraphTaskStatus } from "./types"
-import { DEFAULT_GRAPH_CONFIG } from "./types"
+import { END, START, StateGraph } from "@langchain/langgraph"
 
 // Import nodes
+import { actionGenerationNode, routeAfterActionGeneration } from "./nodes/action-generation"
 import { complexityCheckNode, routeAfterComplexityCheck } from "./nodes/complexity-check"
 import { contextAnalysisNode, routeAfterContextAnalysis } from "./nodes/context-analysis"
+import { correctionNode, routeAfterCorrection } from "./nodes/correction"
+import { directActionNode, routeAfterDirectAction } from "./nodes/direct-action"
+import { finalizeNode } from "./nodes/finalize"
+import { outcomePredictionNode, routeAfterOutcomePrediction } from "./nodes/outcome-prediction"
 import { planningNode, routeAfterPlanning } from "./nodes/planning"
 import { replanningNode, routeAfterReplanning } from "./nodes/replanning" // Phase 3 Task 2
-import { stepRefinementNode, routeAfterStepRefinement } from "./nodes/step-refinement"
-import { directActionNode, routeAfterDirectAction } from "./nodes/direct-action"
-import { actionGenerationNode, routeAfterActionGeneration } from "./nodes/action-generation"
-import { verificationNode, routeAfterVerification } from "./nodes/verification"
-import { correctionNode, routeAfterCorrection } from "./nodes/correction"
-import { outcomePredictionNode, routeAfterOutcomePrediction } from "./nodes/outcome-prediction"
-import { finalizeNode } from "./nodes/finalize"
+import { routeAfterStepRefinement, stepRefinementNode } from "./nodes/step-refinement"
+import { routeAfterVerification, verificationNode } from "./nodes/verification"
+import { DEFAULT_GRAPH_CONFIG } from "./types"
+import type { ComplexityLevel, GraphTaskStatus, InteractGraphConfig, InteractGraphState, NodeName } from "./types"
 
 /**
  * Create the interact graph
@@ -112,7 +112,13 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
       // Verification
       lastActionExpectedOutcome: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
       lastAction: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
+      // Observation-Based Verification (v3.0): beforeState for DOM diff
+      lastActionBeforeState: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
       verificationResult: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
+      // Client-side verification (v2.1 - 100% accurate querySelector from extension)
+      clientVerification: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
+      // Observation-Based Verification (v3.0): extension witnessed during/after action
+      clientObservations: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
 
       // Correction
       correctionResult: { value: (a: any, b?: any) => b ?? a, default: () => undefined },

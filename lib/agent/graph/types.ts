@@ -5,11 +5,11 @@
  * Each node reads from and writes to this state.
  */
 
-import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import type { WebSearchResult } from "@/lib/agent/web-search"
-import type { TaskPlan, PlanStep } from "@/lib/models/task"
-import type { ExpectedOutcome } from "@/lib/models/task-action"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
+import type { WebSearchResult } from "@/lib/agent/web-search"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { PlanStep, TaskPlan } from "@/lib/models/task"
+import type { ExpectedOutcome } from "@/lib/models/task-action"
 
 /**
  * Complexity classification for routing
@@ -196,7 +196,27 @@ export interface InteractGraphState {
   // Verification (for existing tasks)
   lastActionExpectedOutcome?: ExpectedOutcome
   lastAction?: string
+  /** Observation-Based Verification (v3.0): beforeState for the last action (DOM diff) */
+  lastActionBeforeState?: {
+    url: string
+    domHash: string
+    activeElement?: string
+    semanticSkeleton?: Record<string, unknown>
+  }
   verificationResult?: VerificationResult
+  // Client-side verification result (100% accurate querySelector from extension)
+  clientVerification?: {
+    elementFound: boolean
+    selector?: string
+    urlChanged?: boolean
+    timestamp?: number
+  }
+  /** Observation-Based Verification (v3.0): extension witnessed during/after action */
+  clientObservations?: {
+    didNetworkOccur?: boolean
+    didDomMutate?: boolean
+    didUrlChange?: boolean
+  }
 
   // Correction (when verification fails)
   correctionResult?: CorrectionResult

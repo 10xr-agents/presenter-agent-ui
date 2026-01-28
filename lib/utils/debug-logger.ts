@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
-import { DebugLog } from "@/lib/models/debug-log"
 import { connectDB } from "@/lib/db/mongoose"
+import { DebugLog } from "@/lib/models/debug-log"
 
 /**
  * Mask sensitive data in headers

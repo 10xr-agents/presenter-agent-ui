@@ -1,11 +1,11 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
-import * as Sentry from "@sentry/nextjs"
 import { auth } from "@/lib/auth"
+import { cancelJob } from "@/lib/browser-automation/client"
 import { connectDB } from "@/lib/db/mongoose"
 import { WebsiteKnowledge } from "@/lib/models/website-knowledge"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
-import { cancelJob } from "@/lib/browser-automation/client"
 
 /**
  * POST /api/website-knowledge/[id]/cancel

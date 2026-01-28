@@ -1,7 +1,6 @@
 "use client"
 
 import { Building2, CheckCircle2, Users, Zap } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Spinner } from "@/components/ui/spinner"
 import { authClient } from "@/lib/auth/client"
 
 interface UpgradeModalProps {

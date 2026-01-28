@@ -41,7 +41,7 @@ services:
       - redis
     restart: unless-stopped
 
-  # Redis for job queues
+  # Redis for job queues and Soketi
   redis:
     image: redis:7-alpine
     container_name: modern-boilerplate-redis
@@ -56,6 +56,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Soketi (Pusher-compatible WebSocket server) for real-time messaging
+  soketi:
+    image: quay.io/soketi/soketi:latest-16-alpine
+    container_name: modern-boilerplate-soketi
+    ports:
+      - "3005:3005"
+    environment:
+      SOKETI_DEFAULT_APP_ID: "${SOKETI_APP_ID:-app-id}"
+      SOKETI_DEFAULT_APP_KEY: "${SOKETI_APP_KEY:-app-key}"
+      SOKETI_DEFAULT_APP_SECRET: "${SOKETI_APP_SECRET:-app-secret}"
+      SOKETI_HTTP_DEFAULT_HOST: "0.0.0.0"
+      SOKETI_HTTP_DEFAULT_PORT: "3005"
+      DB_REDIS_HOST: "redis"
+      DB_REDIS_PORT: "6379"
+      SOKETI_DEBUG: "0"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   # Redis Commander (optional - for debugging)
   # Uncomment to enable web-based Redis UI at http://localhost:8081

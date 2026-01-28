@@ -2,9 +2,9 @@ import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { getJobResults } from "@/lib/browser-automation/client"
 import { connectDB } from "@/lib/db/mongoose"
 import { WebsiteKnowledge } from "@/lib/models/website-knowledge"
-import { getJobResults } from "@/lib/browser-automation/client"
 
 /**
  * GET /api/website-knowledge/[id]/results - Get exploration results

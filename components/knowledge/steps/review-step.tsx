@@ -1,17 +1,16 @@
 "use client"
 
+import { AlertCircle, CheckCircle2, Edit2, FileText, Globe, Save , X } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { CheckCircle2, Globe, FileText, Edit2, Save, X } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { KnowledgeVisualization } from "@/components/knowledge/knowledge-visualization"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { useRouter } from "next/navigation"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { KnowledgeVisualization } from "@/components/knowledge/knowledge-visualization"
 
 interface ReviewStepProps {
   name: string

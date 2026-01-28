@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getSessionFromRequest } from "@/lib/auth/session"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
-import { errorResponse } from "@/lib/utils/api-response"
-import { preferencesRequestSchema } from "@/lib/api/schemas/preferences"
-import { UserPreference } from "@/lib/models/user-preference"
-import { connectDB } from "@/lib/db/mongoose"
 import * as Sentry from "@sentry/nextjs"
+import { NextRequest, NextResponse } from "next/server"
+import { preferencesRequestSchema } from "@/lib/api/schemas/preferences"
+import { getSessionFromRequest } from "@/lib/auth/session"
+import { connectDB } from "@/lib/db/mongoose"
+import { UserPreference } from "@/lib/models/user-preference"
+import { errorResponse } from "@/lib/utils/api-response"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 
 /**
  * OPTIONS /api/v1/user/preferences

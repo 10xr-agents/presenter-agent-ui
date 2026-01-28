@@ -2,11 +2,11 @@
 
 import { formatDistanceToNow } from "date-fns"
 import { Bell } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 
 interface Notification {
   id: string

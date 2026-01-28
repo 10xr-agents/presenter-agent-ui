@@ -1,24 +1,24 @@
+import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
-import * as Sentry from "@sentry/nextjs"
-import { connectDB } from "@/lib/db/mongoose"
-import { Session, Message } from "@/lib/models"
-import { getSessionFromRequest } from "@/lib/auth/session"
-import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
+import { runInteractGraph } from "@/lib/agent/graph/route-integration"
 import {
   interactRequestBodySchema,
-  type NextActionResponse,
-  needsUserInputResponseSchema,
   type NeedsUserInputResponse,
+  needsUserInputResponseSchema,
+  type NextActionResponse,
 } from "@/lib/agent/schemas"
-import { errorResponse } from "@/lib/utils/api-response"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
-import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
-import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
+import { getSessionFromRequest } from "@/lib/auth/session"
+import { connectDB } from "@/lib/db/mongoose"
+import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
+import { Message, Session } from "@/lib/models"
+import { errorResponse } from "@/lib/utils/api-response"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
+import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
 import { extractDomain, generateSessionTitle } from "@/lib/utils/domain"
-// LangGraph integration (Phase 1: Foundation) - Now the default execution path
-import { runInteractGraph } from "@/lib/agent/graph/route-integration"
+import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
+import { triggerInteractResponse, triggerNewMessage } from "@/lib/pusher/server"
 
 /**
  * POST /api/agent/interact
@@ -167,6 +167,10 @@ export async function POST(req: NextRequest) {
       lastActionError,
       lastActionResult,
       previousUrl: requestPreviousUrl,
+      // Client-side verification (v2.1)
+      clientVerification: requestClientVerification,
+      // Observation-Based Verification (v3.0)
+      clientObservations: requestClientObservations,
       // Action Chaining (Phase 2 Task 1)
       lastExecutedActionIndex,
       chainPartialState,
@@ -217,8 +221,9 @@ export async function POST(req: NextRequest) {
 
         currentSessionId = requestSessionId
 
+        const userMessageId = randomUUID()
         await (Message as any).create({
-          messageId: randomUUID(),
+          messageId: userMessageId,
           sessionId: requestSessionId,
           userId,
           tenantId,
@@ -227,6 +232,14 @@ export async function POST(req: NextRequest) {
           sequenceNumber: 0,
           timestamp: new Date(),
         })
+        const msgPayload = {
+          messageId: userMessageId,
+          role: "user" as const,
+          content: query,
+          sequenceNumber: 0,
+          timestamp: new Date().toISOString(),
+        }
+        await triggerNewMessage(requestSessionId, msgPayload)
       } else {
         Sentry.logger.info("Interact: loaded existing session")
         // Security check: ensure user owns session
@@ -315,8 +328,9 @@ export async function POST(req: NextRequest) {
       currentSessionId = newSessionId
 
       // Save user message for new session
+      const userMessageId = randomUUID()
       await (Message as any).create({
-        messageId: randomUUID(),
+        messageId: userMessageId,
         sessionId: newSessionId,
         userId,
         tenantId,
@@ -325,6 +339,14 @@ export async function POST(req: NextRequest) {
         sequenceNumber: 0,
         timestamp: new Date(),
       })
+      const msgPayload = {
+        messageId: userMessageId,
+        role: "user" as const,
+        content: query,
+        sequenceNumber: 0,
+        timestamp: new Date().toISOString(),
+      }
+      await triggerNewMessage(newSessionId, msgPayload)
     }
 
     // RAG: Fetch chunks early for use in graph execution
@@ -353,6 +375,8 @@ export async function POST(req: NextRequest) {
       taskId: requestTaskId,
       ragChunks: chunks,
       hasOrgKnowledge,
+      clientVerification: requestClientVerification,
+      clientObservations: requestClientObservations,
     })
 
     Sentry.logger.info("Interact: LangGraph run completed", {
@@ -487,6 +511,23 @@ export async function POST(req: NextRequest) {
       chainedActionsCount: graphResult.chainedActions?.length ?? 0,
       totalDurationMs: duration,
     })
+
+    const interactData = {
+      taskId: graphResult.taskId,
+      action: graphResult.action,
+      thought: graphResult.thought,
+      status: graphResult.status,
+      currentStepIndex: graphResult.currentStepIndex,
+      verification: graphResult.verificationResult,
+      correction: graphResult.correctionResult
+        ? {
+            strategy: graphResult.correctionResult.strategy,
+            reason: graphResult.correctionResult.reason,
+            retryAction: graphResult.correctionResult.retryAction,
+          }
+        : undefined,
+    }
+    await triggerInteractResponse(currentSessionId!, interactData)
 
     // Create debug log for successful request
     await createDebugLog({

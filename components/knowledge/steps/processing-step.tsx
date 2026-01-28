@@ -1,12 +1,12 @@
 "use client"
 
-import { Loader2, X, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react"
-import { useState, useEffect } from "react"
-import { Spinner } from "@/components/ui/spinner"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import type { KnowledgeStatus } from "@/lib/models/knowledge-source"
 
 interface ProcessingStepProps {

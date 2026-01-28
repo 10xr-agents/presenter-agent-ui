@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { connectDB } from "@/lib/db/mongoose"
 import { prisma } from "@/lib/db/prisma"
-import { successResponse, errorResponse } from "@/lib/utils/api-response"
+import { errorResponse, successResponse } from "@/lib/utils/api-response"
 import { ErrorCode } from "@/lib/utils/error-codes"
 import { logger } from "@/lib/utils/logger"
 

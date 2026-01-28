@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/nextjs"
-import type { PlanStep } from "@/lib/models/task"
-import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import { getAvailableActionsPrompt, validateActionName } from "./action-config"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { recordUsage } from "@/lib/cost"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { PlanStep } from "@/lib/models/task"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 
 /**
  * Step Refinement Engine (Task 10)
@@ -253,7 +253,7 @@ function parseRefinementResponse(
 
   // Extract tool type
   const toolTypeMatch = content.match(/<ToolType>([\s\S]*?)<\/ToolType>/i)
-  let toolTypeStr = toolTypeMatch?.[1]?.trim()?.toUpperCase() || planToolType.toUpperCase()
+  const toolTypeStr = toolTypeMatch?.[1]?.trim()?.toUpperCase() || planToolType.toUpperCase()
 
   // Validate tool type (must be DOM or SERVER)
   const toolType: "DOM" | "SERVER" = toolTypeStr === "SERVER" ? "SERVER" : "DOM"

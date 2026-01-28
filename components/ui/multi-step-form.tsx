@@ -1,9 +1,9 @@
 "use client"
 
 import { Check, ChevronLeft, ChevronRight } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
-import { ReactNode, useState, useEffect } from "react"
+import { ReactNode, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 export interface FormStep {

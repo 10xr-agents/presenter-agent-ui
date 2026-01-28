@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/nextjs"
-import type { ExpectedOutcome } from "@/lib/models/task-action"
-import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import { classifyActionType } from "./action-type"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { recordUsage } from "@/lib/cost"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { ExpectedOutcome } from "@/lib/models/task-action"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { classifyActionType } from "./action-type"
 
 /**
  * Outcome Prediction Engine (Task 9)
@@ -75,10 +75,15 @@ export async function predictOutcome(
 ): Promise<ExpectedOutcome | null> {
   const actionType = classifyActionType(action, currentDom)
 
+  // Log action type classification for debugging
+  console.log(`[OutcomePrediction] Action "${action}" classified as: ${actionType}`)
+
   if (actionType === "dropdown") {
+    console.log(`[OutcomePrediction] Using dropdown template (no elementShouldExist)`)
     return dropdownExpectedOutcome(thought)
   }
   if (actionType === "navigation") {
+    console.log(`[OutcomePrediction] Using navigation template (urlShouldChange only)`)
     return navigationExpectedOutcome(thought)
   }
 

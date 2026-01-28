@@ -1,11 +1,11 @@
+import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import * as Sentry from "@sentry/nextjs"
+import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { DebugLog } from "@/lib/models/debug-log"
-import { getSessionFromRequest } from "@/lib/auth/session"
 import { errorResponse } from "@/lib/utils/api-response"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 
 /**
  * GET /api/debug/logs

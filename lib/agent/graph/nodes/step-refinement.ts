@@ -8,6 +8,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { refineStep } from "@/lib/agent/step-refinement-engine"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
 /**
@@ -20,9 +21,14 @@ export async function stepRefinementNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { plan, currentStepIndex, dom, url, previousActions, ragChunks, hasOrgKnowledge } = state
+  const log = logger.child({
+    process: "Graph:step_refinement",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   if (!plan || currentStepIndex >= plan.steps.length) {
-    console.log(`[Graph:step_refinement] No plan or step index out of bounds, falling back to LLM`)
+    log.info("No plan or step index out of bounds, falling back to LLM")
     return {
       // Signal to use action_generation instead
       status: "executing",
@@ -31,13 +37,13 @@ export async function stepRefinementNode(
 
   const currentStep = plan.steps[currentStepIndex]
   if (!currentStep) {
-    console.log(`[Graph:step_refinement] Current step is undefined, falling back to LLM`)
+    log.info("Current step is undefined, falling back to LLM")
     return {
       status: "executing",
     }
   }
 
-  console.log(`[Graph:step_refinement] Refining step ${currentStepIndex}: "${currentStep.description}"`)
+  log.info(`Refining step ${currentStepIndex}: "${currentStep.description}"`)
 
   try {
     const refinedAction = await refineStep(
@@ -58,13 +64,13 @@ export async function stepRefinementNode(
     if (refinedAction) {
       // Check if it's a SERVER tool (not implemented yet)
       if (refinedAction.toolType === "SERVER") {
-        console.log(`[Graph:step_refinement] SERVER tool detected, falling back to LLM`)
+        log.info("SERVER tool detected, falling back to LLM")
         return {
           status: "executing",
         }
       }
 
-      console.log(`[Graph:step_refinement] Refined to action: ${refinedAction.action}`)
+      log.info(`Refined to action: ${refinedAction.action}`)
       return {
         actionResult: {
           thought: `Refined from plan step: ${currentStep.description}`,
@@ -80,7 +86,7 @@ export async function stepRefinementNode(
     }
 
     // Refinement returned null - fall back to LLM
-    console.log(`[Graph:step_refinement] Refinement returned null, falling back to LLM`)
+    log.info("Refinement returned null, falling back to LLM")
     return {
       status: "executing",
     }
@@ -89,7 +95,7 @@ export async function stepRefinementNode(
       tags: { component: "graph-step-refinement" },
       extra: { stepIndex: currentStepIndex, stepDescription: currentStep.description },
     })
-    console.error(`[Graph:step_refinement] Refinement error:`, error)
+    log.error("Refinement error", error)
 
     // Fall back to LLM action generation
     return {
@@ -107,13 +113,18 @@ export async function stepRefinementNode(
 export function routeAfterStepRefinement(
   state: InteractGraphState
 ): "outcome_prediction" | "action_generation" {
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
   // If we have an action result, proceed to outcome prediction
   if (state.actionResult) {
-    console.log(`[Graph:router] Routing to outcome_prediction (has refined action)`)
+    log.info("Routing to outcome_prediction (has refined action)")
     return "outcome_prediction"
   }
 
   // Otherwise, fall back to LLM action generation
-  console.log(`[Graph:router] Routing to action_generation (refinement failed)`)
+  log.info("Routing to action_generation (refinement failed)")
   return "action_generation"
 }

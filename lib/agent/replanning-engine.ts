@@ -7,10 +7,10 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import type { TaskPlan, PlanStep } from "@/lib/models/task"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { recordUsage } from "@/lib/cost"
-import { shouldTriggerReplanning, type DomSimilarityResult } from "./dom-similarity"
+import type { PlanStep, TaskPlan } from "@/lib/models/task"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import { type DomSimilarityResult, shouldTriggerReplanning } from "./dom-similarity"
 
 /**
  * Context for cost tracking

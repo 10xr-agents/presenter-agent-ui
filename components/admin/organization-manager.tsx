@@ -2,13 +2,13 @@
 
 import { formatDistanceToNow } from "date-fns"
 import { DollarSign, ExternalLink, Layers, Search, Users } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 
 interface Organization {
   id: string

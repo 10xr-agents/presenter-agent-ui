@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/nextjs"
-import type { TaskPlan, PlanStep } from "@/lib/models/task"
-import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import type { WebSearchResult } from "./web-search"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { recordUsage } from "@/lib/cost"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { PlanStep, TaskPlan } from "@/lib/models/task"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import type { WebSearchResult } from "./web-search"
 
 /**
  * Planning Engine (Task 6)

@@ -1,13 +1,13 @@
+import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import * as Sentry from "@sentry/nextjs"
-import { connectDB } from "@/lib/db/mongoose"
-import { Session } from "@/lib/models"
 import { getSessionFromRequest } from "@/lib/auth/session"
-import { errorResponse, successResponse } from "@/lib/utils/api-response"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
-import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
+import { connectDB } from "@/lib/db/mongoose"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
+import { Session } from "@/lib/models"
+import { errorResponse, successResponse } from "@/lib/utils/api-response"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
+import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
 
 /**
  * PATCH /api/session/[sessionId]

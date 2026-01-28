@@ -1,5 +1,5 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
+import { OpenAI } from "openai"
 import { performWebSearch, type WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import type { ErrorDebugInfo } from "./error-debug"
 import { ErrorCode, type StandardErrorResponse } from "./error-codes"
+import type { ErrorDebugInfo } from "./error-debug"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface ApiResponse<T = any> {

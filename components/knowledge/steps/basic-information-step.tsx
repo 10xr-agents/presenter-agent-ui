@@ -1,12 +1,12 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PasswordInput } from "@/components/ui/password-input"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { useState, useEffect, useRef } from "react"
 
 interface BasicInformationStepProps {
   name: string

@@ -1,6 +1,6 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
-import * as Sentry from "@sentry/nextjs"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { KnowledgeSource } from "@/lib/models/knowledge-source"

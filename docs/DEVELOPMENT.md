@@ -55,6 +55,7 @@ pnpm dev
 
 **Optional**:
 - `REDIS_URL` - Redis connection (default: localhost:6379)
+- `SOKETI_*` / `NEXT_PUBLIC_PUSHER_*` - Real-time messaging (Soketi on port 3005)
 - `S3_*` - S3 storage configuration
 - `STRIPE_*` - Stripe billing configuration
 - `LIVEKIT_*` - LiveKit video configuration
@@ -87,6 +88,14 @@ pnpm worker
 # - Processing jobs (3 workers)
 # - Webhook jobs (10 workers)
 ```
+
+### Real-time messaging (Soketi / Pusher)
+
+Real-time session messages use **Soketi** (Pusher protocol) on **port 3005**, with Next.js triggering events and authorizing channel access.
+
+- **Soketi**: Run `docker compose up` (soketi + redis). Soketi listens on **3005**. Set `SOKETI_APP_ID`, `SOKETI_APP_KEY`, `SOKETI_APP_SECRET`, `SOKETI_HOST` (e.g. `127.0.0.1`), `SOKETI_PORT=3005`, and client vars `NEXT_PUBLIC_PUSHER_KEY`, `NEXT_PUBLIC_PUSHER_WS_HOST`, `NEXT_PUBLIC_PUSHER_WS_PORT=3005`. Next.js triggers via the Pusher server SDK; clients use `pusher-js` with `authEndpoint: '/api/pusher/auth'` to subscribe to `private-session-{sessionId}`.
+- **Auth**: `POST /api/pusher/auth` receives form data `socket_id` and `channel_name`; we verify the user owns the session and return `pusher.authorizeChannel(socketId, channel)`.
+- **Client hook**: `useSessionMessagesWs(sessionId)` connects to Soketi (requires `NEXT_PUBLIC_PUSHER_KEY` and related env).
 
 ### Docker Development
 

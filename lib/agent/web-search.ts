@@ -1,6 +1,6 @@
+import * as Sentry from "@sentry/nextjs"
 import axios from "axios"
 import { OpenAI } from "openai"
-import * as Sentry from "@sentry/nextjs"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 
 /**

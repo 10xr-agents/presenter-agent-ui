@@ -65,9 +65,19 @@ export const env = createEnv({
     S3_ENDPOINT: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     S3_ACCESS_KEY_ID: z.string().optional(),
     S3_SECRET_ACCESS_KEY: z.string().optional(),
+    // Soketi (Pusher-compatible WebSocket server) – port 3005
+    SOKETI_APP_ID: z.string().optional(),
+    SOKETI_APP_KEY: z.string().optional(),
+    SOKETI_APP_SECRET: z.string().optional(),
+    SOKETI_HOST: z.string().optional(),
+    SOKETI_PORT: z.string().optional(),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
+    /** Soketi/Pusher client: key (same as SOKETI_APP_KEY), ws host, ws port (3005) */
+    NEXT_PUBLIC_PUSHER_KEY: z.string().optional(),
+    NEXT_PUBLIC_PUSHER_WS_HOST: z.string().optional(),
+    NEXT_PUBLIC_PUSHER_WS_PORT: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
     NEXT_PUBLIC_POSTHOG_HOST: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
   },
@@ -120,5 +130,13 @@ export const env = createEnv({
     S3_ENDPOINT: process.env.S3_ENDPOINT,
     S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    SOKETI_APP_ID: process.env.SOKETI_APP_ID,
+    SOKETI_APP_KEY: process.env.SOKETI_APP_KEY,
+    SOKETI_APP_SECRET: process.env.SOKETI_APP_SECRET,
+    SOKETI_HOST: process.env.SOKETI_HOST,
+    SOKETI_PORT: process.env.SOKETI_PORT,
+    NEXT_PUBLIC_PUSHER_KEY: process.env.NEXT_PUBLIC_PUSHER_KEY,
+    NEXT_PUBLIC_PUSHER_WS_HOST: process.env.NEXT_PUBLIC_PUSHER_WS_HOST,
+    NEXT_PUBLIC_PUSHER_WS_PORT: process.env.NEXT_PUBLIC_PUSHER_WS_PORT,
   },
 })

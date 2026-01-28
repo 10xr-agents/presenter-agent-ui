@@ -21,9 +21,9 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { recordUsage } from "@/lib/cost"
 import type { TaskPlan } from "@/lib/models/task"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
 
 /**
  * Internal Plan type that extends TaskPlan for consistency

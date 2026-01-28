@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
-import { GET } from "../latest/route"
 import { NextRequest } from "next/server"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { getSessionFromRequest } from "@/lib/auth/session"
+import { GET } from "../latest/route"
 
 // Mock dependencies
 vi.mock("@/lib/auth/session", () => ({

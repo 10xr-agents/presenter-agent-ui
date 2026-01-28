@@ -18,8 +18,8 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { recordUsage } from "@/lib/cost"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
 
 /**
  * Context for critic evaluation

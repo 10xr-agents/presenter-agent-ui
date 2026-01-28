@@ -5,20 +5,20 @@
  * Supports single page, sitemap-based, and spider crawling strategies.
  */
 
-import * as Sentry from "@sentry/nextjs"
 // Import only cheerio crawler to avoid puppeteer dependency
-import { CheerioCrawler, RequestQueue, Configuration } from "@crawlee/cheerio"
+import { CheerioCrawler, Configuration, RequestQueue } from "@crawlee/cheerio"
+import * as Sentry from "@sentry/nextjs"
 import { v4 as uuidv4 } from "uuid"
-import { extractHtmlContent } from "../extractors/html-extractor"
 import { discoverSitemap, fetchAllSitemapUrls, filterDocsUrls } from "./sitemap-parser"
 import {
   type CrawlConfig,
-  type CrawlResult,
   type CrawledPage,
   type CrawlProgress,
   type CrawlProgressCallback,
+  type CrawlResult,
   DEFAULT_EXCLUDE_PATTERNS,
 } from "./types"
+import { extractHtmlContent } from "../extractors/html-extractor"
 
 // =============================================================================
 // Crawler Service

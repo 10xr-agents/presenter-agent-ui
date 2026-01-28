@@ -1,7 +1,6 @@
 "use client"
 
 import { CheckCircle2, Globe, Plus } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -9,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { WebsiteKnowledgeProgress } from "./website-knowledge-progress"
 

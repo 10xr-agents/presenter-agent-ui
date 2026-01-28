@@ -1,8 +1,8 @@
 "use client"
 
-import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { signIn } from "@/lib/auth/client"
 
 // Google icon SVG

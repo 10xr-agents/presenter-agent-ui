@@ -14,6 +14,7 @@
 import * as Sentry from "@sentry/nextjs"
 import { analyzeContext, type ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
 import { manageSearch, type SearchManagerResult } from "@/lib/agent/reasoning/search-manager"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
 /**
@@ -51,9 +52,14 @@ export async function contextAnalysisNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { query, url, dom, previousMessages, ragChunks, hasOrgKnowledge, tenantId } = state
+  const log = logger.child({
+    process: "Graph:context_analysis",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
-  console.log(`[Graph:context_analysis] Starting context analysis`)
-  console.log(`[Graph:context_analysis] ${previousMessages.length} history messages, ${ragChunks.length} RAG chunks`)
+  log.info("Starting context analysis")
+  log.info(`${previousMessages.length} history messages, ${ragChunks.length} RAG chunks`)
 
   // Convert messages to chat history format
   const chatHistoryForAnalysis = previousMessages.map((m) => ({
@@ -76,12 +82,11 @@ export async function contextAnalysisNode(
       hasOrgKnowledge,
     })
 
-    console.log(
-      `[Graph:context_analysis] Analysis complete: source=${contextAnalysis.source}, ` +
-      `confidence=${contextAnalysis.confidence.toFixed(2)}, missingInfo=${contextAnalysis.missingInfo.length}`
+    log.info(
+      `Analysis complete: source=${contextAnalysis.source}, confidence=${contextAnalysis.confidence.toFixed(2)}, missingInfo=${contextAnalysis.missingInfo.length}`
     )
   } catch (error: unknown) {
-    console.error(`[Graph:context_analysis] Context analysis failed:`, error)
+    log.error("Context analysis failed", error)
     Sentry.captureException(error, {
       tags: { component: "graph-context-analysis" },
       extra: { query, url, tenantId },
@@ -100,7 +105,7 @@ export async function contextAnalysisNode(
 
   // Handle ASK_USER result
   if (contextAnalysis.source === "ASK_USER") {
-    console.log(`[Graph:context_analysis] ASK_USER needed`)
+    log.info("ASK_USER needed")
     return {
       contextAnalysis,
       status: "needs_user_input",
@@ -109,7 +114,7 @@ export async function contextAnalysisNode(
 
   // Handle WEB_SEARCH - execute search
   if (contextAnalysis.source === "WEB_SEARCH") {
-    console.log(`[Graph:context_analysis] Executing web search: "${contextAnalysis.searchQuery.substring(0, 50)}..."`)
+    log.info(`Executing web search: "${contextAnalysis.searchQuery.substring(0, 50)}..."`)
     try {
       const searchManagerResult: SearchManagerResult = await manageSearch({
         query,
@@ -120,14 +125,13 @@ export async function contextAnalysisNode(
         maxAttempts: 3,
       })
 
-      console.log(
-        `[Graph:context_analysis] Search completed: ${searchManagerResult.attempts} attempts, ` +
-        `solved=${searchManagerResult.evaluation.solved}, results=${searchManagerResult.searchResults?.results.length || 0}`
+      log.info(
+        `Search completed: ${searchManagerResult.attempts} attempts, solved=${searchManagerResult.evaluation.solved}, results=${searchManagerResult.searchResults?.results.length || 0}`
       )
 
       // Check if search evaluation says we should ask user
       if (searchManagerResult.evaluation.shouldAskUser && !searchManagerResult.evaluation.solved) {
-        console.log(`[Graph:context_analysis] Search suggests ASK_USER`)
+        log.info("Search suggests ASK_USER")
         return {
           contextAnalysis: {
             ...contextAnalysis,
@@ -145,7 +149,7 @@ export async function contextAnalysisNode(
         status: "planning",
       }
     } catch (error: unknown) {
-      console.error(`[Graph:context_analysis] Search failed:`, error)
+      log.error("Search failed", error)
       Sentry.captureException(error, {
         tags: { component: "graph-context-analysis", operation: "search" },
         extra: { query, url, tenantId, searchQuery: contextAnalysis.searchQuery },
@@ -161,7 +165,7 @@ export async function contextAnalysisNode(
   }
 
   // MEMORY or PAGE - no search needed
-  console.log(`[Graph:context_analysis] Source is ${contextAnalysis.source}, skipping search`)
+  log.info(`Source is ${contextAnalysis.source}, skipping search`)
   return {
     contextAnalysis,
     webSearchResult: null,
@@ -178,11 +182,16 @@ export async function contextAnalysisNode(
 export function routeAfterContextAnalysis(
   state: InteractGraphState
 ): "planning" | "finalize" {
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
   if (state.status === "needs_user_input") {
-    console.log(`[Graph:router] Routing to finalize (needs_user_input)`)
+    log.info("Routing to finalize (needs_user_input)")
     return "finalize"
   }
 
-  console.log(`[Graph:router] Routing to planning`)
+  log.info("Routing to planning")
   return "planning"
 }

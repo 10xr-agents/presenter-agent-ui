@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronsUpDown, Check, Plus } from "lucide-react"
+import { Check, ChevronsUpDown, Plus } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"

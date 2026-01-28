@@ -1,15 +1,15 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-import { useState, useCallback, useRef, useEffect } from "react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
-import { MultiStepForm, type FormStep } from "@/components/ui/multi-step-form"
+import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { Asset, FileAsset, UrlAsset } from "@/components/knowledge/knowledge-types"
 import { BasicInformationStep } from "@/components/knowledge/steps/basic-information-step"
-import { UploadAssetsStep } from "@/components/knowledge/steps/upload-assets-step"
 import { ProcessingStep } from "@/components/knowledge/steps/processing-step"
 import { ReviewStep } from "@/components/knowledge/steps/review-step"
-import type { FileAsset, UrlAsset, Asset } from "@/components/knowledge/knowledge-types"
+import { UploadAssetsStep } from "@/components/knowledge/steps/upload-assets-step"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { type FormStep, MultiStepForm } from "@/components/ui/multi-step-form"
 
 interface KnowledgeCreationWizardProps {
   organizationId: string

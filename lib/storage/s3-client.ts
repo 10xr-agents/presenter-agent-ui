@@ -5,7 +5,7 @@
  * Uses lazy initialization pattern per RULESETS.md
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { env } from "@/env.mjs"
 

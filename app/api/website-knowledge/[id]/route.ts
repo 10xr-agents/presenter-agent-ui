@@ -52,7 +52,7 @@ export async function GET(
   try {
     await connectDB()
 
-    let knowledge = await (WebsiteKnowledge as any).findById(id).lean()
+    const knowledge = await (WebsiteKnowledge as any).findById(id).lean()
 
     if (!knowledge) {
       return NextResponse.json({ error: "Website knowledge not found" }, { status: 404 })

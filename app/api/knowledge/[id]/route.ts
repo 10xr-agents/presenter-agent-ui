@@ -1,11 +1,11 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
-import * as Sentry from "@sentry/nextjs"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
+import { getWorkflowStatus } from "@/lib/knowledge-extraction/client"
 import { KnowledgeSource, type KnowledgeStatus } from "@/lib/models/knowledge-source"
 import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
-import { getWorkflowStatus } from "@/lib/knowledge-extraction/client"
 
 /**
  * GET /api/knowledge/[id] - Get knowledge source details and workflow status

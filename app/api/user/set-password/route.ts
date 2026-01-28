@@ -1,14 +1,14 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { errorResponse } from "@/lib/utils/api-response"
 import {
-  userHasPassword,
   invalidatePasswordCache,
   setCachedPasswordStatus,
+  userHasPassword,
 } from "@/lib/utils/password-check"
-import * as Sentry from "@sentry/nextjs"
 
 /**
  * POST /api/user/set-password

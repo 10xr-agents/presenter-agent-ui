@@ -84,6 +84,20 @@ export interface ITaskAction extends mongoose.Document {
   // Task 7: Verification fields
   expectedOutcome?: ExpectedOutcome // What should happen after this action
   domSnapshot?: string // DOM state when action was taken (for comparison)
+  // URL Tracking: URL at the time this action was taken (for verification)
+  urlAtAction?: string // URL when this action was generated (before execution)
+  /**
+   * Observation-Based Verification (v3.0): State BEFORE the action was executed.
+   * Used to compare against "after" state and build an observation list (no prediction).
+   * semanticSkeleton: JSON map of interactive elements/alerts for granular diff (cheerio + microdiff).
+   */
+  beforeState?: {
+    url: string
+    domHash: string
+    activeElement?: string
+    /** Semantic skeleton for granular observation (element text/state changes) */
+    semanticSkeleton?: Record<string, unknown>
+  }
   createdAt: Date
 }
 
@@ -145,6 +159,21 @@ const TaskActionSchema = new Schema<ITaskAction>(
     },
     domSnapshot: {
       type: String,
+      required: false,
+    },
+    // URL Tracking: URL at the time this action was taken (for verification)
+    urlAtAction: {
+      type: String,
+      required: false,
+    },
+    // Observation-Based Verification (v3.0): beforeState for DOM diff
+    beforeState: {
+      type: {
+        url: String,
+        domHash: String,
+        activeElement: String,
+        semanticSkeleton: Schema.Types.Mixed,
+      },
       required: false,
     },
   },

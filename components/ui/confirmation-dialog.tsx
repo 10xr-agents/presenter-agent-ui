@@ -5,7 +5,6 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Spinner } from "@/components/ui/spinner"
 
 interface ConfirmationDialogProps {
   open: boolean

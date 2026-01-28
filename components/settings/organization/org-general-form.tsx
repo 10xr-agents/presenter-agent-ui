@@ -1,12 +1,12 @@
 "use client"
 
-import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { authClient } from "@/lib/auth/client"
 import { toast } from "@/lib/utils/toast"

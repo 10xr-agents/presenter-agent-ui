@@ -8,7 +8,8 @@
 import * as Sentry from "@sentry/nextjs"
 import { generateCorrection } from "@/lib/agent/self-correction-engine"
 import type { PlanStep } from "@/lib/models/task"
-import type { InteractGraphState, CorrectionResult } from "../types"
+import { logger } from "@/lib/utils/logger"
+import type { CorrectionResult, InteractGraphState } from "../types"
 
 /**
  * Correction node - generates correction for failed action
@@ -30,19 +31,24 @@ export async function correctionNode(
     lastAction,
     correctionAttempts,
   } = state
+  const log = logger.child({
+    process: "Graph:correction",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   if (!verificationResult || verificationResult.success) {
-    console.log(`[Graph:correction] No failed verification, skipping correction`)
+    log.info("No failed verification, skipping correction")
     return {
       status: "executing",
     }
   }
 
-  console.log(`[Graph:correction] Generating correction for failed action: ${lastAction}`)
+  log.info(`Generating correction for failed action: ${lastAction}`)
 
   // Check max retries
   if (correctionAttempts >= 3) {
-    console.log(`[Graph:correction] Max correction attempts reached`)
+    log.info("Max correction attempts reached")
     return {
       error: "Max correction attempts exceeded",
       status: "failed",
@@ -61,7 +67,7 @@ export async function correctionNode(
         }
 
     if (!failedStep) {
-      console.log(`[Graph:correction] No failed step found`)
+      log.info("No failed step found")
       return {
         error: "No failed step to correct",
         status: "failed",
@@ -89,9 +95,8 @@ export async function correctionNode(
     )
 
     if (correction) {
-      console.log(
-        `[Graph:correction] Correction generated: strategy=${correction.strategy}, ` +
-        `action=${correction.retryAction}`
+      log.info(
+        `Correction generated: strategy=${correction.strategy}, action=${correction.retryAction}`
       )
 
       const correctionResult: CorrectionResult = {
@@ -121,7 +126,7 @@ export async function correctionNode(
       }
     }
 
-    console.log(`[Graph:correction] Correction generation failed`)
+    log.info("Correction generation failed")
     return {
       error: "Failed to generate correction",
       status: "failed",
@@ -131,7 +136,7 @@ export async function correctionNode(
       tags: { component: "graph-correction" },
       extra: { lastAction, verificationReason: verificationResult.reason },
     })
-    console.error(`[Graph:correction] Error:`, error)
+    log.error("Error", error)
 
     return {
       error: error instanceof Error ? error.message : "Unknown error in correction",
@@ -149,11 +154,16 @@ export async function correctionNode(
 export function routeAfterCorrection(
   state: InteractGraphState
 ): "outcome_prediction" | "finalize" {
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
   if (state.status === "failed" || !state.actionResult) {
-    console.log(`[Graph:router] Routing to finalize (correction failed)`)
+    log.info("Routing to finalize (correction failed)")
     return "finalize"
   }
 
-  console.log(`[Graph:router] Routing to outcome_prediction (correction succeeded)`)
+  log.info("Routing to outcome_prediction (correction succeeded)")
   return "outcome_prediction"
 }

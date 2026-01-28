@@ -1,49 +1,75 @@
 /**
  * Verification Node
  *
- * Verifies that the previous action was executed successfully.
- * Uses the Verification Engine to compare expected vs actual state.
+ * Verifies that the previous action was executed successfully using
+ * observation-based verification (DOM diff). Compares beforeState (saved when
+ * action was generated) with after state (current request). No prediction.
  *
  * On success: Proceeds to next action generation
  * On failure: Routes to correction node
+ *
+ * @see docs/VERIFICATION_PROCESS.md
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { verifyAction } from "@/lib/agent/verification-engine"
+import { verifyActionWithObservations } from "@/lib/agent/verification-engine"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, VerificationResult } from "../types"
 
 /**
- * Verification node - verifies previous action outcome
+ * Verification node - verifies previous action outcome using observation-based verification only.
  *
- * @param state - Current graph state
- * @returns Updated state with verification result
+ * Requires: lastAction and lastActionBeforeState (client sends DOM on every call, so we always save beforeState).
+ * If lastAction exists but beforeState is missing (e.g. migration), we skip verification and continue.
  */
 export async function verificationNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
-  const { lastActionExpectedOutcome, lastAction, dom, url, previousUrl } = state
+  const {
+    lastAction,
+    lastActionBeforeState,
+    dom,
+    url,
+    query,
+    clientObservations,
+  } = state
+  const log = logger.child({
+    process: "Graph:verification",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
-  // If no expected outcome, skip verification
-  if (!lastActionExpectedOutcome) {
-    console.log(`[Graph:verification] No expected outcome, skipping verification`)
+  // No previous action to verify
+  if (!lastAction) {
+    log.info("No previous action, skipping verification")
     return {
       verificationResult: undefined,
       status: "executing",
     }
   }
 
-  console.log(`[Graph:verification] Verifying previous action: ${lastAction}`)
+  // We need beforeState to verify (client sends DOM on every call, so we always save it)
+  if (!lastActionBeforeState) {
+    log.warn(
+      "Previous action has no beforeState — cannot run observation-based verification. Skipping and continuing.",
+      { lastAction }
+    )
+    return {
+      verificationResult: undefined,
+      status: "executing",
+    }
+  }
+
+  log.info(`Verifying previous action: ${lastAction} (observation-based)`)
 
   try {
-    // Determine previous URL for comparison
-    const prevUrl = previousUrl || url
-
-    const result = await verifyAction(
-      lastActionExpectedOutcome,
-      dom, // Current DOM (after action was executed)
-      url, // Current URL
-      prevUrl, // Previous URL for comparison
-      lastAction || "", // The action that was executed
+    const result = await verifyActionWithObservations(
+      lastActionBeforeState,
+      dom,
+      url,
+      lastAction,
+      query || "",
+      clientObservations,
       {
         tenantId: state.tenantId,
         userId: state.userId,
@@ -52,9 +78,8 @@ export async function verificationNode(
       }
     )
 
-    console.log(
-      `[Graph:verification] Verification ${result.success ? "SUCCESS" : "FAILED"}: ` +
-      `confidence=${result.confidence.toFixed(2)}, reason=${result.reason}`
+    log.info(
+      `Verification ${result.success ? "SUCCESS" : "FAILED"}: confidence=${result.confidence.toFixed(2)}, reason=${result.reason}`
     )
 
     const verificationResult: VerificationResult = {
@@ -67,15 +92,9 @@ export async function verificationNode(
     }
 
     if (result.success) {
-      // Verification succeeded - reset consecutive failures
-      return {
-        verificationResult,
-        consecutiveFailures: 0,
-        status: "executing",
-      }
+      return { verificationResult, consecutiveFailures: 0, status: "executing" }
     }
 
-    // Verification failed - increment failures and route to correction
     return {
       verificationResult,
       consecutiveFailures: state.consecutiveFailures + 1,
@@ -86,7 +105,7 @@ export async function verificationNode(
       tags: { component: "graph-verification" },
       extra: { lastAction, url },
     })
-    console.error(`[Graph:verification] Verification error:`, error)
+    log.error("Verification error", error)
 
     // On error, assume success and continue (conservative)
     return {
@@ -110,26 +129,31 @@ export function routeAfterVerification(
   state: InteractGraphState
 ): "correction" | "planning" | "finalize" {
   const { verificationResult, consecutiveFailures, correctionAttempts } = state
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   // Check for max retries exceeded
   if (correctionAttempts >= 3) {
-    console.log(`[Graph:router] Routing to finalize (max retries exceeded)`)
+    log.info("Routing to finalize (max retries exceeded)")
     return "finalize"
   }
 
   // Check for consecutive failures exceeded
   if (consecutiveFailures >= 3) {
-    console.log(`[Graph:router] Routing to finalize (consecutive failures exceeded)`)
+    log.info("Routing to finalize (consecutive failures exceeded)")
     return "finalize"
   }
 
   // Verification failed - route to correction
   if (verificationResult && !verificationResult.success) {
-    console.log(`[Graph:router] Routing to correction (verification failed)`)
+    log.info("Routing to correction (verification failed)")
     return "correction"
   }
 
   // Verification succeeded or skipped - continue to planning/action
-  console.log(`[Graph:router] Routing to planning (verification passed)`)
+  log.info("Routing to planning (verification passed)")
   return "planning"
 }

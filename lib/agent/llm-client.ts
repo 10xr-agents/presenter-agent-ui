@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs"
-import { getTracedOpenAIWithConfig, isLangfuseEnabled } from "@/lib/observability"
 import { recordUsage, type RecordUsageInput } from "@/lib/cost"
 import type { LLMActionType } from "@/lib/models/token-usage-log"
+import { getTracedOpenAIWithConfig, isLangfuseEnabled } from "@/lib/observability"
 
 /**
  * LLM response with usage metrics.

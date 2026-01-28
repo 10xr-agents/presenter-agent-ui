@@ -1,12 +1,12 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
-import * as Sentry from "@sentry/nextjs"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
-import { KnowledgeSource } from "@/lib/models/knowledge-source"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 import { startIngestion } from "@/lib/knowledge-extraction/client"
+import { KnowledgeSource } from "@/lib/models/knowledge-source"
 import { generatePresignedUrl } from "@/lib/storage/s3-client"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/knowledge/[id]/resync - Re-sync an existing knowledge source
@@ -80,8 +80,6 @@ export async function POST(
     })
 
     try {
-      let ingestionResponse
-
       // NEW FORMAT: Two-phase knowledge extraction requires website_url
       // Use sourceUrl as website_url (always present in new format, may be present in old format)
       if (!knowledge.sourceUrl) {
@@ -218,7 +216,7 @@ export async function POST(
         ]
       }
 
-      ingestionResponse = await startIngestion(ingestionRequest)
+      const ingestionResponse = await startIngestion(ingestionRequest)
 
       // Update knowledge source record
       const docToUpdate = await (KnowledgeSource as any).findById(id)

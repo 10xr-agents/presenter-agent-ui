@@ -14,8 +14,9 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { validatePlanHealth, applyPlanModifications, determineReplanAction } from "@/lib/agent/replanning-engine"
 import { generatePlan } from "@/lib/agent/planning-engine"
+import { applyPlanModifications, determineReplanAction, validatePlanHealth } from "@/lib/agent/replanning-engine"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, ReplanningResult } from "../types"
 
 /**
@@ -28,10 +29,15 @@ export async function replanningNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { plan, dom, url, previousUrl, previousDom, query, ragChunks, hasOrgKnowledge } = state
+  const log = logger.child({
+    process: "Graph:replanning",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   // If no plan exists or no previous DOM, skip re-planning check
   if (!plan || !previousDom) {
-    console.log(`[Graph:replanning] No plan or previous DOM, skipping re-planning check`)
+    log.info("No plan or previous DOM, skipping re-planning check")
     return {
       replanningResult: undefined,
       status: "executing",
@@ -40,14 +46,14 @@ export async function replanningNode(
 
   // If this is a new task (no previous URL), skip re-planning
   if (!previousUrl) {
-    console.log(`[Graph:replanning] New task, skipping re-planning check`)
+    log.info("New task, skipping re-planning check")
     return {
       replanningResult: undefined,
       status: "executing",
     }
   }
 
-  console.log(`[Graph:replanning] Checking plan health after navigation`)
+  log.info("Checking plan health after navigation")
 
   try {
     // Validate plan health
@@ -80,11 +86,8 @@ export async function replanningNode(
       suggestedChanges: validationResult.suggestedChanges,
     }
 
-    console.log(
-      `[Graph:replanning] Validation triggered=${replanningResult.triggered}, ` +
-      `planValid=${replanningResult.planValid}, ` +
-      `domSimilarity=${replanningResult.domSimilarity?.toFixed(2) || "N/A"}, ` +
-      `reason=${replanningResult.reason}`
+    log.info(
+      `Validation triggered=${replanningResult.triggered}, planValid=${replanningResult.planValid}, domSimilarity=${replanningResult.domSimilarity?.toFixed(2) || "N/A"}, reason=${replanningResult.reason}`
     )
 
     // If validation wasn't triggered or plan is valid, continue
@@ -97,7 +100,7 @@ export async function replanningNode(
 
     // Determine action: continue, modify, or regenerate
     const action = determineReplanAction(validationResult)
-    console.log(`[Graph:replanning] Re-planning action: ${action}`)
+    log.info(`Re-planning action: ${action}`)
 
     if (action === "continue") {
       return {
@@ -111,7 +114,7 @@ export async function replanningNode(
       const modifiedPlan = applyPlanModifications(plan, validationResult.suggestedChanges)
       
       if (modifiedPlan) {
-        console.log(`[Graph:replanning] Applied modifications to plan`)
+        log.info("Applied modifications to plan")
         return {
           plan: modifiedPlan,
           replanningResult: {
@@ -124,7 +127,7 @@ export async function replanningNode(
     }
 
     // Need to regenerate plan
-    console.log(`[Graph:replanning] Regenerating plan`)
+    log.info("Regenerating plan")
     
     const newPlan = await generatePlan(
       query,
@@ -142,7 +145,7 @@ export async function replanningNode(
     )
 
     if (!newPlan) {
-      console.error(`[Graph:replanning] Failed to regenerate plan`)
+      log.error("Failed to regenerate plan")
       return {
         replanningResult: {
           ...replanningResult,
@@ -153,7 +156,7 @@ export async function replanningNode(
       }
     }
 
-    console.log(`[Graph:replanning] New plan generated with ${newPlan.steps.length} steps`)
+    log.info(`New plan generated with ${newPlan.steps.length} steps`)
 
     return {
       plan: newPlan,
@@ -169,7 +172,7 @@ export async function replanningNode(
       tags: { component: "graph-replanning" },
       extra: { url, previousUrl },
     })
-    console.error(`[Graph:replanning] Error:`, error)
+    log.error("Error", error)
 
     // On error, continue with existing plan (conservative)
     return {
@@ -195,20 +198,25 @@ export function routeAfterReplanning(
   state: InteractGraphState
 ): "planning" | "step_refinement" | "finalize" {
   const { replanningResult, status } = state
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   // If re-planning failed, finalize
   if (status === "failed") {
-    console.log(`[Graph:router] Routing to finalize (re-planning failed)`)
+    log.info("Routing to finalize (re-planning failed)")
     return "finalize"
   }
 
   // If plan was regenerated (currentStepIndex reset to 0), go to planning to start fresh
   if (replanningResult?.reason.includes("regenerated") && state.currentStepIndex === 0) {
-    console.log(`[Graph:router] Routing to planning (plan regenerated)`)
+    log.info("Routing to planning (plan regenerated)")
     return "planning"
   }
 
   // Otherwise continue to step refinement
-  console.log(`[Graph:router] Routing to step_refinement (plan valid or modified)`)
+  log.info("Routing to step_refinement (plan valid or modified)")
   return "step_refinement"
 }

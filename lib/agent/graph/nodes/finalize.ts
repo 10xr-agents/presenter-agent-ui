@@ -5,6 +5,7 @@
  * This node doesn't modify state - it's just the terminal point of the graph.
  */
 
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
 /**
@@ -17,16 +18,21 @@ export async function finalizeNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { status, actionResult, error, startTime } = state
+  const log = logger.child({
+    process: "Graph:finalize",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   const duration = Date.now() - startTime
-  console.log(`[Graph:finalize] Graph execution complete in ${duration}ms, status=${status}`)
+  log.info(`Graph execution complete in ${duration}ms, status=${status}`)
 
   // Determine final status based on state
   let finalStatus = status
 
   if (error) {
     finalStatus = "failed"
-    console.log(`[Graph:finalize] Error: ${error}`)
+    log.info(`Error: ${error}`)
   } else if (status === "needs_user_input") {
     // Keep needs_user_input status
     finalStatus = "needs_user_input"

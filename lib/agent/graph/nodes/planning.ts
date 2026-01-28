@@ -12,6 +12,7 @@
 import * as Sentry from "@sentry/nextjs"
 import { generatePlan } from "@/lib/agent/planning-engine"
 import type { TaskPlan } from "@/lib/models/task"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
 /**
@@ -24,17 +25,22 @@ export async function planningNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { query, url, dom, ragChunks, hasOrgKnowledge, webSearchResult, plan } = state
+  const log = logger.child({
+    process: "Graph:planning",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   // If plan already exists (loaded from task), use it
   if (plan) {
-    console.log(`[Graph:planning] Using existing plan with ${plan.steps.length} steps, currentIndex=${plan.currentStepIndex}`)
+    log.info(`Using existing plan with ${plan.steps.length} steps, currentIndex=${plan.currentStepIndex}`)
     return {
       currentStepIndex: plan.currentStepIndex || 0,
       status: "executing",
     }
   }
 
-  console.log(`[Graph:planning] Generating new plan for query: "${query.substring(0, 50)}..."`)
+  log.info(`Generating new plan for query: "${query.substring(0, 50)}..."`)
 
   try {
     const generatedPlan = await generatePlan(
@@ -53,7 +59,7 @@ export async function planningNode(
     )
 
     if (generatedPlan) {
-      console.log(`[Graph:planning] Plan generated with ${generatedPlan.steps.length} steps`)
+      log.info(`Plan generated with ${generatedPlan.steps.length} steps`)
 
       // Mark first step as active
       if (generatedPlan.steps.length > 0 && generatedPlan.steps[0]) {
@@ -71,7 +77,7 @@ export async function planningNode(
     }
 
     // Planning failed - continue without plan (fallback to direct LLM action)
-    console.warn(`[Graph:planning] Planning returned null, continuing without plan`)
+    log.warn("Planning returned null, continuing without plan")
     return {
       plan: undefined,
       status: "executing",
@@ -81,7 +87,7 @@ export async function planningNode(
       tags: { component: "graph-planning" },
       extra: { query, url },
     })
-    console.error(`[Graph:planning] Planning error:`, error)
+    log.error("Planning error", error)
 
     // Continue without plan (backward compatibility)
     return {
@@ -100,11 +106,16 @@ export async function planningNode(
 export function routeAfterPlanning(
   state: InteractGraphState
 ): "step_refinement" | "action_generation" {
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
   if (state.plan && state.plan.steps.length > 0) {
-    console.log(`[Graph:router] Routing to step_refinement (has plan)`)
+    log.info("Routing to step_refinement (has plan)")
     return "step_refinement"
   }
 
-  console.log(`[Graph:router] Routing to action_generation (no plan)`)
+  log.info("Routing to action_generation (no plan)")
   return "action_generation"
 }

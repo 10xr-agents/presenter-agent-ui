@@ -3,6 +3,7 @@
 // import eslintPluginTailwindcss from "eslint-plugin-tailwindcss"
 import eslintPluginNext from "@next/eslint-plugin-next"
 import eslintPluginImport from "eslint-plugin-import"
+import eslintPluginReactHooks from "eslint-plugin-react-hooks"
 import eslintPluginStorybook from "eslint-plugin-storybook"
 import typescriptEslint from "typescript-eslint"
 import * as fs from "fs"
@@ -31,10 +32,13 @@ const config = typescriptEslint.config(
   {
     plugins: {
       "@next/next": eslintPluginNext,
+      "react-hooks": eslintPluginReactHooks,
     },
     rules: {
       ...eslintPluginNext.configs.recommended.rules,
       ...eslintPluginNext.configs["core-web-vitals"].rules,
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
     },
   },
   {
@@ -49,6 +53,8 @@ const config = typescriptEslint.config(
       },
     },
     rules: {
+      // RULESETS.md: Mongoose models use (Model as any).method() — allow as warning
+      "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {

@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server"
 import * as Sentry from "@sentry/nextjs"
+import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
-import { errorResponse } from "@/lib/utils/api-response"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
-import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
+import { errorResponse } from "@/lib/utils/api-response"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
+import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
 
 /**
  * GET /api/knowledge/resolve

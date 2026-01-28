@@ -1,5 +1,5 @@
-import { OpenAI } from "openai"
 import * as Sentry from "@sentry/nextjs"
+import { OpenAI } from "openai"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 
 /**

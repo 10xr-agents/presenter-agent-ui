@@ -1,10 +1,10 @@
 "use client"
 
 import { Building2, DollarSign, TrendingUp, Users } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 
 interface DashboardStats {
   totalOrganizations: number

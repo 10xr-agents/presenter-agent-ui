@@ -8,6 +8,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { predictOutcome } from "@/lib/agent/outcome-prediction-engine"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
 /**
@@ -20,15 +21,20 @@ export async function outcomePredictionNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { actionResult, dom, url, ragChunks, hasOrgKnowledge } = state
+  const log = logger.child({
+    process: "Graph:outcome_prediction",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
   if (!actionResult) {
-    console.log(`[Graph:outcome_prediction] No action result, skipping prediction`)
+    log.info("No action result, skipping prediction")
     return {
       status: "executing",
     }
   }
 
-  console.log(`[Graph:outcome_prediction] Predicting outcome for: ${actionResult.action}`)
+  log.info(`Predicting outcome for: ${actionResult.action}`)
 
   try {
     const prediction = await predictOutcome(
@@ -47,14 +53,14 @@ export async function outcomePredictionNode(
     )
 
     if (prediction) {
-      console.log(`[Graph:outcome_prediction] Prediction generated: ${prediction.description?.substring(0, 50) || "no description"}`)
+      log.info(`Prediction generated: ${prediction.description?.substring(0, 50) || "no description"}`)
       return {
         expectedOutcome: prediction,
         status: "executing",
       }
     }
 
-    console.log(`[Graph:outcome_prediction] No prediction generated`)
+    log.info("No prediction generated")
     return {
       status: "executing",
     }
@@ -63,7 +69,7 @@ export async function outcomePredictionNode(
       tags: { component: "graph-outcome-prediction" },
       extra: { action: actionResult.action },
     })
-    console.error(`[Graph:outcome_prediction] Error:`, error)
+    log.error("Error", error)
 
     // Continue without prediction (non-critical)
     return {
@@ -79,8 +85,13 @@ export async function outcomePredictionNode(
  * @returns Next node name
  */
 export function routeAfterOutcomePrediction(
-  _state: InteractGraphState
+  state: InteractGraphState
 ): "finalize" {
-  console.log(`[Graph:router] Routing to finalize`)
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
+  log.info("Routing to finalize")
   return "finalize"
 }

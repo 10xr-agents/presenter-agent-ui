@@ -1,6 +1,6 @@
 "use client"
 
-import { MoreHorizontal, User, Settings, LogOut, Moon } from "lucide-react"
+import { LogOut, Moon, MoreHorizontal, Settings, User } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"

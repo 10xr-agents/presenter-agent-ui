@@ -1,7 +1,6 @@
 "use client"
 
 import { AlertCircle, Clock, Cpu, TrendingUp } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -9,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Spinner } from "@/components/ui/spinner"
 
 interface UsageLimitsData {
   tier: "free" | "paid" | "enterprise"

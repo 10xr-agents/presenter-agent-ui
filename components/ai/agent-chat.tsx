@@ -1,11 +1,11 @@
 "use client"
 
 import { Send } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Spinner } from "@/components/ui/spinner"
 import { useAgent } from "@/hooks/use-agent"
 
 export function AgentChat({ organizationId }: { organizationId?: string }) {

@@ -8,7 +8,7 @@
  * database connections or external services.
  */
 
-import { describe, it, expect, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 // Mock environment to avoid database connection
 vi.mock("@/lib/db/mongoose", () => ({

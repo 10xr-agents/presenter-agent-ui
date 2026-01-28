@@ -1,11 +1,11 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
 import { errorResponse } from "@/lib/utils/api-response"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
-import * as Sentry from "@sentry/nextjs"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/v1/auth/login
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
         // Get organization name if available
         if (organizationId) {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const orgResult = await authApi.organization?.getActive({
               headers: sessionHeaders,
             })

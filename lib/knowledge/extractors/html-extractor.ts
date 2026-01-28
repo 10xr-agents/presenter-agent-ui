@@ -7,11 +7,11 @@
  * This is the core of "Cursor-style" documentation indexing.
  */
 
+import { Readability } from "@mozilla/readability"
 import * as Sentry from "@sentry/nextjs"
 import * as cheerio from "cheerio"
-import { Readability } from "@mozilla/readability"
-import TurndownService from "turndown"
 import { parseHTML } from "linkedom"
+import TurndownService from "turndown"
 
 export interface HtmlExtractionResult {
   /** Plain text content */

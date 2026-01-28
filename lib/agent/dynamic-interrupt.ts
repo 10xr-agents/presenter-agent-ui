@@ -16,8 +16,8 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { performWebSearch, type WebSearchResult } from "./web-search"
 import { recordUsage } from "@/lib/cost"
+import { performWebSearch, type WebSearchResult } from "./web-search"
 
 // =============================================================================
 // Types

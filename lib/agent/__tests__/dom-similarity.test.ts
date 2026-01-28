@@ -2,7 +2,7 @@
  * Unit Tests for DOM Similarity Algorithm (Phase 3 Task 2)
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, expect, it } from "vitest"
 import {
   calculateDomSimilarity,
   hasSignificantUrlChange,

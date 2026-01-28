@@ -14,17 +14,17 @@
  */
 
 import type {
-  ChainSafetyAnalysis,
-  ChainedAction,
-  ChainBlocker,
-  ChainReason,
   ChainableActionType,
+  ChainBlocker,
+  ChainedAction,
+  ChainReason,
+  ChainSafetyAnalysis,
 } from "./types"
 import {
+  extractActionType,
+  extractElementId,
   isChainableActionType,
   isHighRiskAction,
-  extractElementId,
-  extractActionType,
 } from "./types"
 
 // =============================================================================

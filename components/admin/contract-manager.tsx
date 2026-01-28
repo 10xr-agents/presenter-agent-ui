@@ -2,11 +2,11 @@
 
 import { formatDistanceToNow } from "date-fns"
 import { FileText, Plus } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 
 interface Contract {
   id: string

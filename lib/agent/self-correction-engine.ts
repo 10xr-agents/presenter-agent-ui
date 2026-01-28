@@ -1,12 +1,12 @@
 import * as Sentry from "@sentry/nextjs"
-import type { VerificationResult } from "./verification-engine"
-import type { PlanStep } from "@/lib/models/task"
-import type { CorrectionStrategy } from "@/lib/models/correction-record"
+import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { CorrectionStrategy } from "@/lib/models/correction-record"
+import type { PlanStep } from "@/lib/models/task"
+import { getTracedOpenAIWithConfig } from "@/lib/observability"
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 import { classifyActionType } from "./action-type"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
-import { recordUsage } from "@/lib/cost"
+import type { VerificationResult } from "./verification-engine"
 
 /**
  * Self-Correction Engine (Task 8)

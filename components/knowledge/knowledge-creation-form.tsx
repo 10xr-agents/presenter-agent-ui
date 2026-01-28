@@ -1,24 +1,24 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, FileText, Globe, Upload, Video, X, Music, File } from "lucide-react"
+import { AlertCircle, CheckCircle2, File, FileText, Globe, Music, Upload, Video, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import { Spinner } from "@/components/ui/spinner"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { PasswordInput } from "@/components/ui/password-input"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import {
   KnowledgePathRestrictions,
 } from "@/components/knowledge/knowledge-form-fields"
 import { KnowledgeProgress } from "@/components/knowledge/knowledge-progress"
-import type { AssetType, FileAsset, UrlAsset, Asset } from "@/components/knowledge/knowledge-types"
+import type { Asset, AssetType, FileAsset, UrlAsset } from "@/components/knowledge/knowledge-types"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/ui/password-input"
+import { Separator } from "@/components/ui/separator"
+import { Spinner } from "@/components/ui/spinner"
 
 interface KnowledgeCreationFormProps {
   organizationId: string

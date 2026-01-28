@@ -3,6 +3,7 @@
   "display": "Next.js",
   "compilerOptions": {
     "target": "es5",
+    "downlevelIteration": true,
     "lib": [
       "dom",
       "dom.iterable",

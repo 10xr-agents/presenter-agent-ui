@@ -104,6 +104,46 @@ export const interactRequestBodySchema = z.object({
     }, "Invalid previousUrl")
     .optional(),
   // =========================================================================
+  // Client-Side Verification Fields (v2.1)
+  // =========================================================================
+  /**
+   * Client-side element verification result.
+   * Extension runs document.querySelector(expectedSelector) after action
+   * and reports whether the element was found. This is 100% accurate
+   * compared to server-side regex which is ~90% accurate.
+   *
+   * @see docs/VERIFICATION_PROCESS.md
+   */
+  clientVerification: z
+    .object({
+      /** Whether the expected element was found via document.querySelector */
+      elementFound: z.boolean(),
+      /** The selector that was checked (from expectedOutcome.domChanges.elementShouldExist) */
+      selector: z.string().optional(),
+      /** Whether the URL changed after action (client-side check) */
+      urlChanged: z.boolean().optional(),
+      /** Timestamp when verification was performed (for staleness detection) */
+      timestamp: z.number().optional(),
+    })
+    .optional(),
+  // =========================================================================
+  // Client Observations (Observation-Based Verification v3.0)
+  // =========================================================================
+  /**
+   * Extension reports what it witnessed during/after action execution.
+   * Used for observation-based verification (DOM diff) when beforeState exists.
+   */
+  clientObservations: z
+    .object({
+      /** Network request(s) occurred (e.g. API call after "Save") */
+      didNetworkOccur: z.boolean().optional(),
+      /** DOM was mutated (nodes added/removed) */
+      didDomMutate: z.boolean().optional(),
+      /** URL changed (client-side check) */
+      didUrlChange: z.boolean().optional(),
+    })
+    .optional(),
+  // =========================================================================
   // Action Chaining Fields (Phase 2 Task 1)
   // =========================================================================
   /**

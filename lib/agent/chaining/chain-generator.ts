@@ -8,26 +8,26 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import type {
-  ActionChain,
-  ChainedAction,
-  ChainReason,
-  ChainMetadata,
-  ChainableActionType,
-} from "./types"
-import {
-  extractElementId,
-  extractActionType,
-  isChainableActionType,
-  isHighRiskAction,
-} from "./types"
 import {
   analyzeChainSafety,
-  identifyChainableGroups,
   buildChainMetadata,
+  identifyChainableGroups,
   MAX_CHAIN_SIZE,
   MIN_CHAIN_SIZE,
 } from "./chain-analyzer"
+import type {
+  ActionChain,
+  ChainableActionType,
+  ChainedAction,
+  ChainMetadata,
+  ChainReason,
+} from "./types"
+import {
+  extractActionType,
+  extractElementId,
+  isChainableActionType,
+  isHighRiskAction,
+} from "./types"
 
 // =============================================================================
 // Chain Generation from Form Analysis

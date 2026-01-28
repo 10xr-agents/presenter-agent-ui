@@ -7,11 +7,11 @@
  * Supports PDF, DOCX, Markdown, Text, HTML, JSON, CSV, and more.
  */
 
-import { NextRequest, NextResponse } from "next/server"
 import * as Sentry from "@sentry/nextjs"
+import { headers } from "next/headers"
+import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth/auth"
-import { headers } from "next/headers"
 import { connectDB } from "@/lib/db/mongoose"
 import { KnowledgeDocument } from "@/lib/models/knowledge-document"
 

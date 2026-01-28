@@ -7,27 +7,27 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { v4 as uuidv4 } from "uuid"
-import { extractPdfText } from "../extractors/pdf-extractor"
-import { extractDocxText } from "../extractors/docx-extractor"
-import { extractMarkdownText } from "../extractors/markdown-extractor"
-import { extractTextContent, extractJsonText, extractCsvText } from "../extractors/text-extractor"
-import { extractHtmlContent, htmlToMarkdown } from "../extractors/html-extractor"
-import { transcribeAudio } from "../extractors/audio-extractor"
-import { transcribeVideo } from "../extractors/video-extractor"
-import { crawlWebsite, crawlSinglePage } from "../crawler"
-import { chunkText, chunkMarkdown, chunkByParagraphs } from "./chunker"
-import { generateEmbeddings } from "../embeddings"
+import { chunkByParagraphs, chunkMarkdown, chunkText } from "./chunker"
 import {
   type DocumentType,
-  type IngestionSource,
-  type IngestionOptions,
-  type IngestedDocument,
-  type IngestedChunk,
-  type IngestionResult,
-  type IngestionProgressCallback,
   EXTENSION_TO_TYPE,
+  type IngestedChunk,
+  type IngestedDocument,
+  type IngestionOptions,
+  type IngestionProgressCallback,
+  type IngestionResult,
+  type IngestionSource,
   MIME_TO_TYPE,
 } from "./types"
+import { crawlSinglePage, crawlWebsite } from "../crawler"
+import { generateEmbeddings } from "../embeddings"
+import { transcribeAudio } from "../extractors/audio-extractor"
+import { extractDocxText } from "../extractors/docx-extractor"
+import { extractHtmlContent, htmlToMarkdown } from "../extractors/html-extractor"
+import { extractMarkdownText } from "../extractors/markdown-extractor"
+import { extractPdfText } from "../extractors/pdf-extractor"
+import { extractCsvText, extractJsonText, extractTextContent } from "../extractors/text-extractor"
+import { transcribeVideo } from "../extractors/video-extractor"
 
 // =============================================================================
 // Document Type Detection

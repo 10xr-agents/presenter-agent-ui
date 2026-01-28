@@ -128,6 +128,8 @@ export async function PATCH(req: NextRequest) {
     )
   }
 
+  // useTemplate is a server-side function (templates/manager), not a React Hook
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- API route, not a component
   await useTemplate(templateId)
 
   return NextResponse.json({ success: true })

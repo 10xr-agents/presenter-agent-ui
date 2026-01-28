@@ -1,8 +1,7 @@
 "use client"
 
-import { CheckCircle2, Clock, XCircle, Eye } from "lucide-react"
 import { format } from "date-fns"
-import { cn } from "@/lib/utils"
+import { CheckCircle2, Clock, Eye, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -12,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { cn } from "@/lib/utils"
 
 interface SyncActivity {
   id: string

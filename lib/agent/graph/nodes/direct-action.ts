@@ -11,8 +11,9 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
 import { callActionLLM } from "@/lib/agent/llm-client"
+import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
+import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
 /**
@@ -25,8 +26,13 @@ export async function directActionNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
   const { query, url, dom, ragChunks, hasOrgKnowledge, previousActions } = state
+  const log = logger.child({
+    process: "Graph:direct_action",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
 
-  console.log(`[Graph:direct_action] Fast-path action generation for: "${query.substring(0, 50)}..."`)
+  log.info(`Fast-path action generation for: "${query.substring(0, 50)}..."`)
 
   const startTime = Date.now()
 
@@ -61,7 +67,7 @@ export async function directActionNode(
     const llmDuration = Date.now() - startTime
 
     if (!llmResponse) {
-      console.error(`[Graph:direct_action] LLM returned null response`)
+      log.error("LLM returned null response")
       return {
         error: "LLM returned null response",
         status: "failed",
@@ -72,14 +78,14 @@ export async function directActionNode(
     const parsedResponse = parseActionResponse(llmResponse.thought)
 
     if (!parsedResponse) {
-      console.error(`[Graph:direct_action] Failed to parse LLM response`)
+      log.error("Failed to parse LLM response")
       return {
         error: "Failed to parse LLM response",
         status: "failed",
       }
     }
 
-    console.log(`[Graph:direct_action] Generated action: ${parsedResponse.action} (${llmDuration}ms)`)
+    log.info(`Generated action: ${parsedResponse.action} (${llmDuration}ms)`)
 
     return {
       actionResult: {
@@ -95,7 +101,7 @@ export async function directActionNode(
       tags: { component: "graph-direct-action" },
       extra: { query, url },
     })
-    console.error(`[Graph:direct_action] Error:`, error)
+    log.error("Error", error)
 
     return {
       error: error instanceof Error ? error.message : "Unknown error in direct action",
@@ -113,11 +119,16 @@ export async function directActionNode(
 export function routeAfterDirectAction(
   state: InteractGraphState
 ): "outcome_prediction" | "finalize" {
+  const log = logger.child({
+    process: "Graph:router",
+    sessionId: state.sessionId,
+    taskId: state.taskId ?? "",
+  })
   if (state.status === "failed" || !state.actionResult) {
-    console.log(`[Graph:router] Routing to finalize (direct action failed)`)
+    log.info("Routing to finalize (direct action failed)")
     return "finalize"
   }
 
-  console.log(`[Graph:router] Routing to outcome_prediction`)
+  log.info("Routing to outcome_prediction")
   return "outcome_prediction"
 }

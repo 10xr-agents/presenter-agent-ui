@@ -9,16 +9,16 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import type {
-  ActionChain,
-  ChainedAction,
-  ChainPartialState,
-  ChainActionError,
-  ChainRecoveryStrategy,
-  ChainRecoveryResult,
-} from "./types"
 import { analyzeChainSafety } from "./chain-analyzer"
 import { generateChainFromActions } from "./chain-generator"
+import type {
+  ActionChain,
+  ChainActionError,
+  ChainedAction,
+  ChainPartialState,
+  ChainRecoveryResult,
+  ChainRecoveryStrategy,
+} from "./types"
 
 // =============================================================================
 // Configuration

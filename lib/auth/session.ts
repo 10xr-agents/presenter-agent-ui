@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
-import { getTenantState, getActiveOrganizationId } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 /**
  * Get session from Bearer token

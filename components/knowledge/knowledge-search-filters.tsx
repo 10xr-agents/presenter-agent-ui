@@ -1,6 +1,5 @@
 "use client"
 
-import { cn } from "@/lib/utils"
 import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
@@ -10,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 /**
  * Reusable Knowledge Search and Filters

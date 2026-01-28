@@ -1,12 +1,12 @@
 "use client"
 
 import { AlertCircle, Mail, Plus, X } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 
 interface TeamInviteStepProps {
   onNext: () => void

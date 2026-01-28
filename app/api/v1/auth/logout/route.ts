@@ -1,10 +1,10 @@
+import * as Sentry from "@sentry/nextjs"
 import { headers } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { errorResponse } from "@/lib/utils/api-response"
-import { handleCorsPreflight, addCorsHeaders } from "@/lib/utils/cors"
-import * as Sentry from "@sentry/nextjs"
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 
 /**
  * POST /api/v1/auth/logout

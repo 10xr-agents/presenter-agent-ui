@@ -1,11 +1,11 @@
 "use client"
 
 import { AlertCircle, CheckCircle2, Clock, Pause, Play } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useRef, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Spinner } from "@/components/ui/spinner"
 import { createKnowledgeWebSocket, type WebSocketMessage } from "@/lib/browser-automation/websocket"
 import { cn } from "@/lib/utils"
 

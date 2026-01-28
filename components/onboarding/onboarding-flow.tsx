@@ -1,10 +1,10 @@
 "use client"
 
-import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Spinner } from "@/components/ui/spinner"
 import type { OnboardingStep } from "@/lib/onboarding/flow"
 import { DEFAULT_TOUR_STEPS, ProductTour } from "./product-tour"
 import { TeamInviteStep } from "./team-invite-step"

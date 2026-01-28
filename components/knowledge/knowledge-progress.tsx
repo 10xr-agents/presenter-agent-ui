@@ -1,7 +1,7 @@
 "use client"
 
 import { AlertCircle, CheckCircle2, Clock, RefreshCw } from "lucide-react"
-import { useCallback, useEffect, useState, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -111,7 +111,7 @@ export function KnowledgeProgress({
     } catch (err: unknown) {
       // Extract error details with better handling
       let errorMessage = "Failed to fetch workflow status"
-      let errorDetails: Record<string, unknown> = {
+      const errorDetails: Record<string, unknown> = {
         knowledgeId,
         jobId,
       }

@@ -1,7 +1,6 @@
 "use client"
 
 import { Plus, Trash2, UserPlus } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -32,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Table,
   TableBody,

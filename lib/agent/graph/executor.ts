@@ -6,21 +6,22 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
-import { getInteractGraph } from "./interact-graph"
-import type {
-  InteractGraphState,
-  InteractGraphConfig,
-  PreviousAction,
-  ComplexityLevel,
-  VerificationResult,
-  CorrectionResult,
-  ActionResult,
-} from "./types"
-import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
 import type { WebSearchResult } from "@/lib/agent/web-search"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { TaskPlan } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
-import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
+import { logger } from "@/lib/utils/logger"
+import { getInteractGraph } from "./interact-graph"
+import type {
+  ActionResult,
+  ComplexityLevel,
+  CorrectionResult,
+  InteractGraphConfig,
+  InteractGraphState,
+  PreviousAction,
+  VerificationResult,
+} from "./types"
 
 /**
  * Parameters for executing the graph
@@ -56,6 +57,26 @@ export interface ExecuteGraphParams {
   // Verification context (for existing tasks)
   lastActionExpectedOutcome?: ExpectedOutcome
   lastAction?: string
+  /** Observation-Based Verification (v3.0): beforeState for last action */
+  lastActionBeforeState?: {
+    url: string
+    domHash: string
+    activeElement?: string
+    semanticSkeleton?: Record<string, unknown>
+  }
+  // Client-side verification result (100% accurate querySelector from extension)
+  clientVerification?: {
+    elementFound: boolean
+    selector?: string
+    urlChanged?: boolean
+    timestamp?: number
+  }
+  /** Observation-Based Verification (v3.0): extension witnessed during/after action */
+  clientObservations?: {
+    didNetworkOccur?: boolean
+    didDomMutate?: boolean
+    didUrlChange?: boolean
+  }
 
   // Task metrics
   correctionAttempts?: number
@@ -127,10 +148,15 @@ export async function executeInteractGraph(
   config?: InteractGraphConfig
 ): Promise<ExecuteGraphResult> {
   const startTime = Date.now()
+  const log = logger.child({
+    process: "GraphExecutor",
+    sessionId: params.sessionId,
+    taskId: params.taskId ?? "",
+  })
 
-  console.log(`[GraphExecutor] Starting graph execution for tenant ${params.tenantId}`)
-  console.log(`[GraphExecutor] Query: "${params.query.substring(0, 50)}..."`)
-  console.log(`[GraphExecutor] isNewTask=${params.isNewTask}, hasTaskId=${!!params.taskId}`)
+  log.info(`Starting graph execution for tenant ${params.tenantId}`)
+  log.info(`Query: "${params.query.substring(0, 50)}..."`)
+  log.info(`isNewTask=${params.isNewTask}, hasTaskId=${!!params.taskId}`)
 
   try {
     // Get the graph instance
@@ -167,6 +193,9 @@ export async function executeInteractGraph(
       // Verification context
       lastActionExpectedOutcome: params.lastActionExpectedOutcome,
       lastAction: params.lastAction,
+      lastActionBeforeState: params.lastActionBeforeState,
+      clientVerification: params.clientVerification,
+      clientObservations: params.clientObservations,
 
       // Task metrics
       correctionAttempts: params.correctionAttempts || 0,
@@ -181,12 +210,12 @@ export async function executeInteractGraph(
     }
 
     // Execute the graph
-    console.log(`[GraphExecutor] Invoking graph`)
+    log.info("Invoking graph")
     // Use type assertion for LangGraph's complex generic types
     const result = await (graph as any).invoke(initialState) as InteractGraphState
     const graphDuration = Date.now() - startTime
 
-    console.log(`[GraphExecutor] Graph completed in ${graphDuration}ms, status=${result.status}`)
+    log.info(`Graph completed in ${graphDuration}ms, status=${result.status}`)
 
     // Build result
     return {
@@ -243,7 +272,7 @@ export async function executeInteractGraph(
       },
     })
 
-    console.error(`[GraphExecutor] Graph execution failed after ${graphDuration}ms:`, error)
+    log.error(`Graph execution failed after ${graphDuration}ms`, error)
 
     return {
       success: false,

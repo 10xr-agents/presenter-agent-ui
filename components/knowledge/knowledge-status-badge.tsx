@@ -1,9 +1,9 @@
 "use client"
 
-import { cn } from "@/lib/utils"
 import { AlertCircle, CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
+import { cn } from "@/lib/utils"
 
 /**
  * Reusable Knowledge Status Badge

@@ -2,7 +2,7 @@ import { connectDB } from "@/lib/db/mongoose"
 import { AllowedDomain } from "@/lib/models"
 import { matchesDomainPattern } from "@/lib/utils/domain-match"
 import { fetchResolveFromExtractionService } from "./resolve-client"
-import type { ResolveKnowledgeChunk, ResolveCitation } from "./resolve-client"
+import type { ResolveCitation, ResolveKnowledgeChunk } from "./resolve-client"
 
 /**
  * RAG debug information for debug UI.
