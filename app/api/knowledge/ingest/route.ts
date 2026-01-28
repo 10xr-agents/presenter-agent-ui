@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
         },
       })
     } catch (processingError: unknown) {
+      Sentry.logger.info("Knowledge ingest: ingestion failed")
       // Update document to failed status
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (KnowledgeDocument as any).findByIdAndUpdate(knowledgeDoc._id, {
@@ -217,6 +218,7 @@ export async function POST(request: NextRequest) {
       throw processingError
     }
   } catch (error: unknown) {
+    Sentry.logger.info("Knowledge ingest: internal error")
     Sentry.captureException(error, {
       tags: { api: "knowledge/ingest" },
     })
