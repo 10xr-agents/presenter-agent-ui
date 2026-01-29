@@ -775,7 +775,7 @@ const windowTabs = getTabs({ windowId: 123 })  // Get tabs in specific window
 - Convert page DOM to markdown format
 - Send markdown + query to LLM for structured extraction
 - Return extracted data in structured format (JSON)
-- **Requires:** LLM API integration (OpenAI, Claude, etc.)
+- **Requires:** LLM API integration (Google Gemini)
 
 **Example:**
 ```typescript

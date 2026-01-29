@@ -219,7 +219,7 @@ export async function processDynamicInterrupt(
           userId: context.userId,
           sessionId: context.sessionId,
           taskId: context.taskId,
-          provider: "openai",
+          provider: "google",
           model: "tavily-search",
           actionType: "DYNAMIC_INTERRUPT",
           inputTokens: 0,

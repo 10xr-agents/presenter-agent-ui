@@ -1,7 +1,11 @@
 import * as Sentry from "@sentry/nextjs"
-import { OpenAI } from "openai"
+import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { WebSearchResult } from "./web-search"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 
 /**
  * Reasoning Engine
@@ -34,6 +38,17 @@ export interface InformationCompletenessCheck {
 }
 
 /**
+ * Optional context for cost tracking (used when calling from graph/API with tenant/user)
+ */
+export interface ReasoningUsageContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+  langfuseTraceId?: string
+}
+
+/**
  * Parameters for task context analysis
  */
 export interface AnalyzeTaskContextParams {
@@ -42,6 +57,8 @@ export interface AnalyzeTaskContextParams {
   pageSummary?: string // Optional: brief page state summary
   ragChunks: ResolveKnowledgeChunk[]
   hasOrgKnowledge: boolean
+  /** Optional: for cost tracking and Langfuse trace linkage */
+  usageContext?: ReasoningUsageContext
 }
 
 /**
@@ -52,6 +69,8 @@ export interface VerifyInformationCompletenessParams {
   searchResults: WebSearchResult | null
   missingFields: string[]
   ragChunks: ResolveKnowledgeChunk[]
+  /** Optional: for cost tracking and Langfuse trace linkage */
+  usageContext?: ReasoningUsageContext
 }
 
 /**
@@ -69,23 +88,21 @@ export interface VerifyInformationCompletenessParams {
 export async function analyzeTaskContext(
   params: AnalyzeTaskContextParams
 ): Promise<TaskContextAnalysis> {
-  const { query, url, pageSummary, ragChunks, hasOrgKnowledge } = params
+  const { query, url, pageSummary, ragChunks, hasOrgKnowledge, usageContext } = params
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    // Fallback: conservative defaults if OpenAI not configured
-    console.warn("[Reasoning] OpenAI API key not configured, using conservative defaults")
+    console.warn("[Reasoning] Gemini API key not configured, using conservative defaults")
     return {
       hasSufficientContext: false,
       missingFields: [],
       needsWebSearch: true,
       searchQuery: query,
-      reasoning: "OpenAI API key not configured, defaulting to search",
+      reasoning: "Gemini API key not configured, defaulting to search",
     }
   }
 
   try {
-    const openai = new OpenAI({ apiKey })
 
     // Build context summary
     const ragSummary = ragChunks.length > 0
@@ -129,18 +146,14 @@ Guidelines:
 - searchQuery: Refined query optimized for search (e.g., "How to register new patient OpenEMR 7.0" not just "add patient")
 - reasoning: Brief explanation of your decision`
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast model for analysis
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3, // Lower temperature for more consistent analysis
-      max_tokens: 500,
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
+      model: DEFAULT_PLANNING_MODEL,
+      temperature: 0.3,
+      maxOutputTokens: 500,
+      thinkingLevel: "low",
     })
 
-    const content = response.choices[0]?.message?.content
+    const content = result?.content
     if (!content) {
       throw new Error("Empty response from LLM")
     }
@@ -185,22 +198,20 @@ Guidelines:
 export async function verifyInformationCompleteness(
   params: VerifyInformationCompletenessParams
 ): Promise<InformationCompletenessCheck> {
-  const { query, searchResults, missingFields, ragChunks } = params
+  const { query, searchResults, missingFields, ragChunks, usageContext } = params
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    // Fallback: optimistic default if OpenAI not configured
-    console.warn("[Reasoning] OpenAI API key not configured, assuming we can proceed")
+    console.warn("[Reasoning] Gemini API key not configured, assuming we can proceed")
     return {
       canProceed: true,
       missingInformation: [],
       userQuestion: "",
-      reasoning: "OpenAI API key not configured, defaulting to proceed",
+      reasoning: "Gemini API key not configured, defaulting to proceed",
     }
   }
 
   try {
-    const openai = new OpenAI({ apiKey })
 
     // Build search results summary
     const searchSummary = searchResults
@@ -254,18 +265,32 @@ Examples:
 - If search provides clear instructions and we have all required info: canProceed=true
 - If search results are insufficient and we need more context: canProceed=false, ask user for clarification`
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast model for verification
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3, // Lower temperature for more consistent verification
-      max_tokens: 500,
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
+      model: DEFAULT_PLANNING_MODEL,
+      temperature: 0.3,
+      maxOutputTokens: 500,
+      thinkingLevel: "low",
     })
 
-    const content = response.choices[0]?.message?.content
+    if (usageContext && result?.promptTokens != null) {
+      recordUsage({
+        tenantId: usageContext.tenantId,
+        userId: usageContext.userId,
+        sessionId: usageContext.sessionId,
+        taskId: usageContext.taskId,
+        langfuseTraceId: usageContext.langfuseTraceId,
+        provider: "google",
+        model: DEFAULT_PLANNING_MODEL,
+        actionType: "CONTEXT_ANALYSIS",
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
+        metadata: { operation: "verifyInformationCompleteness", query },
+      }).catch((err: unknown) => {
+        console.error("[Reasoning] Cost tracking error:", err)
+      })
+    }
+
+    const content = result?.content
     if (!content) {
       throw new Error("Empty response from LLM")
     }

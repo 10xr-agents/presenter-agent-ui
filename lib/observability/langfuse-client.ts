@@ -6,16 +6,13 @@
  * - LangFuse: LLM traces, prompt versions, token usage, latency, scores
  * - Sentry: Error monitoring, exceptions, performance alerts
  *
- * LangFuse v4 SDK structure:
- * - @langfuse/openai: Auto-traces OpenAI calls via observeOpenAI wrapper
- * - @langfuse/client: For scores, prompts, datasets (management API)
+ * LLM calls use Google Gemini (@/lib/llm/gemini-client). LangFuse client
+ * is used for scores, prompts, datasets (management API).
  *
  * @see INTERACT_FLOW_WALKTHROUGH.md - Phase 1 Task 2
  */
 
 import { LangfuseClient } from "@langfuse/client"
-import { observeOpenAI } from "@langfuse/openai"
-import OpenAI from "openai"
 
 // =============================================================================
 // Configuration
@@ -32,17 +29,18 @@ interface LangfuseConfig {
 }
 
 /**
- * Get LangFuse configuration from environment
+ * Get LangFuse configuration from environment.
+ * Langfuse is enabled when both LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are set
+ * (no separate ENABLE_LANGFUSE flag — used for cost and request tracing).
  */
 function getLangfuseConfig(): LangfuseConfig {
+  const publicKey = process.env.LANGFUSE_PUBLIC_KEY || ""
+  const secretKey = process.env.LANGFUSE_SECRET_KEY || ""
   return {
-    publicKey: process.env.LANGFUSE_PUBLIC_KEY || "",
-    secretKey: process.env.LANGFUSE_SECRET_KEY || "",
+    publicKey,
+    secretKey,
     baseUrl: process.env.LANGFUSE_BASE_URL || "https://cloud.langfuse.com",
-    enabled:
-      process.env.ENABLE_LANGFUSE === "true" &&
-      !!process.env.LANGFUSE_PUBLIC_KEY &&
-      !!process.env.LANGFUSE_SECRET_KEY,
+    enabled: !!publicKey && !!secretKey,
   }
 }
 
@@ -82,68 +80,6 @@ export function isLangfuseEnabled(): boolean {
 }
 
 // =============================================================================
-// OpenAI Integration
-// =============================================================================
-
-let _tracedOpenAI: OpenAI | null = null
-
-/**
- * Get a traced OpenAI client that automatically sends traces to LangFuse
- *
- * If LangFuse is disabled, returns a regular OpenAI client
- */
-export function getTracedOpenAI(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY not configured")
-  }
-
-  // If LangFuse is disabled, return a plain OpenAI client
-  if (!isLangfuseEnabled()) {
-    if (!_tracedOpenAI) {
-      _tracedOpenAI = new OpenAI({ apiKey })
-    }
-    return _tracedOpenAI
-  }
-
-  // Create traced OpenAI client
-  // The observeOpenAI wrapper automatically sends traces to LangFuse
-  return observeOpenAI(new OpenAI({ apiKey }))
-}
-
-/**
- * Get a traced OpenAI client with custom trace properties
- *
- * Use this for specific operations where you want to customize the trace metadata
- */
-export function getTracedOpenAIWithConfig(config: {
-  generationName?: string
-  sessionId?: string
-  userId?: string
-  tags?: string[]
-  metadata?: Record<string, unknown>
-}): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY not configured")
-  }
-
-  if (!isLangfuseEnabled()) {
-    return new OpenAI({ apiKey })
-  }
-
-  return observeOpenAI(new OpenAI({ apiKey }), {
-    generationName: config.generationName,
-    sessionId: config.sessionId,
-    userId: config.userId,
-    tags: config.tags,
-    generationMetadata: config.metadata,
-  })
-}
-
-// =============================================================================
 // Score Management
 // =============================================================================
 
@@ -165,19 +101,34 @@ export interface ScoreData {
  * - Verification success/failure
  * - Correction effectiveness
  * - Task completion
+ *
+ * LangFuse requires exactly one of: traceId (optional observationId), sessionId, or datasetRunId.
+ * We only send when traceId is set so the payload is valid.
  */
 export async function addScore(score: ScoreData): Promise<void> {
   const client = getLangfuseClient()
   if (!client) return
 
+  // LangFuse API: provide exactly one of traceId, sessionId, datasetRunId (observationId requires traceId)
+  if (!score.traceId) {
+    return
+  }
+
   try {
-    await client.score.create({
+    const payload: {
+      name: string
+      value: number
+      traceId: string
+      observationId?: string
+      comment?: string
+    } = {
       name: score.name,
       value: score.value,
       traceId: score.traceId,
-      observationId: score.observationId,
-      comment: score.comment,
-    })
+    }
+    if (score.observationId != null) payload.observationId = score.observationId
+    if (score.comment != null) payload.comment = score.comment
+    await client.score.create(payload)
   } catch (error) {
     // Log but don't throw - observability should not break the main flow
     console.error("[LangFuse] Failed to add score:", error)
@@ -225,21 +176,22 @@ export async function shutdownLangfuse(): Promise<void> {
 /**
  * Interact flow trace context
  *
- * Holds trace state for a single interact request
- * Note: LangFuse v4 with observeOpenAI auto-creates traces for OpenAI calls
+ * Holds trace state for a single interact request (one trace per message).
+ * LangFuse is used for cost and request tracing; all scores attach to traceId.
  */
 export interface InteractTraceContext {
   enabled: boolean
+  /** Langfuse trace ID for this interact request (costs and scores attach to this trace) */
+  traceId?: string
   sessionId?: string
   userId?: string
   metadata: Record<string, unknown>
 }
 
 /**
- * Start tracing an interact flow
+ * Start tracing an interact flow (one trace per message).
  *
- * Creates a context for adding scores and metadata
- * The actual trace is created automatically by observeOpenAI
+ * Call with a generated traceId so all usage and scores for this request attach to the same trace.
  */
 export async function startInteractTrace(
   metadata: {
@@ -251,6 +203,8 @@ export async function startInteractTrace(
     url: string
     complexity?: string
     tags?: string[]
+    /** Langfuse trace ID for this interact request (required for cost/trace linkage) */
+    traceId?: string
   }
 ): Promise<InteractTraceContext> {
   if (!isLangfuseEnabled()) {
@@ -259,6 +213,7 @@ export async function startInteractTrace(
 
   return {
     enabled: true,
+    traceId: metadata.traceId,
     sessionId: metadata.sessionId,
     userId: metadata.userId,
     metadata: {
@@ -276,7 +231,7 @@ export async function startInteractTrace(
  * Record a node execution in the interact flow
  *
  * Note: In v4, this logs to console when LangFuse is enabled
- * The actual spans are created by the observeOpenAI wrapper for LLM calls
+ * Spans for LLM calls are recorded via application instrumentation.
  */
 export async function recordNodeExecution(
   ctx: InteractTraceContext,
@@ -302,7 +257,7 @@ export async function recordNodeExecution(
 /**
  * Record an LLM generation in the interact flow
  *
- * Note: OpenAI calls are automatically traced by observeOpenAI
+ * LLM (Gemini) calls are traced via application instrumentation.
  * This is for logging additional context
  */
 export async function recordGeneration(
@@ -323,7 +278,7 @@ export async function recordGeneration(
   if (!ctx.enabled) return
 
   // Log generation for debugging
-  // Note: The actual generation is traced by observeOpenAI
+  // Actual generation traces are recorded by the LLM client layer.
   console.log(`[LangFuse:Generation] ${generation.name}`, {
     model: generation.model,
     durationMs: generation.durationMs,
@@ -351,12 +306,14 @@ export async function recordVerificationScore(
     name: "verification_success",
     value: verification.success ? 1 : 0,
     comment: verification.reason,
+    traceId: ctx.traceId,
   })
 
   // Add verification confidence score
   await addScore({
     name: "verification_confidence",
     value: verification.confidence,
+    traceId: ctx.traceId,
   })
 }
 
@@ -374,11 +331,11 @@ export async function recordCorrectionAttempt(
 ): Promise<void> {
   if (!ctx.enabled) return
 
-  // Add correction score
   await addScore({
     name: "correction_success",
     value: correction.success ? 1 : 0,
     comment: `Strategy: ${correction.strategy}, Attempt: ${correction.attemptNumber}. ${correction.reason || ""}`,
+    traceId: ctx.traceId,
   })
 
   // Log correction attempt
@@ -416,6 +373,7 @@ export async function finalizeInteractTrace(
     name: "task_status",
     value: statusValue,
     comment: `Status: ${result.status}, Duration: ${result.durationMs}ms, Complexity: ${result.complexity || "unknown"}${result.error ? `, Error: ${result.error}` : ""}`,
+    traceId: ctx.traceId,
   })
 
   // Log trace completion

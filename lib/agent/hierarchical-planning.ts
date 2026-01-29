@@ -23,7 +23,10 @@
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
 import type { TaskPlan } from "@/lib/models/task"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 
 /**
  * Internal Plan type that extends TaskPlan for consistency
@@ -115,13 +118,14 @@ export interface HierarchicalPlan {
 }
 
 /**
- * Context for hierarchical planning
+ * Context for hierarchical planning and Langfuse trace linkage
  */
 export interface HierarchicalPlanningContext {
   tenantId: string
   userId: string
   sessionId?: string
   taskId?: string
+  langfuseTraceId?: string
 }
 
 /**
@@ -182,24 +186,15 @@ export async function decomposePlan(
     `[HierarchicalPlanning] Plan has ${plan.steps.length} steps, decomposing...`
   )
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    // Return single sub-task if no API key
     return createSingleSubTaskPlan(goal, plan)
   }
 
   const startTime = Date.now()
+  const model = DEFAULT_PLANNING_MODEL
 
   try {
-    const openai = getTracedOpenAIWithConfig({
-      generationName: "hierarchical_decomposition",
-      sessionId: context.sessionId,
-      userId: context.userId,
-      tags: ["planning", "hierarchical"],
-      metadata: { goal, stepCount: plan.steps.length },
-    })
-
-    const model = process.env.HIERARCHICAL_MODEL || "gpt-4o-mini"
 
     const systemPrompt = `You are a task decomposition expert. Your job is to break down complex web automation workflows into smaller, manageable sub-tasks.
 
@@ -243,32 +238,33 @@ Respond with JSON:
   ]
 }`
 
-    const response = await openai.chat.completions.create({
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
       model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
       temperature: 0.4,
-      max_tokens: 2000,
+      maxOutputTokens: 2000,
+      thinkingLevel: "high",
+      generationName: "hierarchical_decomposition",
+      sessionId: context.sessionId,
+      userId: context.userId,
+      tags: ["planning", "hierarchical"],
+      metadata: { goal, stepCount: plan.steps.length },
     })
 
     const durationMs = Date.now() - startTime
-    const content = response.choices[0]?.message?.content
+    const content = result?.content
 
-    // Track usage
-    if (response.usage) {
+    if (result?.promptTokens != null) {
       recordUsage({
         tenantId: context.tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         taskId: context.taskId,
-        provider: "openai",
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
         model,
         actionType: "HIERARCHICAL_PLANNING",
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
         durationMs,
         metadata: { goal, stepCount: plan.steps.length },
       }).catch(console.error)

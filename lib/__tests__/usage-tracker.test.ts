@@ -48,7 +48,7 @@ describe("Usage Tracker", () => {
       const mockUsage = {
         userId: "user-123",
         type: "ai_request" as const,
-        resource: "openai.gpt-4",
+        resource: "google.gemini-3-flash-preview",
         quantity: 1000,
         cost: 10,
         timestamp: new Date(),
@@ -69,7 +69,7 @@ describe("Usage Tracker", () => {
       await trackUsage({
         userId: "user-123",
         type: "ai_request",
-        resource: "openai.gpt-4",
+        resource: "google.gemini-3-flash-preview",
         quantity: 1000,
         cost: 10,
       })

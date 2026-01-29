@@ -13,13 +13,8 @@ describe("Cost Tracker", () => {
   })
 
   describe("calculateCost", () => {
-    it("should calculate cost for OpenAI GPT-4", () => {
-      const cost = calculateCost("openai", "gpt-4-turbo-preview", 1000, 500)
-      expect(cost).toBeGreaterThan(0)
-    })
-
-    it("should calculate cost for Anthropic Claude", () => {
-      const cost = calculateCost("anthropic", "claude-3-sonnet", 1000, 500)
+    it("should calculate cost for Google Gemini", () => {
+      const cost = calculateCost("google", "gemini-3-flash-preview", 1000, 500)
       expect(cost).toBeGreaterThan(0)
     })
 
@@ -29,7 +24,7 @@ describe("Cost Tracker", () => {
     })
 
     it("should handle zero tokens", () => {
-      const cost = calculateCost("openai", "gpt-4-turbo-preview", 0, 0)
+      const cost = calculateCost("google", "gemini-3-flash-preview", 0, 0)
       expect(cost).toBe(0)
     })
   })
@@ -39,8 +34,8 @@ describe("Cost Tracker", () => {
       const mockCost = {
         _id: "cost-123",
         userId: "user-123",
-        provider: "openai",
-        model: "gpt-4-turbo-preview",
+        provider: "google",
+        model: "gemini-3-flash-preview",
         inputTokens: 1000,
         outputTokens: 500,
         totalTokens: 1500,
@@ -62,8 +57,8 @@ describe("Cost Tracker", () => {
 
       const result = await trackCost({
         userId: "user-123",
-        provider: "openai",
-        model: "gpt-4-turbo-preview",
+        provider: "google",
+        model: "gemini-3-flash-preview",
         inputTokens: 1000,
         outputTokens: 500,
       })
@@ -77,14 +72,14 @@ describe("Cost Tracker", () => {
     it("should aggregate costs correctly", async () => {
       const mockCosts = [
         {
-          provider: "openai",
-          model: "gpt-4",
+          provider: "google",
+          model: "gemini-3-flash-preview",
           cost: 10,
           totalTokens: 1000,
         },
         {
-          provider: "openai",
-          model: "gpt-4",
+          provider: "google",
+          model: "gemini-3-flash-preview",
           cost: 15,
           totalTokens: 1500,
         },

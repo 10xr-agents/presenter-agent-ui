@@ -108,6 +108,35 @@ describe("parseSemanticVerificationResponse", () => {
     expect(() => parseSemanticVerificationResponse("not json")).toThrow()
     expect(() => parseSemanticVerificationResponse("")).toThrow()
   })
+
+  it("extracts and parses JSON when response has leading text (e.g. thought summary)", () => {
+    const json = JSON.stringify({
+      action_succeeded: true,
+      task_completed: true,
+      confidence: 1.0,
+      reason: "The action successfully navigated to the overview section.",
+    })
+    const withPrefix = `Thought summary: The user wanted to go to overview. URL changed. Answer:\n${json}`
+    const result = parseSemanticVerificationResponse(withPrefix)
+    expect(result.action_succeeded).toBe(true)
+    expect(result.task_completed).toBe(true)
+    expect(result.confidence).toBe(1.0)
+    expect(result.reason).toBe("The action successfully navigated to the overview section.")
+  })
+
+  it("extracts and parses JSON from markdown code block", () => {
+    const json = JSON.stringify({
+      action_succeeded: true,
+      task_completed: false,
+      confidence: 0.9,
+      reason: "Form opened.",
+    })
+    const withMarkdown = `\n\`\`\`json\n${json}\n\`\`\`\n`
+    const result = parseSemanticVerificationResponse(withMarkdown)
+    expect(result.action_succeeded).toBe(true)
+    expect(result.task_completed).toBe(false)
+    expect(result.confidence).toBe(0.9)
+  })
 })
 
 describe("Step-level vs task-level prompt contract (Task 4)", () => {

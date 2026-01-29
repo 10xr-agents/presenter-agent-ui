@@ -13,7 +13,7 @@ export interface IUsage extends mongoose.Document {
   organizationId?: string
   apiKeyId?: string
   type: UsageType
-  resource: string // e.g., "openai.gpt-4", "storage.files"
+  resource: string // e.g., "google.gemini-3-flash-preview", "storage.files"
   quantity: number // e.g., tokens, bytes, requests
   cost?: number // Cost in cents
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

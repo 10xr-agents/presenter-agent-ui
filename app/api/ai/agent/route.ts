@@ -27,15 +27,15 @@ export async function POST(request: NextRequest) {
       // If user doesn't have access, Better Auth will handle it
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: "OpenAI API key not configured" },
+        { error: "Gemini API key not configured" },
         { status: 500 }
       )
     }
 
     const agent = new AgentRunner({
-      model: "gpt-4-turbo-preview",
+      model: "gemini-3-flash-preview",
       temperature: 0.7,
       tools: defaultTools,
       systemPrompt: `You are a helpful AI assistant${organizationId ? ' for an organization' : ''}. 

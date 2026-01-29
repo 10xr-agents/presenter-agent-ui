@@ -1,5 +1,29 @@
 # Screen Agent Platform - Architecture & System Design
 
+This document is the **single source of truth** for system architecture, the intelligence layer (agent API, interact loop, knowledge resolve), and the implementation roadmap. It consolidates the former **ARCHITECTURE.md**, **docs/README.md**, **SERVER_SIDE_AGENT_ARCH.md**, and **THIN_SERVER_ROADMAP.md**. For deep dives on specific flows, see the referenced docs below.
+
+---
+
+## Project Documentation Index
+
+| Document | Purpose |
+|----------|---------|
+| **ARCHITECTURE.md** (this doc) | System design, platform architecture, intelligence layer summary, roadmap summary, and documentation index. |
+| **DEVELOPMENT.md** | Getting started, environment setup, code standards, testing, UI/UX design system, troubleshooting. |
+| **API_REFERENCE.md** | Core features, APIs (Screen Agents, Presentations, Analytics, Billing), Knowledge Extraction API. |
+| **INTERACT_FLOW_WALKTHROUGH.md** | End-to-end interact flow: `POST /api/agent/interact`, graph nodes, verification, correction, planning; implementation roadmap and phase tasks. |
+| **VERIFICATION_PROCESS.md** | Verification engine: observation-based verification, goalAchieved, semantic LLM contract, step-level vs task-level, troubleshooting. |
+| **PLANNER_PROCESS.md** | Planning engine, step refinement, replanning, hierarchical planning, verification outcome in planner context. |
+| **GEMINI_USAGE.md** | Gemini integration: models, grounding (Google Search vs Tavily), thinking levels, LangFuse tracking, cost recording. |
+| **COST_TRACKING_AUDIT.md** | Cost tracking: all Gemini call sites, action types, token breakdown per step, Tavily/AgentRunner notes. |
+| **REALTIME_MESSAGE_SYNC_ROADMAP.md** | Real-time messaging (Sockudo/Pusher), message sync roadmap. |
+| **CHROME_TAB_ACTIONS.md** | Chrome extension tab actions and integration. |
+| **RULESETS.md** | Mandatory code patterns (Mongoose, Zod, file extensions, etc.) — prevents build errors. |
+
+**Quick start:** New to the project → read this doc (System Overview, Architecture Patterns, Intelligence Layer). Working on the interact loop → **INTERACT_FLOW_WALKTHROUGH.md**. Working on verification → **VERIFICATION_PROCESS.md**. Working on planning → **PLANNER_PROCESS.md**. Working on LLM/cost → **GEMINI_USAGE.md**, **COST_TRACKING_AUDIT.md**.
+
+---
+
 ## Table of Contents
 
 1. [System Overview](#system-overview)
@@ -16,6 +40,9 @@
 12. [External Services Integration](#external-services-integration)
 13. [Security Architecture](#security-architecture)
 14. [Deployment Architecture](#deployment-architecture)
+15. [Intelligence Layer & Agent Architecture](#intelligence-layer--agent-architecture)
+16. [Implementation Roadmap Summary](#implementation-roadmap-summary)
+17. [Related Documentation](#related-documentation)
 
 ---
 
@@ -70,7 +97,7 @@
         ▼                     ▼                     ▼
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │   LiveKit    │    │   Stripe     │    │  AI Services │
-│  (Video)     │    │  (Billing)   │    │  (OpenAI)    │
+│  (Video)     │    │  (Billing)   │    │  (Gemini)    │
 └──────────────┘    └──────────────┘    └──────────────┘
                               │
                               ▼
@@ -165,7 +192,7 @@
 - **Billing**: Stripe
 - **Email**: Resend
 - **File Uploads**: Uploadthing (legacy), S3 (new)
-- **AI Services**: OpenAI, Anthropic
+- **AI Services**: Google Gemini
 - **Analytics**: PostHog
 - **Error Tracking**: Sentry
 
@@ -1163,16 +1190,11 @@ pnpm worker
 
 ### AI Services
 
-**OpenAI**:
-- Voice generation
-- Knowledge processing
-- Analytics insights
+**Google Gemini**:
+- LLM for agent (planning, action generation, verification, reasoning)
+- Knowledge processing and analytics insights
 
-**Anthropic**:
-- Alternative AI provider
-- Knowledge processing
-
-**Configuration**: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+**Configuration**: `GEMINI_API_KEY`
 
 ---
 
@@ -1242,14 +1264,94 @@ pnpm worker
 - `S3_*` variables
 - `STRIPE_*` variables
 - `LIVEKIT_*` variables
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 
 **See**: `.env.example` for complete list
 
 ---
 
+## Intelligence Layer & Agent Architecture
+
+The **Intelligence Layer** is the server-side agent that powers the Chrome extension: auth, the action loop (`POST /api/agent/interact`), knowledge resolution (`GET /api/knowledge/resolve`), session management, and the Manus-style orchestrator (planning, verification, self-correction, step refinement). All inference, RAG, web search, and action history live on the server; the extension is an **Action Runner** only.
+
+### Key Concepts
+
+| Concept | Description |
+|--------|-------------|
+| **Tenant ID** | From session: **user** (normal mode) or **organization** (org mode). All DB and RAG access is scoped by tenant. See [Multi-Tenancy](#multi-tenancy). |
+| **Task ID** | Server-created UUID per task. Ties interact requests into one multi-step workflow; action history is stored per `taskId`. |
+| **Active Domain** | From request `url` (hostname). Used as a **filter** for when to use org-specific RAG, not to block access. |
+| **allowed_domains** | **Filter, not assert.** Decides when to query org-specific RAG. We help on **all** domains; on domains without org knowledge we use public knowledge only and return `hasOrgKnowledge: false`. Never 403 based on domain. |
+| **Interact vs Resolve** | **Interact:** Extension sends `url`, `query`, `dom`, `taskId?`; backend runs RAG + LLM; returns `thought` and `action` only (no raw chunks). **Resolve:** Same RAG + tenant/domain checks, **no LLM**; returns `ResolveKnowledgeResponse` (chunks, citations). Resolve is for **internal use and debugging only** — not for extension overlay. |
+
+### Core APIs (Summary)
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/v1/auth/login` | POST | None | Login (invite-based); returns `accessToken`. |
+| `/api/v1/auth/session` | GET | Bearer | Check session; return user/tenant. |
+| `/api/v1/auth/logout` | POST | Bearer | Invalidate token. |
+| `/api/v1/user/preferences` | GET/POST | Bearer | User preferences (theme, etc.) per tenant. |
+| `/api/agent/interact` | POST | Bearer | Action loop: receive `dom`, `query`, `url`, `taskId?`, `sessionId?`; RAG + web search + LLM; server-held history; orchestrator (planning, verification, self-correction); return `NextActionResponse` (thought, action). Extension gets **only** thought/action — not chunks/citations. Rate limited. |
+| `/api/knowledge/resolve` | GET | Bearer | Proxy to extraction service (org) or public-only; return `ResolveKnowledgeResponse`. **Internal/debugging only** — not for extension overlay. Rate limited. |
+| `/api/session` | GET/POST | Bearer | List sessions; archive session. |
+| `/api/session/[sessionId]/messages` | GET | Bearer | Message history for a session. |
+| `/api/session/latest` | GET | Bearer | Latest session for current user. |
+| `/api/debug/logs` | GET | Bearer | Debug logs (taskId, logType, limit, since). |
+| `/api/debug/session/[taskId]/export` | GET | Bearer | Export debug session data for a task. |
+| `/api/health` | GET | None | Health check (MongoDB, Prisma, Redis). |
+
+### Orchestrator (Manus-Style)
+
+The interact flow uses a **graph-based orchestrator**: context analysis → planning (or direct action for simple tasks) → step refinement → action generation → verification → goal_achieved or correction. Key components:
+
+- **Planning:** Generate or reuse a multi-step plan. See **PLANNER_PROCESS.md**.
+- **Verification:** Observation-based verification (beforeState vs current); semantic LLM returns `action_succeeded`, `task_completed`, `goalAchieved`. Router uses **only** `goalAchieved` for task complete. See **VERIFICATION_PROCESS.md**.
+- **Self-correction:** On verification failure, correction node suggests retry strategy (e.g. RETRY_WITH_DELAY, ALTERNATIVE_SELECTOR) and returns retry action.
+- **Reasoning pipeline:** Context analysis (memory, page, web search, ask user), web search (Tavily), information completeness checks. See **INTERACT_FLOW_WALKTHROUGH.md** for the full 4-step reasoning pipeline and graph.
+
+### Where to Read More
+
+| Topic | Document |
+|-------|----------|
+| **Full interact flow, API contracts, handler logic, graph nodes** | **INTERACT_FLOW_WALKTHROUGH.md** |
+| **Verification, goalAchieved, semantic contract, step-level vs task-level** | **VERIFICATION_PROCESS.md** |
+| **Planning, step refinement, replanning, hierarchical planning** | **PLANNER_PROCESS.md** |
+| **Gemini models, grounding, thinking levels, LangFuse** | **GEMINI_USAGE.md** |
+| **Cost tracking, Gemini/Tavily call sites, token breakdown** | **COST_TRACKING_AUDIT.md** |
+| **Extension integration, CORS, Bearer token** | **INTERACT_FLOW_WALKTHROUGH.md** § Extension; **CHROME_TAB_ACTIONS.md** |
+
+---
+
+## Implementation Roadmap Summary
+
+The server-side implementation is organized in **parts** (core infrastructure, agent enhancements, debug, orchestrator, batch & adapt). All tasks 1–18 are **complete**. Tasks 19–22 (Batch & Adapt) are **planned**.
+
+| Part | Scope | Status |
+|------|--------|--------|
+| **A: Core Infrastructure (Tasks 1–4)** | Auth & API client, knowledge resolve, action loop (interact), user preferences | ✅ Complete |
+| **B: Agent Enhancements (Tasks 5–8)** | Web search, user-friendly messages, chat persistence & session management, error handling | ✅ Complete |
+| **C: Debug (Tasks 9–13)** | Debug logging, RAG context debug data, metrics, error details, session export | ✅ Complete |
+| **D: Manus-Style Orchestrator (Tasks 14–18)** | Planning engine, verification engine, self-correction, outcome prediction, step refinement & tool routing | ✅ Complete |
+| **E: Batch & Adapt (Tasks 19–22)** | Action chaining, dynamic re-planning (plan health check), complexity routing (fast-path), semantic look-ahead verification | 🔲 Planned |
+
+**For the complete task-by-task roadmap, dependencies, and implementation details** see **INTERACT_FLOW_WALKTHROUGH.md** § Implementation Roadmap and related Phase sections.
+
+---
+
 ## Related Documentation
 
-- **API Reference**: `docs/API_REFERENCE.md`
-- **Development Guide**: `docs/DEVELOPMENT.md`
+| Document | Purpose |
+|----------|---------|
+| **ARCHITECTURE.md** (this doc) | System architecture, intelligence layer summary, roadmap summary, documentation index. |
+| **DEVELOPMENT.md** | Development guide, setup, code standards, testing, UI/UX. |
+| **API_REFERENCE.md** | Core features, APIs, Knowledge Extraction API. |
+| **INTERACT_FLOW_WALKTHROUGH.md** | End-to-end interact flow, graph nodes, implementation roadmap, phase tasks. |
+| **VERIFICATION_PROCESS.md** | Verification engine, goalAchieved, semantic contract, troubleshooting. |
+| **PLANNER_PROCESS.md** | Planning, step refinement, replanning, hierarchical planning. |
+| **GEMINI_USAGE.md** | Gemini integration, grounding, thinking, LangFuse. |
+| **COST_TRACKING_AUDIT.md** | Cost tracking, Gemini/Tavily call sites, token breakdown. |
+| **REALTIME_MESSAGE_SYNC_ROADMAP.md** | Real-time messaging roadmap. |
+| **CHROME_TAB_ACTIONS.md** | Chrome extension tab actions. |
+| **RULESETS.md** | Mandatory code patterns (prevents build errors). |
+| **.env.example** | Environment variables reference. |

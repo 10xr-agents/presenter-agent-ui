@@ -949,6 +949,63 @@
 
 /**
  * @swagger
+ * /api/pusher/auth:
+ *   post:
+ *     tags:
+ *       - Realtime
+ *     summary: Pusher/Sockudo channel auth
+ *     description: |
+ *       Authenticate a private channel subscription for real-time session updates.
+ *       Used by the Chrome extension and web app when subscribing to `private-session-{sessionId}`.
+ *       Client sends form data (socket_id, channel_name). Auth via Bearer token (extension) or session cookie (web).
+ *       Returns 403 with code SESSION_NOT_FOUND if the session does not exist yet (e.g. before first interact).
+ *     security:
+ *       - sessionAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/x-www-form-urlencoded:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - socket_id
+ *               - channel_name
+ *             properties:
+ *               socket_id:
+ *                 type: string
+ *                 description: Sockudo/Pusher socket ID
+ *               channel_name:
+ *                 type: string
+ *                 description: Must be private-session-{sessionId}
+ *     responses:
+ *       200:
+ *         description: Channel auth token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Missing socket_id or channel_name
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Forbidden (bad channel, session not found, or user mismatch). In development, body includes code (CHANNEL_FORBIDDEN, SESSION_NOT_FOUND, USER_MISMATCH).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 code:
+ *                   type: string
+ *                   enum: [CHANNEL_FORBIDDEN, SESSION_NOT_FOUND, USER_MISMATCH]
+ *                 message:
+ *                   type: string
+ *       503:
+ *         description: Pusher/Sockudo unavailable
+ */
+
+/**
+ * @swagger
  * /api/agent/interact:
  *   post:
  *     tags:

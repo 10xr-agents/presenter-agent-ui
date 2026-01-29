@@ -3,7 +3,6 @@
  * 
  * TODO: Implement actual video transcription
  * Options:
- * - OpenAI Whisper API
  * - Google Cloud Speech-to-Text
  * - AssemblyAI
  * - Deepgram
@@ -23,21 +22,12 @@ export async function transcribeVideo(
   storageLocation: string
 ): Promise<VideoTranscriptionResult> {
   try {
-    // TODO: Implement actual video transcription
-    // Example with OpenAI Whisper:
-    // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    // const response = await fetch(storageLocation)
-    // const file = await response.blob()
-    // const transcription = await openai.audio.transcriptions.create({
-    //   file: new File([file], 'video.mp4'),
-    //   model: 'whisper-1',
-    // })
-    // return { transcript: transcription.text }
+    // TODO: Implement actual video transcription (e.g. Google Cloud Speech-to-Text, AssemblyAI, Deepgram)
 
     // Placeholder implementation
     console.warn("Video transcription not yet implemented")
     return {
-      transcript: "Video transcription is not yet implemented. Please implement using OpenAI Whisper, AssemblyAI, or similar service.",
+      transcript: "Video transcription is not yet implemented. Please implement using Google Cloud Speech-to-Text, AssemblyAI, or similar service.",
       metadata: {
         note: "This is a placeholder. Implement actual video transcription.",
       },

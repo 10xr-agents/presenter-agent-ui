@@ -68,8 +68,7 @@ export function classifyErrorType(
 
   if (
     lowerMessage.includes("llm") ||
-    lowerMessage.includes("openai") ||
-    lowerMessage.includes("anthropic") ||
+    lowerMessage.includes("gemini") ||
     lowerMessage.includes("model") ||
     lowerMessage.includes("completion")
   ) {

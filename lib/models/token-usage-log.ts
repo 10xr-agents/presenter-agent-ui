@@ -42,7 +42,7 @@ export type LLMActionType =
 /**
  * Supported LLM providers
  */
-export type LLMProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE"
+export type LLMProviderType = "GOOGLE"
 
 /**
  * Token usage log document interface
@@ -157,7 +157,7 @@ const TokenUsageLogSchema = new Schema<ITokenUsageLog>(
 
     provider: {
       type: String,
-      enum: ["OPENAI", "ANTHROPIC", "GOOGLE"],
+      enum: ["GOOGLE"],
       required: true,
       index: true,
     },

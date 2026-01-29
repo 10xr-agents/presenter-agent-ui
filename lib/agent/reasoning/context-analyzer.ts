@@ -1,6 +1,10 @@
 import * as Sentry from "@sentry/nextjs"
-import { OpenAI } from "openai"
+import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 
 /**
  * Context Analyzer
@@ -43,6 +47,17 @@ export interface ContextAnalysisResult {
 }
 
 /**
+ * Optional context for cost tracking (tenantId, userId, sessionId, taskId, langfuseTraceId)
+ */
+export interface UsageContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+  langfuseTraceId?: string
+}
+
+/**
  * Parameters for context analysis
  */
 export interface AnalyzeContextParams {
@@ -56,6 +71,8 @@ export interface AnalyzeContextParams {
   pageSummary: string // Summary of current page/DOM (extracted from DOM or provided)
   ragChunks: ResolveKnowledgeChunk[] // Available RAG knowledge
   hasOrgKnowledge: boolean // Whether org-specific knowledge exists
+  /** Optional: for cost tracking and Langfuse trace linkage */
+  usageContext?: UsageContext
 }
 
 /**
@@ -73,24 +90,22 @@ export interface AnalyzeContextParams {
 export async function analyzeContext(
   params: AnalyzeContextParams
 ): Promise<ContextAnalysisResult> {
-  const { query, url, chatHistory, pageSummary, ragChunks, hasOrgKnowledge } = params
+  const { query, url, chatHistory, pageSummary, ragChunks, hasOrgKnowledge, usageContext } = params
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    // Fallback: conservative defaults
-    console.warn("[Context Analyzer] OpenAI API key not configured, defaulting to WEB_SEARCH")
+    console.warn("[Context Analyzer] Gemini API key not configured, defaulting to WEB_SEARCH")
     return {
       source: "WEB_SEARCH",
       requiredSources: ["WEB_SEARCH"],
       missingInfo: [],
       searchQuery: query,
-      reasoning: "OpenAI API key not configured, defaulting to search",
+      reasoning: "Gemini API key not configured, defaulting to search",
       confidence: 0.5,
     }
   }
 
   try {
-    const openai = new OpenAI({ apiKey })
 
     // Build chat history summary (last 10 messages for context)
     const recentHistory = chatHistory.slice(-10)
@@ -177,18 +192,32 @@ Examples:
 - Query: "Add patient" + Missing DOB that user hasn't provided → source: ASK_USER, requiredSources: ["ASK_USER"]
 - Query: "Add patient John with insurance Blue Cross" + MEMORY has John's DOB but needs insurance codes → source: MEMORY, requiredSources: ["MEMORY", "WEB_SEARCH"]`
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast model for analysis
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3, // Lower temperature for more consistent analysis
-      max_tokens: 800,
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
+      model: DEFAULT_PLANNING_MODEL,
+      temperature: 0.3,
+      maxOutputTokens: 800,
+      thinkingLevel: "low",
     })
 
-    const content = response.choices[0]?.message?.content
+    if (usageContext && result?.promptTokens != null) {
+      recordUsage({
+        tenantId: usageContext.tenantId,
+        userId: usageContext.userId,
+        sessionId: usageContext.sessionId,
+        taskId: usageContext.taskId,
+        langfuseTraceId: usageContext.langfuseTraceId,
+        provider: "google",
+        model: DEFAULT_PLANNING_MODEL,
+        actionType: "CONTEXT_ANALYSIS",
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
+        metadata: { query, url },
+      }).catch((err: unknown) => {
+        console.error("[ContextAnalyzer] Cost tracking error:", err)
+      })
+    }
+
+    const content = result?.content
     if (!content) {
       throw new Error("Empty response from LLM")
     }

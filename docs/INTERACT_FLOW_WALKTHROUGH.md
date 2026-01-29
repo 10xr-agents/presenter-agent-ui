@@ -7,8 +7,8 @@
 
 **Related docs (canonical details):**
 
-- **Verification:** Flow, observation-based verification, goalAchieved, client contract, troubleshooting ("same step repeats") → **`docs/VERIFICATION_PROCESS.md`**.
-- **Planner:** Planning engine, step refinement, re-planning, conditional and hierarchical planning, implementation tasks → **`docs/PLANNER_PROCESS.md`**.
+- **Verification:** Observation-based verification only (no prediction-based in main flow), goalAchieved, action_succeeded vs task_completed, step-level vs task-level, sub-task verification, client contract, troubleshooting → **`docs/VERIFICATION_PROCESS.md`**.
+- **Planner:** Planning engine, step refinement, re-planning, verification outcome in context, conditional and hierarchical planning (wired in graph), implementation tasks → **`docs/PLANNER_PROCESS.md`**.
 
 **Roadmap format:** When adding or updating implementation roadmap sections, follow the structure and best practices in `THIN_CLIENT_ROADMAP.md` (Objectives, Deliverables, Definition of Done, References, task ordering).
 
@@ -26,7 +26,7 @@
 | **Outcome Prediction** | ✅ Implemented | — | `lib/agent/outcome-prediction-engine.ts` |
 | **Step Refinement** | ✅ Implemented | — | `lib/agent/step-refinement-engine.ts` |
 | **LangGraph.js + Complexity Routing** | ✅ **DEFAULT** | 1 | `lib/agent/graph/` - Always enabled, no flag needed |
-| **LangFuse + Sentry Separation** | ✅ **COMPLETE** | 1 | `lib/observability/` - Enable with `ENABLE_LANGFUSE=true` |
+| **LangFuse + Sentry Separation** | ✅ **COMPLETE** | 1 | `lib/observability/` - Enable when LangFuse keys are set |
 | **Hybrid Cost Tracking** | ✅ **COMPLETE** | 1 | `lib/cost/` - Dual-write to MongoDB + LangFuse |
 | **Action Chaining** | ✅ **COMPLETE** | 2 | `lib/agent/chaining/` - Chain safety analysis + partial failure recovery |
 | **Knowledge Extraction Pipeline** | ✅ **COMPLETE** | 2 | `lib/knowledge/` - Multi-format doc ingestion + web crawling |
@@ -45,12 +45,17 @@
 
 **Critical Path:** ~~LangGraph + Complexity Routing~~ → ~~LangFuse~~ → ~~Cost Tracking~~ → ~~Action Chaining~~ → ~~Skills Library~~ → ✅ Phase 4 Complete
 
+**Implementation notes (regular improvements):**
+
+- **Verification:** The interact flow uses **observation-based verification only** (`verifyActionWithObservations`). We compare **beforeState** (url, domHash, optional semanticSkeleton) to current DOM/URL, build an observation list, and ask the semantic LLM for a verdict. **Prediction-based verification** (expectedOutcome + DOM checks via `verifyAction`) is **not** used for the primary verification path; it exists only for correction/legacy support. See **VERIFICATION_PROCESS.md** for goalAchieved, action_succeeded vs task_completed, step-level vs task-level, and sub-task verification.
+- **Planner:** Verification outcome (action_succeeded, task_completed) is passed into planning and step_refinement; hierarchical planning is wired in the graph with sub-task-level verification. See **PLANNER_PROCESS.md** for planning engine, step refinement, replanning, conditional and hierarchical planning.
+
 ---
 
 ## High-Level Loop
 
 1. **Extension** sends `POST /api/agent/interact` with `{ url, query, dom, taskId?, sessionId? }`.
-2. **Backend** authenticates, fetches RAG, runs reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action, returns `{ thought, action, taskId, sessionId, ... }`.
+2. **Backend** authenticates, fetches RAG, runs reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action, returns `{ thought, action, taskId, sessionId, ... }`. All LLM calls that expect JSON (verification verdict, action thought+action) use **structured output** (Gemini `responseJsonSchema`) so responses are valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
 3. **Extension** executes the action (e.g. `click(68)`, `setValue(42, "Jas")`) on the page, then sends the **next** request with **updated `url` and `dom`** and **the same `taskId`** from the response.
 4. **Backend** verifies the **previous** action against the new DOM/URL, then produces the **next** action. Repeat until `finish()` or `fail()` or max steps/retries.
 
@@ -58,6 +63,214 @@
 
 **Required:** First request — no `taskId`. After executing an action — send **`taskId`** from the previous response and **updated `dom`** (and `url` if changed). Without `taskId`, every request is treated as a new task and the same step repeats. **Troubleshooting** (same step repeats with taskId): see **VERIFICATION_PROCESS.md** § Client contract and troubleshooting.
 
+---
+
+## Client Contract: State Persistence & Stability
+
+This section defines **mandatory client-side behaviors** to prevent common process failures. These are NOT suggestions — ignoring them causes flaky, hard-to-debug agent loops.
+
+### 1. taskId Persistence (Prevents "Lost Task" Loop)
+
+**Problem:** If the client loses `taskId` (page refresh, extension restart, background script killed), the next request has no `taskId` and the server treats it as a **new task**. The agent loops on Step 1 forever.
+
+**Solution:** The extension MUST persist `taskId` in durable storage, not memory.
+
+**Required client behavior:**
+
+```typescript
+// ✅ CORRECT: Store taskId in chrome.storage.local keyed by tabId
+async function onInteractResponse(tabId: number, response: InteractResponse) {
+  await chrome.storage.local.set({
+    [`task_${tabId}`]: {
+      taskId: response.taskId,
+      sessionId: response.sessionId,
+      url: response.url,
+      timestamp: Date.now(),
+    },
+  })
+}
+
+// ✅ CORRECT: Recover taskId before sending request
+async function getTaskIdForTab(tabId: number): Promise<string | undefined> {
+  const result = await chrome.storage.local.get(`task_${tabId}`)
+  const stored = result[`task_${tabId}`]
+  // Expire after 30 minutes of inactivity
+  if (stored && Date.now() - stored.timestamp < 30 * 60 * 1000) {
+    return stored.taskId
+  }
+  return undefined
+}
+
+// ❌ WRONG: Storing taskId in memory variable
+let currentTaskId: string // Lost on page refresh or extension restart
+```
+
+**Server-side recovery fallback:**
+
+If `chrome.storage.local` fails, the extension can call the recovery endpoint:
+
+```
+GET /api/session/{sessionId}/task/active?url={currentTabUrl}
+```
+
+Response (200):
+```json
+{
+  "taskId": "abc-123",
+  "query": "add a new patient",
+  "status": "executing",
+  "currentStepIndex": 2,
+  "createdAt": "2024-01-15T10:30:00Z",
+  "updatedAt": "2024-01-15T10:31:00Z"
+}
+```
+
+Response (404): No active task — start fresh (new task flow).
+
+**Important:** This endpoint is a **safety net**, not primary storage. The client should always try `chrome.storage.local` first.
+
+### 2. Stability Wait (Prevents "Snapshot Race" Condition)
+
+**Problem:** After executing an action (e.g., `click(Save)`), if the client captures the DOM **immediately**, it may capture a transitional state (spinner, no changes yet). The server compares this snapshot to `beforeState`, sees no difference, marks verification as failed, and triggers unnecessary correction.
+
+**Timeline of the race:**
+```
+T0.0ms  : click(Save) executed
+T0.1ms  : ❌ Client captures DOM (too early - no visible change yet)
+T50ms   : Spinner appears
+T500ms  : API response returns
+T600ms  : ✅ "Success" message appears
+T700ms  : DOM settles
+```
+
+**Solution:** The extension MUST wait for **DOM stability** before capturing the snapshot.
+
+**Required client behavior:**
+
+```typescript
+// ✅ CORRECT: Wait for stability before capturing DOM
+async function executeActionAndCapture(action: string): Promise<DomSnapshot> {
+  // 1. Execute the action
+  await executeAction(action)
+  
+  // 2. Wait for stability (ALL conditions should be met)
+  await waitForStability({
+    // a. Network idle: no pending fetch/XHR for 500ms
+    networkIdleMs: 500,
+    // b. DOM settled: no MutationObserver events for 300ms
+    domSettledMs: 300,
+    // c. Minimum wait: always wait at least 500ms
+    minimumWaitMs: 500,
+    // d. Maximum wait: don't wait forever
+    maximumWaitMs: 5000,
+  })
+  
+  // 3. NOW capture the DOM snapshot
+  const dom = document.documentElement.outerHTML
+  const url = window.location.href
+  
+  return { dom, url }
+}
+
+// ❌ WRONG: Immediate capture after action
+async function executeActionAndCapture(action: string) {
+  await executeAction(action)
+  return document.documentElement.outerHTML // Too fast!
+}
+```
+
+**Stability detection heuristics:**
+
+| Signal | How to detect | Weight |
+|--------|---------------|--------|
+| Network idle | `PerformanceObserver` or `fetch` wrapper, no pending requests for 500ms | High |
+| DOM settled | `MutationObserver`, no mutations for 300ms | High |
+| URL stable | `popstate` / `hashchange` events settled | Medium |
+| Animation done | `requestAnimationFrame` loop shows no visual changes | Low |
+
+**Minimum implementation:**
+
+At minimum, wait 500ms after action execution before capturing. Better implementations use all signals above.
+
+```typescript
+// Minimum viable stability wait
+async function waitForStability(options: StabilityOptions): Promise<void> {
+  const { minimumWaitMs = 500, maximumWaitMs = 5000 } = options
+  
+  const startTime = Date.now()
+  
+  // Always wait minimum time
+  await sleep(minimumWaitMs)
+  
+  // Then wait for network + DOM to settle (with timeout)
+  while (Date.now() - startTime < maximumWaitMs) {
+    const [networkIdle, domSettled] = await Promise.all([
+      isNetworkIdle(500),
+      isDomSettled(300),
+    ])
+    
+    if (networkIdle && domSettled) {
+      return // Stable!
+    }
+    
+    await sleep(100) // Check again
+  }
+  
+  // Timeout reached, proceed anyway (better than hanging)
+  console.warn('Stability wait timeout, proceeding with capture')
+}
+```
+
+### 3. clientObservations Contract
+
+The extension MUST report what it witnessed during/after action execution:
+
+```typescript
+interface ClientObservations {
+  /** Did any network request occur after action? */
+  didNetworkOccur?: boolean
+  /** Did DOM mutations occur after action? */
+  didDomMutate?: boolean  
+  /** Did URL change after action? */
+  didUrlChange?: boolean
+}
+```
+
+These observations are used by the server for verification. Report them accurately:
+
+```typescript
+// Instrument during action execution
+let networkOccurred = false
+let domMutated = false
+const originalUrl = window.location.href
+
+const fetchObserver = new PerformanceObserver((list) => {
+  if (list.getEntries().some(e => e.entryType === 'resource')) {
+    networkOccurred = true
+  }
+})
+fetchObserver.observe({ entryTypes: ['resource'] })
+
+const mutationObserver = new MutationObserver(() => {
+  domMutated = true
+})
+mutationObserver.observe(document.body, { childList: true, subtree: true })
+
+// Execute action
+await executeAction(action)
+await waitForStability()
+
+// Report observations
+const clientObservations = {
+  didNetworkOccur: networkOccurred,
+  didDomMutate: domMutated,
+  didUrlChange: window.location.href !== originalUrl,
+}
+
+// Cleanup
+fetchObserver.disconnect()
+mutationObserver.disconnect()
+```
 
 ---
 
@@ -186,7 +399,7 @@ If the plan exists and the current step is refinable, we call `refineStep(...)` 
 
 ### Step 3.3 — Verify **previous** action (Task 7)
 
-We load the last TaskAction, run `verifyAction(expectedOutcome, dom, url, previousUrl, previousAction)` (DOM + optional semantic checks), persist VerificationRecord, and on failure trigger self-correction. **Flow, observation-based verification, goalAchieved, and troubleshooting:** **`docs/VERIFICATION_PROCESS.md`**.
+We load the last TaskAction and **beforeState** (url, domHash, optional semanticSkeleton from when the action was generated). We run **observation-based verification only**: `verifyActionWithObservations(beforeState, currentDom, currentUrl, action, userGoal, clientObservations)` — compare before vs after, build observation list, semantic LLM verdict; set **goalAchieved** from `task_completed && confidence ≥ 0.70`. No prediction-based verification in the main flow. On failure → self-correction. **Flow, goalAchieved, step-level vs task-level, and troubleshooting:** **`docs/VERIFICATION_PROCESS.md`**.
 
 ### Step 3.4 — Self-correction (Task 8) when verification fails
 
@@ -473,7 +686,7 @@ The legacy monolithic route handler has been removed.
 - Classification accuracy: % of SIMPLE tasks that actually needed COMPLEX treatment
 - Throughput: Requests/second improvement
 
-**References:** § Planned Open-Source Stack (LangGraph.js), `SERVER_SIDE_AGENT_ARCH.md` §4, § Batch & Adapt Task 3 (Complexity Routing).
+**References:** § Planned Open-Source Stack (LangGraph.js), `ARCHITECTURE.md` §4, § Batch & Adapt Task 3 (Complexity Routing).
 
 ---
 
@@ -545,7 +758,7 @@ trace: "interact-request-{taskId}"
 |------|---------|
 | `lib/observability/langfuse-client.ts` | LangFuse client wrapper with trace/span/score APIs |
 | `lib/observability/index.ts` | Module exports |
-| `lib/agent/llm-client.ts` | Updated to use `observeOpenAI` wrapper |
+| `lib/agent/llm-client.ts` | Uses Gemini client for LLM calls |
 | `lib/agent/graph/route-integration.ts` | Full trace integration for interact flow |
 | `env.mjs` | LangFuse env var validation |
 | `.env.example` | LangFuse configuration section |
@@ -554,7 +767,7 @@ trace: "interact-request-{taskId}"
 
 ```bash
 # In .env.local
-ENABLE_LANGFUSE=true
+# LangFuse enabled when keys are set (one trace per interact for cost calculation)
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_BASE_URL=https://cloud.langfuse.com  # or US: https://us.cloud.langfuse.com
@@ -582,7 +795,7 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com  # or US: https://us.cloud.langfuse
 | Correction frequency | Self-healing effectiveness |
 | RAG chunk relevance | Knowledge quality |
 
-**References:** § Planned Open-Source Stack (LangFuse), `SERVER_SIDE_AGENT_ARCH.md` §4, existing Sentry integration in `sentry.*.config.ts`.
+**References:** § Planned Open-Source Stack (LangFuse), `ARCHITECTURE.md` §4, existing Sentry integration in `sentry.*.config.ts`.
 
 ---
 
@@ -604,7 +817,7 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com  # or US: https://us.cloud.langfuse
    | `userId`, `sessionId`, `messageId`, `taskId` | Link to request/task |
    | `model`, `inputTokens`, `outputTokens`, `totalTokens`, `costUSD` | Cost data; compute `costUSD` at insert |
    | `actionType` | `PLANNING` \| `REFINEMENT` \| `VERIFICATION` \| `CONTEXT_ANALYSIS` \| … |
-   | `provider` | `OPENAI` \| `ANTHROPIC` |
+   | `provider` | `GOOGLE` |
    | `timestamp` | When the call occurred |
 
    Align with or extend `lib/cost/tracker` / `Cost` as needed; ensure tenant-scoped indexes for fast rollups.
@@ -635,7 +848,7 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com  # or US: https://us.cloud.langfuse
 | Component | File Path | Description |
 |-----------|-----------|-------------|
 | TokenUsageLog Model | `lib/models/token-usage-log.ts` | MongoDB schema with tenant/user/session/task indexing |
-| Pricing Module | `lib/cost/pricing.ts` | Centralized pricing for OpenAI, Anthropic, Google |
+| Pricing Module | `lib/cost/pricing.ts` | Centralized pricing for Google Gemini |
 | Usage Service | `lib/cost/usage-service.ts` | Dual-write to MongoDB + LangFuse with Promise.allSettled |
 | Cost Index | `lib/cost/index.ts` | Clean exports for all cost-related functions |
 
@@ -661,8 +874,8 @@ const result = await recordUsage({
   userId: "user-456",
   sessionId: "session-789",
   taskId: "task-abc",
-  provider: "openai",
-  model: "gpt-4-turbo-preview",
+  provider: "google",
+  model: "gemini-3-flash-preview",
   actionType: "PLANNING",
   inputTokens: 1500,
   outputTokens: 500,
@@ -677,7 +890,7 @@ const result = await recordUsage({
 - **Performance:** Non-blocking dual-write avoids adding latency to user-facing responses.
 - **Sync:** Writing to both in a single wrapper keeps debug dashboards (LangFuse) and invoices (DB) aligned.
 
-**References:** § Planned Open-Source Stack (LangFuse), `lib/cost/tracker`, `SERVER_SIDE_AGENT_ARCH.md` §4.
+**References:** § Planned Open-Source Stack (LangFuse), `lib/cost/tracker`, `ARCHITECTURE.md` §4.
 
 ---
 
@@ -699,15 +912,15 @@ const result = await recordUsage({
 **Task 2 Completion Notes (2026-01-28):**
 - LangFuse wrapper implementation complete in `lib/observability/`
 - Clear separation: LangFuse for LLM traces, Sentry for errors
-- `observeOpenAI` wrapper auto-traces all OpenAI calls
+- LLM calls use Google Gemini; traces recorded via application instrumentation
 - Full interact flow traced: complexity → context → plan → action → verify → correct
 - Verification/correction scores recorded for evaluation
-- Enable with `ENABLE_LANGFUSE=true` + credentials
+- Enable when LangFuse keys are set (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)
 
 **Task 3 Completion Notes (2026-01-28):**
 - Hybrid cost tracking with dual-write strategy complete
 - **TokenUsageLog model:** MongoDB collection for immutable billing records (`lib/models/token-usage-log.ts`)
-- **Pricing module:** Centralized pricing for OpenAI, Anthropic, Google models (`lib/cost/pricing.ts`)
+- **Pricing module:** Centralized pricing for Google Gemini models (`lib/cost/pricing.ts`)
 - **UsageService:** Dual-write service with `Promise.allSettled` for non-blocking writes (`lib/cost/usage-service.ts`)
 - **All LLM engines instrumented:** Planning, Refinement, Verification, Correction, Outcome Prediction, Action Generation
 - MongoDB indexes optimized for tenant-based billing rollups
@@ -754,7 +967,7 @@ For SPAs, implement **two-phase ingestion** (see § Production Hardening: Sectio
 - Consider preserving structure that may become visible later
 - Use `preserveHidden: true` in Phase 1 Cheerio options
 
-**References:** § Planned Open-Source Stack (Smart Ingestion, Zep), § Production Hardening: Section B (Two-Phase SPA Ingestion), `SERVER_SIDE_AGENT_ARCH.md` §5, `THIN_SERVER_ROADMAP.md` Task 2, `BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`.
+**References:** § Planned Open-Source Stack (Smart Ingestion, Zep), § Production Hardening: Section B (Two-Phase SPA Ingestion), `ARCHITECTURE.md` §5, `ARCHITECTURE.md` Task 2, `BROWSER_AUTOMATION_RESOLVE_SCHEMA.md`.
 
 ---
 
@@ -894,9 +1107,9 @@ Only chain actions when ALL criteria are met:
 - Round-trip reduction (chains vs single actions)
 - Recovery success rate (after partial failure)
 
-**Rollback Strategy:** Feature flag `ENABLE_ACTION_CHAINING=true|false`. If false, always return single `action` (current behavior).
+**Rollback:** Post-launch, a feature flag can be added to disable chaining and return single actions if needed.
 
-**References:** `SERVER_SIDE_AGENT_ARCH.md` §4.9.3, `THIN_SERVER_ROADMAP.md` Part E Task 19.
+**References:** `ARCHITECTURE.md` §4.9.3, `ARCHITECTURE.md` Part E Task 19.
 
 ---
 
@@ -1042,7 +1255,7 @@ interface ExpectedOutcomeWithLookAhead extends ExpectedOutcome {
 - Look-ahead hit rate (% of predictions that were accurate)
 - Early failure detection rate (% of issues caught by look-ahead vs next step)
 
-**References:** `SERVER_SIDE_AGENT_ARCH.md` §4.9.3, `THIN_SERVER_ROADMAP.md` Part E Task 22.
+**References:** `ARCHITECTURE.md` §4.9.3, `ARCHITECTURE.md` Part E Task 22.
 
 ---
 
@@ -1128,7 +1341,7 @@ interface ExpectedOutcomeWithLookAhead extends ExpectedOutcome {
 
 **Test Summary:** 40 tests passing (21 DOM similarity + 9 critic + 10 dynamic interrupt)
 
-**References:** `THIN_CLIENT_ROADMAP.md` (roadmap format and best practices), `THIN_SERVER_ROADMAP.md` Part E (server-side task breakdown), `SERVER_SIDE_AGENT_ARCH.md` §4.9.3.
+**References:** `THIN_CLIENT_ROADMAP.md` (roadmap format and best practices), `ARCHITECTURE.md` Part E (server-side task breakdown), `ARCHITECTURE.md` §4.9.3.
 
 ---
 
@@ -1211,7 +1424,7 @@ These **8 improvements** focus on **how the LLM thinks and plans** (context, pla
 
 **Definition of Done:** See **Batch & Adapt Task 1**.
 
-**References:** `INTERACT_FLOW_WALKTHROUGH.md` § Batch & Adapt Task 1, `THIN_SERVER_ROADMAP.md` Part E Task 19.
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` § Batch & Adapt Task 1, `ARCHITECTURE.md` Part E Task 19.
 
 ---
 
@@ -1228,7 +1441,7 @@ These **8 improvements** focus on **how the LLM thinks and plans** (context, pla
 
 **Definition of Done:** See **Batch & Adapt Task 4**.
 
-**References:** `INTERACT_FLOW_WALKTHROUGH.md` § Batch & Adapt Task 4, `THIN_SERVER_ROADMAP.md` Part E Task 22.
+**References:** `INTERACT_FLOW_WALKTHROUGH.md` § Batch & Adapt Task 4, `ARCHITECTURE.md` Part E Task 22.
 
 ---
 
@@ -1322,7 +1535,7 @@ Complex tasks decomposed into sub-tasks with input/output contract; context rese
 | **7** | Conditional Planning (Tree of Thoughts) | High | Planner, plan schema, verification, Step 3.4 | ✅ COMPLETE |
 | **8** | Hierarchical Manager–Worker | High | Planner, execution loop, context management | ✅ COMPLETE |
 
-**References:** `THIN_CLIENT_ROADMAP.md` (roadmap format), `SERVER_SIDE_AGENT_ARCH.md` §4.9.3, Batch & Adapt section above.
+**References:** `THIN_CLIENT_ROADMAP.md` (roadmap format), `ARCHITECTURE.md` §4.9.3, Batch & Adapt section above.
 
 ---
 
@@ -1472,46 +1685,9 @@ async function ingestPostInteraction(
 
 ---
 
-### C. Feature Flags and Rollback Strategy
+### C. Pre-launch: No Feature Flags
 
-**All new features MUST have feature flags for safe rollout and rollback.**
-
-**Feature Flag Schema:**
-
-```typescript
-// lib/config/feature-flags.ts
-export const FEATURE_FLAGS = {
-  // Foundation
-  ENABLE_LANGGRAPH: process.env.ENABLE_LANGGRAPH === "true",
-  ENABLE_LANGFUSE: process.env.ENABLE_LANGFUSE === "true",
-  ENABLE_DUAL_COST_TRACKING: process.env.ENABLE_DUAL_COST_TRACKING === "true",
-  
-  // Batch & Adapt
-  ENABLE_ACTION_CHAINING: process.env.ENABLE_ACTION_CHAINING === "true",
-  ENABLE_DYNAMIC_REPLANNING: process.env.ENABLE_DYNAMIC_REPLANNING === "true",
-  ENABLE_COMPLEXITY_ROUTING: process.env.ENABLE_COMPLEXITY_ROUTING === "true",
-  ENABLE_LOOKAHEAD_VERIFICATION: process.env.ENABLE_LOOKAHEAD_VERIFICATION === "true",
-  
-  // Advanced Logic
-  ENABLE_CRITIC_LOOP: process.env.ENABLE_CRITIC_LOOP === "true",
-  ENABLE_SKILLS_LIBRARY: process.env.ENABLE_SKILLS_LIBRARY === "true",
-  ENABLE_CONDITIONAL_PLANNING: process.env.ENABLE_CONDITIONAL_PLANNING === "true",
-  ENABLE_HIERARCHICAL_PLANNING: process.env.ENABLE_HIERARCHICAL_PLANNING === "true",
-  
-  // Knowledge Extraction
-  ENABLE_LOCAL_INGESTION: process.env.ENABLE_LOCAL_INGESTION === "true",
-  ENABLE_TWO_PHASE_INGESTION: process.env.ENABLE_TWO_PHASE_INGESTION === "true",
-} as const
-```
-
-**Rollback Checklist:**
-
-| Feature | Rollback Steps | Data Migration |
-|---------|----------------|----------------|
-| **LangGraph** | Set `ENABLE_LANGGRAPH=false`; falls back to current flow | None (state compatible) |
-| **Action Chaining** | Set `ENABLE_ACTION_CHAINING=false`; returns single actions | None |
-| **Skills Library** | Set `ENABLE_SKILLS_LIBRARY=false`; skills not queried | Skills collection remains (TTL cleanup) |
-| **Complexity Routing** | Set `ENABLE_COMPLEXITY_ROUTING=false`; all tasks use COMPLEX path | None |
+Pre-launch, all agent features are always on (LangGraph, complexity routing, critic, skills, conditional/hierarchical planning, action chaining, replanning, etc.). Feature flags will be introduced after launch for safe rollout and rollback.
 
 ---
 
@@ -1536,7 +1712,7 @@ export const FEATURE_FLAGS = {
 **Dashboard Requirements:**
 
 1. **Real-time:** Task completion rate, active tasks, error rate
-2. **Hourly:** Latency distribution, token usage, feature flag status
+2. **Hourly:** Latency distribution, token usage
 3. **Daily:** Skills created/used, re-planning frequency, classification accuracy
 4. **Weekly:** Cost trends, success rate trends, feature effectiveness
 
@@ -1550,7 +1726,7 @@ export const FEATURE_FLAGS = {
 |-----------|----------|-------|
 | **Unit Tests** | Core algorithms (DOM similarity, time-decay ranking, complexity classification) | Vitest |
 | **Integration Tests** | LangGraph nodes, LangFuse integration, skill retrieval | Vitest + mocks |
-| **E2E Tests** | Full interact flow with feature flags on/off | Playwright |
+| **E2E Tests** | Full interact flow | Playwright |
 | **Load Tests** | Throughput under expected load (100 req/min) | k6 or similar |
 
 **Test Scenarios for Action Chaining:**
@@ -1560,7 +1736,6 @@ describe("Action Chaining", () => {
   it("should chain 5 form fields into single response", async () => { /* ... */ })
   it("should report partial failure at index N", async () => { /* ... */ })
   it("should recover from partial failure and continue", async () => { /* ... */ })
-  it("should fall back to single actions when flag disabled", async () => { /* ... */ })
   it("should NOT chain when actions are not safe to chain", async () => { /* ... */ })
 })
 ```
@@ -1576,13 +1751,12 @@ describe("Action Chaining", () => {
 | **High latency** | p95 > 10s | Check LLM provider status; enable complexity routing; reduce chain size |
 | **Low completion rate** | < 75% tasks complete | Review verification failures; check skill effectiveness; review prompts |
 | **Skills explosion** | > 8000 skills for tenant | Review TTL; check for duplicate skills; reduce skill creation rate |
-| **LangFuse down** | No traces in UI | Verify `ENABLE_LANGFUSE=true`; check API key; LangFuse continues to DB |
+| **LangFuse down** | No traces in UI | Verify LangFuse keys are set; check API key; LangFuse continues to DB |
 | **Action chain failures** | > 40% partial failures | Reduce chain size; tighten safety criteria; review DOM similarity |
 
 **Deployment Checklist:**
 
-- [ ] Feature flags set correctly for environment
-- [ ] LangFuse API key configured
+- [ ] LangFuse API key configured (optional; set LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY for tracing)
 - [ ] MongoDB indexes created (skills, TTL)
 - [ ] Alerting configured for KPIs
 - [ ] Rollback tested in staging
@@ -1600,15 +1774,15 @@ describe("Action Chaining", () => {
 | **P0** | LangFuse + Sentry Separation | ✅ **DONE** | Medium | High | None |
 | **P0** | Hybrid Cost Tracking | ✅ **DONE** | Medium | High | LangFuse ✅ |
 | **P1** | Action Chaining | ✅ **DONE** | High | Very High | Foundation complete |
-| **P1** | DOM Similarity Algorithm | 🔲 Planned | Low | Medium | None |
-| **P1** | Dynamic Re-Planning | 🔲 Planned | Medium | Medium | DOM Similarity |
-| **P2** | Skills Library (with limits) | 🔲 Planned | High | High | Foundation complete |
+| **P1** | DOM Similarity Algorithm | ✅ **DONE** | Low | Medium | None |
+| **P1** | Dynamic Re-Planning | ✅ **DONE** | Medium | Medium | DOM Similarity ✅ |
+| **P2** | Skills Library (with limits) | ✅ **DONE** | High | High | Foundation complete |
 | **P2** | Two-Phase SPA Ingestion | 🔲 Planned | Medium | Medium | Knowledge migration |
-| **P3** | Critic Loop | 🔲 Planned | Low | Medium | None |
-| **P3** | Conditional Planning | 🔲 Planned | High | Medium | Planning engine |
-| **P4** | Hierarchical Planning | 🔲 Planned | Very High | Medium | All above |
+| **P3** | Critic Loop | ✅ **DONE** | Low | Medium | None |
+| **P3** | Conditional Planning | ✅ **DONE** | High | Medium | Planning engine ✅ |
+| **P4** | Hierarchical Planning | ✅ **DONE** | Very High | Medium | All above ✅ |
 
-**Critical Path:** ~~LangGraph~~ → ~~LangFuse~~ → ~~Cost Tracking~~ → ~~Action Chaining~~ → Skills Library
+**Critical Path:** ~~LangGraph~~ → ~~LangFuse~~ → ~~Cost Tracking~~ → ~~Action Chaining~~ → ~~Skills Library~~ → ✅ Phase 4 Complete
 
 ### Deferred: Visual / Non-DOM Features (End of Roadmap)
 
@@ -1626,9 +1800,7 @@ describe("Action Chaining", () => {
 
 | Document | Purpose |
 |----------|---------|
-| `SERVER_SIDE_AGENT_ARCH.md` | Complete server architecture specification |
-| `THIN_SERVER_ROADMAP.md` | Server implementation tasks |
+| `ARCHITECTURE.md` | System architecture, intelligence layer, implementation roadmap summary, database, tenancy |
 | `THIN_CLIENT_ROADMAP.md` | Client implementation tasks and format reference |
-| `ARCHITECTURE.md` | Database, tenancy, and system design |
 | `app/api/agent/interact/route.ts` | Current implementation |
 | `lib/agent/*.ts` | Agent engine implementations |

@@ -20,7 +20,10 @@
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
 import type { PlanStep, TaskPlan } from "@/lib/models/task"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 
 /**
  * Internal Plan type that extends TaskPlan for consistency
@@ -99,6 +102,7 @@ export interface ContingencyGenerationContext {
   userId: string
   sessionId?: string
   taskId?: string
+  langfuseTraceId?: string
 }
 
 /**
@@ -139,10 +143,9 @@ export async function generateContingencies(
   url: string,
   context: ContingencyGenerationContext
 ): Promise<ConditionalPlan> {
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
 
   if (!apiKey) {
-    // Return plan without contingencies if no API key
     return {
       ...plan,
       contingencies: [],
@@ -151,21 +154,9 @@ export async function generateContingencies(
   }
 
   const startTime = Date.now()
+  const model = DEFAULT_PLANNING_MODEL
 
   try {
-    const openai = getTracedOpenAIWithConfig({
-      generationName: "contingency_generation",
-      sessionId: context.sessionId,
-      userId: context.userId,
-      tags: ["planning", "contingency"],
-      metadata: {
-        goal,
-        stepCount: plan.steps.length,
-      },
-    })
-
-    // Use fast model for contingency generation
-    const model = process.env.CONTINGENCY_MODEL || "gpt-4o-mini"
 
     const systemPrompt = `You are a web automation expert that anticipates failure scenarios.
 
@@ -222,32 +213,33 @@ Respond with JSON:
   ]
 }`
 
-    const response = await openai.chat.completions.create({
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
       model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
       temperature: 0.5,
-      max_tokens: 1500,
+      maxOutputTokens: 1500,
+      thinkingLevel: "high",
+      generationName: "contingency_generation",
+      sessionId: context.sessionId,
+      userId: context.userId,
+      tags: ["planning", "contingency"],
+      metadata: { goal, stepCount: plan.steps.length },
     })
 
     const durationMs = Date.now() - startTime
-    const content = response.choices[0]?.message?.content
+    const content = result?.content
 
-    // Track usage
-    if (response.usage) {
+    if (result?.promptTokens != null) {
       recordUsage({
         tenantId: context.tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         taskId: context.taskId,
-        provider: "openai",
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
         model,
         actionType: "CONTINGENCY_CHECK",
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
         durationMs,
         metadata: { goal, stepCount: plan.steps.length },
       }).catch(console.error)

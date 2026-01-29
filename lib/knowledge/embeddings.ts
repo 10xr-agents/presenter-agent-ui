@@ -3,7 +3,7 @@
  * 
  * TODO: Implement actual embedding generation
  * Options:
- * - OpenAI Embeddings API
+ * - Google Gemini text embedding
  * - Cohere Embeddings
  * - Hugging Face Inference API
  * - Local embedding models (sentence-transformers, etc.)
@@ -16,14 +16,7 @@ export async function generateEmbeddings(
   text: string
 ): Promise<number[][]> {
   try {
-    // TODO: Implement actual embedding generation
-    // Example with OpenAI:
-    // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    // const response = await openai.embeddings.create({
-    //   model: 'text-embedding-3-small',
-    //   input: text,
-    // })
-    // return response.data.map(item => item.embedding)
+    // TODO: Implement actual embedding generation (e.g. Gemini text embedding, Cohere, Hugging Face)
 
     // Placeholder implementation
     console.warn("Embedding generation not yet implemented")

@@ -123,6 +123,10 @@ All API responses follow a consistent format:
       description: "Agent session management",
     },
     {
+      name: "Realtime",
+      description: "Pusher/Sockudo channel auth for real-time subscriptions",
+    },
+    {
       name: "Admin",
       description: "Admin-only endpoints",
     },

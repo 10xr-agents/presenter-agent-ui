@@ -11,7 +11,7 @@ export interface ClusteredQuestion {
  * Cluster similar questions from analytics events
  * 
  * This is a placeholder function. In a real application, you would use an AI/ML service
- * like OpenAI Embeddings + clustering algorithm, or a dedicated NLP service to:
+ * like Gemini embeddings + clustering algorithm, or a dedicated NLP service to:
  * 1. Generate embeddings for each question
  * 2. Cluster similar questions using k-means or hierarchical clustering
  * 3. Group questions that are semantically similar
@@ -41,7 +41,7 @@ export async function clusterQuestions(
   }
 
   // TODO: Implement actual clustering using AI/ML
-  // Example with OpenAI:
+  // Example with Gemini or embeddings API:
   // 1. Generate embeddings for each unique question
   // 2. Use a clustering algorithm (k-means, DBSCAN, etc.) to group similar questions
   // 3. For each cluster, merge the questions and update counts/sessions

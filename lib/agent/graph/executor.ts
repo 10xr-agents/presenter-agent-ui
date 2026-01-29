@@ -41,6 +41,9 @@ export interface ExecuteGraphParams {
   taskId?: string
   isNewTask: boolean
 
+  /** Langfuse trace ID for this interact request (one trace per message) */
+  langfuseTraceId?: string
+
   // RAG context
   ragChunks: ResolveKnowledgeChunk[]
   hasOrgKnowledge: boolean
@@ -184,6 +187,7 @@ export async function executeInteractGraph(
       sessionId: params.sessionId,
       taskId: params.taskId,
       isNewTask: params.isNewTask,
+      langfuseTraceId: params.langfuseTraceId,
 
       // RAG context
       ragChunks: params.ragChunks,

@@ -1,6 +1,10 @@
 import * as Sentry from "@sentry/nextjs"
-import { OpenAI } from "openai"
 import { performWebSearch, type WebSearchResult } from "@/lib/agent/web-search"
+import { recordUsage } from "@/lib/cost"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 
 /**
@@ -36,6 +40,16 @@ export interface SearchManagerResult {
 }
 
 /**
+ * Optional context for cost tracking (used when calling from graph with state)
+ */
+export interface SearchUsageContext {
+  userId: string
+  sessionId?: string
+  taskId?: string
+  langfuseTraceId?: string
+}
+
+/**
  * Parameters for search manager
  */
 export interface SearchManagerParams {
@@ -45,35 +59,37 @@ export interface SearchManagerParams {
   tenantId: string // Tenant ID
   ragChunks: ResolveKnowledgeChunk[] // Available RAG knowledge
   maxAttempts?: number // Maximum search attempts (default: 3)
+  /** Optional: for cost tracking and Langfuse trace linkage */
+  usageContext?: SearchUsageContext
 }
 
 /**
  * Evaluates search results to determine if they solve the problem.
  *
- * @param params - Evaluation parameters
+ * @param params - Evaluation parameters (usageContext optional for cost tracking)
  * @returns Search evaluation result
  */
 async function evaluateSearchResults(params: {
   query: string
   searchResults: WebSearchResult
   ragChunks: ResolveKnowledgeChunk[]
+  tenantId?: string
+  usageContext?: SearchUsageContext
 }): Promise<SearchEvaluationResult> {
-  const { query, searchResults, ragChunks } = params
+  const { query, searchResults, ragChunks, tenantId, usageContext } = params
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    // Fallback: assume solved if OpenAI not configured
     return {
       solved: true,
       shouldRetry: false,
       shouldAskUser: false,
-      reasoning: "OpenAI API key not configured, assuming search solved the problem",
+      reasoning: "Gemini API key not configured, assuming search solved the problem",
       confidence: 0.5,
     }
   }
 
   try {
-    const openai = new OpenAI({ apiKey })
 
     const ragSummary = ragChunks.length > 0
       ? `Available Knowledge (${ragChunks.length} chunks):\n${ragChunks
@@ -125,18 +141,32 @@ Examples:
 - Results show clear step-by-step instructions → solved: true, shouldRetry: false
 - Results don't contain the specific error ID we need → solved: false, shouldRetry: false, shouldAskUser: true`
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast model for evaluation
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
+      model: DEFAULT_PLANNING_MODEL,
       temperature: 0.3,
-      max_tokens: 600,
+      maxOutputTokens: 600,
+      thinkingLevel: "low",
     })
 
-    const content = response.choices[0]?.message?.content
+    if (tenantId && usageContext && result?.promptTokens != null) {
+      recordUsage({
+        tenantId,
+        userId: usageContext.userId,
+        sessionId: usageContext.sessionId,
+        taskId: usageContext.taskId,
+        langfuseTraceId: usageContext.langfuseTraceId,
+        provider: "google",
+        model: DEFAULT_PLANNING_MODEL,
+        actionType: "MULTI_SOURCE_SYNTHESIS",
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
+        metadata: { operation: "search_evaluation", query },
+      }).catch((err: unknown) => {
+        console.error("[SearchManager] Cost tracking error:", err)
+      })
+    }
+
+    const content = result?.content
     if (!content) {
       throw new Error("Empty response from LLM")
     }
@@ -185,7 +215,7 @@ Examples:
 export async function manageSearch(
   params: SearchManagerParams
 ): Promise<SearchManagerResult> {
-  const { query, searchQuery, url, tenantId, ragChunks, maxAttempts = 3 } = params
+  const { query, searchQuery, url, tenantId, ragChunks, maxAttempts = 3, usageContext } = params
 
   let currentQuery = searchQuery
   let attempts = 0
@@ -202,6 +232,7 @@ export async function manageSearch(
       const searchResults = await performWebSearch(currentQuery, url, tenantId, {
         strictDomainFilter: true,
         allowDomainExpansion: attempts > 1, // Allow expansion on retries
+        usageContext: usageContext ? { tenantId, ...usageContext } : undefined,
       })
 
       if (!searchResults || searchResults.results.length === 0) {
@@ -212,6 +243,7 @@ export async function manageSearch(
           const expandedResults = await performWebSearch(currentQuery, url, tenantId, {
             strictDomainFilter: false,
             allowDomainExpansion: false,
+            usageContext: usageContext ? { tenantId, ...usageContext } : undefined,
           })
           if (expandedResults && expandedResults.results.length > 0) {
             lastSearchResults = expandedResults
@@ -220,6 +252,8 @@ export async function manageSearch(
               query,
               searchResults: expandedResults,
               ragChunks,
+              tenantId,
+              usageContext,
             })
             break
           }
@@ -244,6 +278,8 @@ export async function manageSearch(
         query,
         searchResults,
         ragChunks,
+        tenantId,
+        usageContext,
       })
 
       // If solved or should ask user, break

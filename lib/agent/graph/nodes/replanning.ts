@@ -82,6 +82,7 @@ export async function replanningNode(
         userId: state.userId,
         sessionId: state.sessionId,
         taskId: state.taskId,
+        langfuseTraceId: state.langfuseTraceId,
       }
     )
 
@@ -160,6 +161,7 @@ export async function replanningNode(
         sessionId: state.sessionId,
         taskId: state.taskId,
         verificationSummary,
+        langfuseTraceId: state.langfuseTraceId,
       }
     )
 

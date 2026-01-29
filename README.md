@@ -61,7 +61,6 @@ Enterprise-grade, multi-tenant SaaS platform for creating, distributing, and ana
 - **Organization Management:** View and manage all organizations, members, and billing
 - **Contract Management:** Create and manage enterprise contracts with custom terms
 - **Usage Monitoring:** System-wide usage monitoring and cost attribution
-- **Feature Flags:** Enable/disable features globally or per organization
 - **Support Tools:** User impersonation, detailed logs, and manual billing adjustments
 
 ---
@@ -200,8 +199,7 @@ EMAIL_FROM=noreply@yourdomain.com
 UPLOADTHING_TOKEN=sk_live_xxxxx
 
 # AI Agent Configuration
-OPENAI_API_KEY=sk-xxxxx
-ANTHROPIC_API_KEY=sk-ant-xxxxx
+GEMINI_API_KEY=your_gemini_api_key_here
 TAVILY_API_KEY=tvly-xxxxx
 
 # Organization Settings
@@ -222,9 +220,6 @@ NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
 # Sentry Error Tracking
 SENTRY_DSN=https://xxxxx@xxxxx.ingest.sentry.io/xxxxx
 SENTRY_AUTH_TOKEN=xxxxx
-
-# Feature Flags
-FEATURE_FLAGS_ENABLED=false
 
 # Prisma Logging (development only - set to "true" to enable query logging)
 PRISMA_LOG_QUERIES=false

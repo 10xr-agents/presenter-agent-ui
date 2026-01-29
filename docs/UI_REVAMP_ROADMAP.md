@@ -1542,7 +1542,7 @@ Follow the design system rules in `.cursorrules`:
 |------|------------|
 | Breaking extension API | Only delete UI, keep API routes |
 | Data loss | No database migrations in Phase 1 |
-| User confusion | Add "legacy view" feature flag if needed |
+| User confusion | Add legacy view option if needed (feature flags only post-launch) |
 | Build failures | Run `pnpm build` after each task |
 | Design inconsistency | Follow `.cursorrules` strictly |
 

@@ -22,7 +22,7 @@ import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
  * Tenant isolation: Only returns sessions owned by authenticated user/tenant.
  * Returns 404 if no session found (not null).
  *
- * See SERVER_SIDE_AGENT_ARCH.md §4.8.2 for complete specification.
+ * See ARCHITECTURE.md § Intelligence Layer and INTERACT_FLOW_WALKTHROUGH.md for complete specification.
  */
 
 const queryParamsSchema = z.object({

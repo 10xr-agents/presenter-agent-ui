@@ -51,7 +51,7 @@ function extractPageSummary(url: string, dom: string): string {
 export async function contextAnalysisNode(
   state: InteractGraphState
 ): Promise<Partial<InteractGraphState>> {
-  const { query, url, dom, previousMessages, ragChunks, hasOrgKnowledge, tenantId } = state
+  const { query, url, dom, previousMessages, ragChunks, hasOrgKnowledge, tenantId, userId, sessionId, taskId, langfuseTraceId } = state
   const log = logger.child({
     process: "Graph:context_analysis",
     sessionId: state.sessionId,
@@ -123,6 +123,7 @@ export async function contextAnalysisNode(
         tenantId,
         ragChunks,
         maxAttempts: 3,
+        usageContext: userId ? { userId, sessionId, taskId, langfuseTraceId } : undefined,
       })
 
       log.info(

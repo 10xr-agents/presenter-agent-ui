@@ -11,7 +11,7 @@ export interface Insights {
  * Generate insights from analytics events, clustered questions, and extracted topics
  * 
  * This is a placeholder function. In a real application, you would use:
- * 1. LLM (OpenAI GPT-4, Anthropic Claude, etc.) to generate:
+ * 1. LLM (e.g. Google Gemini) to generate:
  *    - Summary of the session
  *    - Key findings based on engagement patterns, questions, topics
  *    - Actionable recommendations for improving the presentation

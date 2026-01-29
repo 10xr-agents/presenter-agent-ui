@@ -408,11 +408,14 @@ export async function POST(req: NextRequest) {
       return addCorsHeaders(req, res)
     }
 
-    // Handle error
-    if (!graphResult.success || graphResult.status === "failed") {
-      Sentry.logger.info("Interact: graph failed, returning error response", {
+    // When graph ends in "failed", return 200 with a user-facing message so the UI can show it (no 500)
+    if (graphResult.status === "failed") {
+      Sentry.logger.info("Interact: graph ended with status failed, returning 200 with failure message", {
         status: graphResult.status,
       })
+      // Fall through to build the same response shape with thought + status "failed" (below)
+    } else if (!graphResult.success) {
+      // Other unexpected failure (e.g. thrown before graph completed)
       const debugInfo = buildErrorDebugInfo(new Error(graphResult.error || "Graph execution failed"), {
         code: "GRAPH_ERROR",
         statusCode: 500,
@@ -431,7 +434,7 @@ export async function POST(req: NextRequest) {
       return addCorsHeaders(req, err)
     }
 
-    // Build successful response
+    // Build response (200 with thought + status; status may be "failed" with a user-visible message)
     const duration = Date.now() - startTime
     
     // Convert plan createdAt from Date to string for schema compatibility

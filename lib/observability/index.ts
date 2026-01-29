@@ -6,12 +6,10 @@
  * - Sentry: Error monitoring (handled separately in sentry.*.config.ts)
  *
  * Separation of concerns:
- * - LangFuse captures: LLM generations (via observeOpenAI), token usage, scores
+ * - LangFuse captures: LLM generations, token usage, scores
  * - Sentry captures: Exceptions, errors, performance alerts
  *
- * LangFuse v4 SDK:
- * - observeOpenAI auto-traces all OpenAI calls
- * - LangfuseClient provides score management
+ * LLM calls use Google Gemini (@/lib/llm/gemini-client).
  *
  * @see INTERACT_FLOW_WALKTHROUGH.md - Phase 1 Task 2
  */
@@ -20,10 +18,6 @@ export {
   // Client access
   getLangfuseClient,
   isLangfuseEnabled,
-  
-  // OpenAI integration (auto-traces OpenAI calls)
-  getTracedOpenAI,
-  getTracedOpenAIWithConfig,
   
   // Score management
   addScore,

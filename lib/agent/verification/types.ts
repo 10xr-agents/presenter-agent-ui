@@ -6,13 +6,15 @@
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 
 /**
- * Context for cost tracking (optional)
+ * Context for cost tracking and Langfuse trace linkage (optional)
  */
 export interface VerificationContext {
   tenantId: string
   userId: string
   sessionId?: string
   taskId?: string
+  /** Langfuse trace ID for this interact request (costs and scores attached to this trace) */
+  langfuseTraceId?: string
 }
 
 /**

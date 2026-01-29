@@ -213,10 +213,8 @@ async function writeToMongoDB(
  */
 function normalizeProvider(provider: string): LLMProviderType {
   const normalized = provider.toLowerCase()
-  if (normalized === "openai") return "OPENAI"
-  if (normalized === "anthropic") return "ANTHROPIC"
-  if (normalized === "google") return "GOOGLE"
-  return "OPENAI" // Default
+  if (normalized === "google" || normalized === "gemini") return "GOOGLE"
+  return "GOOGLE" // Default (Gemini)
 }
 
 // =============================================================================
@@ -226,7 +224,7 @@ function normalizeProvider(provider: string): LLMProviderType {
 /**
  * Write usage data to LangFuse as a score
  *
- * Note: The actual generation trace is handled by observeOpenAI.
+ * Note: LLM calls use Gemini via lib/llm/gemini-client.ts.
  * This adds cost metadata as a score for analysis.
  */
 async function writeToLangFuse(

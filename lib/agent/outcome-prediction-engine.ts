@@ -2,7 +2,10 @@ import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 import { classifyActionType } from "./action-type"
 
 /**
@@ -15,13 +18,14 @@ import { classifyActionType } from "./action-type"
  */
 
 /**
- * Context for cost tracking (optional)
+ * Context for cost tracking and Langfuse trace linkage (optional)
  */
 export interface OutcomePredictionContext {
   tenantId: string
   userId: string
   sessionId?: string
   taskId?: string
+  langfuseTraceId?: string
 }
 
 /** Fixed expected outcome for dropdown/popup clicks. No elementShouldExist, elementShouldNotExist, or elementShouldHaveText. */
@@ -87,27 +91,7 @@ export async function predictOutcome(
     return navigationExpectedOutcome(thought)
   }
 
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    Sentry.captureException(new Error("OPENAI_API_KEY not configured"))
-    throw new Error("OpenAI API key not configured")
-  }
-
-  // Use traced OpenAI client for LangFuse observability
-  const openai = getTracedOpenAIWithConfig({
-    generationName: "outcome_prediction",
-    sessionId: context?.sessionId,
-    userId: context?.userId,
-    tags: ["prediction"],
-    metadata: {
-      action,
-      actionType,
-    },
-  })
-
-  // Use lightweight model for prediction to reduce cost
-  const model = process.env.OUTCOME_PREDICTION_MODEL || "gpt-4o-mini"
+  const model = DEFAULT_PLANNING_MODEL
   const startTime = Date.now()
 
   const systemPrompt = `You are an outcome prediction AI that predicts what should happen after an action is executed.
@@ -225,37 +209,36 @@ Remember: Write the <Description> in user-friendly language that a non-technical
   const userPrompt = userParts.join("\n")
 
   try {
-    const response = await openai.chat.completions.create({
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
       model,
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
       temperature: 0.7,
-      max_tokens: 500,
+      maxOutputTokens: 500,
+      thinkingLevel: "high",
+      generationName: "outcome_prediction",
+      sessionId: context?.sessionId,
+      userId: context?.userId,
+      tags: ["prediction"],
+      metadata: {
+        action,
+        actionType,
+      },
     })
 
     const durationMs = Date.now() - startTime
-    const content = response.choices[0]?.message?.content
+    const content = result?.content
 
-    // Track cost (dual-write to MongoDB + LangFuse)
-    if (context?.tenantId && context?.userId && response.usage) {
+    if (context?.tenantId && context?.userId && result?.promptTokens != null) {
       recordUsage({
         tenantId: context.tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         taskId: context.taskId,
-        provider: "openai",
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
         model,
         actionType: "OUTCOME_PREDICTION",
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
         durationMs,
         metadata: {
           action,

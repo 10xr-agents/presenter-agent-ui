@@ -56,6 +56,7 @@ export async function planningNode(
         userId: state.userId,
         sessionId: state.sessionId,
         taskId: state.taskId,
+        langfuseTraceId: state.langfuseTraceId,
       }
     )
 
@@ -81,6 +82,7 @@ export async function planningNode(
             userId: state.userId,
             sessionId: state.sessionId,
             taskId: state.taskId,
+            langfuseTraceId: state.langfuseTraceId,
           }
         )
         if (hierarchicalPlan?.isDecomposed) {

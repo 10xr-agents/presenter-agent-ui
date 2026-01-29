@@ -4,8 +4,8 @@ import { connectDB } from "@/lib/db/mongoose"
 export interface ICost extends Omit<mongoose.Document, "model"> {
   userId: string
   organizationId?: string
-  provider: string // e.g., "openai", "anthropic"
-  model: string // e.g., "gpt-4", "claude-3"
+  provider: string // e.g., "google"
+  model: string // e.g., "gemini-3-flash-preview"
   inputTokens: number
   outputTokens: number
   totalTokens: number
@@ -41,17 +41,15 @@ export const Cost =
   mongoose.models.Cost ||
   mongoose.model<ICost>("Cost", CostSchema)
 
-// Pricing per 1M tokens (in cents)
+// Pricing per 1M tokens (in cents) - Gemini only
 const PRICING: Record<string, Record<string, { input: number; output: number }>> = {
-  openai: {
-    "gpt-4-turbo-preview": { input: 10, output: 30 }, // $0.01/$0.03 per 1K tokens
-    "gpt-4": { input: 30, output: 60 },
-    "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
-  },
-  anthropic: {
-    "claude-3-opus": { input: 15, output: 75 },
-    "claude-3-sonnet": { input: 3, output: 15 },
-    "claude-3-haiku": { input: 0.25, output: 1.25 },
+  google: {
+    "gemini-3-flash-preview": { input: 5, output: 30 }, // $0.50/$3 per 1M
+    "gemini-3-pro-preview": { input: 20, output: 120 }, // $2/$12 per 1M
+    "gemini-2.0-flash": { input: 1.5, output: 6 }, // ~$0.15/$0.60 per 1M
+    "gemini-2.5-flash": { input: 1.5, output: 6 },
+    "gemini-1.5-pro": { input: 12.5, output: 50 },
+    "gemini-1.5-flash": { input: 0.75, output: 3 },
   },
 }
 

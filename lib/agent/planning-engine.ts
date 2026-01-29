@@ -2,7 +2,10 @@ import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { PlanStep, TaskPlan } from "@/lib/models/task"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 import type { VerificationSummary } from "@/lib/agent/verification/types"
 import type { WebSearchResult } from "./web-search"
 
@@ -14,7 +17,7 @@ import type { WebSearchResult } from "./web-search"
  */
 
 /**
- * Context for cost tracking and optional verification outcome.
+ * Context for cost tracking and Langfuse trace linkage.
  */
 export interface PlanningContext {
   tenantId: string
@@ -23,6 +26,8 @@ export interface PlanningContext {
   taskId?: string
   /** Optional verification outcome for "next step" context when regenerating plan. */
   verificationSummary?: VerificationSummary
+  /** Langfuse trace ID for this interact request (costs attached to this trace). */
+  langfuseTraceId?: string
 }
 
 /**
@@ -46,29 +51,7 @@ export async function generatePlan(
   webSearchResult?: WebSearchResult,
   context?: PlanningContext
 ): Promise<TaskPlan | null> {
-  const apiKey = process.env.OPENAI_API_KEY
-
-  if (!apiKey) {
-    Sentry.captureException(new Error("OPENAI_API_KEY not configured"))
-    throw new Error("OpenAI API key not configured")
-  }
-
-  // Use traced OpenAI client for LangFuse observability
-  const openai = getTracedOpenAIWithConfig({
-    generationName: "task_planning",
-    sessionId: context?.sessionId,
-    userId: context?.userId,
-    tags: ["planning"],
-    metadata: {
-      query,
-      url,
-      hasOrgKnowledge,
-      hasWebSearch: !!webSearchResult,
-    },
-  })
-
-  // Use lightweight model for planning to reduce cost (as per requirements)
-  const model = process.env.PLANNING_MODEL || "gpt-4o-mini"
+  const model = DEFAULT_PLANNING_MODEL
   const startTime = Date.now()
 
   // Build planning prompt (Task 2: User-friendly language)
@@ -165,37 +148,39 @@ Remember: Write all step descriptions in user-friendly language that a non-techn
   const userPrompt = userParts.join("\n")
 
   try {
-    const response = await openai.chat.completions.create({
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
       model,
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
       temperature: 0.7,
-      max_tokens: 2000,
+      maxOutputTokens: 2000,
+      useGoogleSearchGrounding: true,
+      thinkingLevel: "high",
+      generationName: "task_planning",
+      sessionId: context?.sessionId,
+      userId: context?.userId,
+      tags: ["planning"],
+      metadata: {
+        query,
+        url,
+        hasOrgKnowledge,
+        hasWebSearch: !!webSearchResult,
+      },
     })
 
+    const content = result?.content
     const durationMs = Date.now() - startTime
-    const content = response.choices[0]?.message?.content
 
-    // Track cost (dual-write to MongoDB + LangFuse)
-    if (context?.tenantId && context?.userId && response.usage) {
+    if (context?.tenantId && context?.userId && result?.promptTokens != null) {
       recordUsage({
         tenantId: context.tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         taskId: context.taskId,
-        provider: "openai",
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
         model,
         actionType: "PLANNING",
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
         durationMs,
         metadata: {
           query,

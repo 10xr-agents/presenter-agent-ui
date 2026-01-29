@@ -91,6 +91,9 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       )
     }
 
+    // One Langfuse trace per interact request (per message) for cost and request tracing
+    const langfuseTraceId = crypto.randomUUID()
+
     const graphResult = await executeInteractGraph({
       tenantId,
       userId,
@@ -101,6 +104,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       sessionId,
       taskId: currentTaskId,
       isNewTask,
+      langfuseTraceId,
       ragChunks,
       hasOrgKnowledge,
       plan: taskContext?.plan,
@@ -126,6 +130,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       query,
       url,
       complexity: graphResult.complexity,
+      traceId: langfuseTraceId,
       tags: [
         `tenant:${tenantId}`,
         isNewTask ? "new_task" : "existing_task",

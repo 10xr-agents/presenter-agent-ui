@@ -1,7 +1,11 @@
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage, type RecordUsageInput } from "@/lib/cost"
 import type { LLMActionType } from "@/lib/models/token-usage-log"
-import { getTracedOpenAIWithConfig, isLangfuseEnabled } from "@/lib/observability"
+import {
+  DEFAULT_GEMINI_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
+import { ACTION_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 
 /**
  * LLM response with usage metrics.
@@ -47,28 +51,17 @@ export interface LLMCallOptions {
   metadata?: Record<string, unknown>
 }
 
-/** Default model used for LLM calls */
-const DEFAULT_MODEL = "gpt-4-turbo-preview"
-
 /**
- * Call OpenAI LLM for action generation.
- *
- * Uses LangFuse-traced OpenAI client when enabled for observability.
- * Falls back to regular OpenAI client when LangFuse is disabled.
+ * Call Gemini LLM for action generation.
  *
  * Cost tracking (Phase 1 Task 3):
  * - Dual-writes to MongoDB (billing) and LangFuse (observability)
  * - Non-blocking via Promise.allSettled
  * - Requires tenantId and userId in options
  *
- * Separation of concerns:
- * - LangFuse: Traces the LLM call (prompt, completion, tokens, latency)
- * - MongoDB: Source of truth for billing/cost
- * - Sentry: Captures errors/exceptions only
- *
  * @param systemPrompt - System message
  * @param userPrompt - User message with context
- * @param options - Optional trace metadata for LangFuse and cost tracking
+ * @param options - Optional trace metadata and cost tracking
  * @returns Parsed thought and action, or null on error
  */
 export async function callActionLLM(
@@ -76,117 +69,78 @@ export async function callActionLLM(
   userPrompt: string,
   options?: LLMCallOptions
 ): Promise<LLMResponse | null> {
-  const apiKey = process.env.OPENAI_API_KEY
   const startTime = Date.now()
 
-  if (!apiKey) {
-    // Sentry captures the error for alerting
-    Sentry.captureException(new Error("OPENAI_API_KEY not configured"))
-    throw new Error("OpenAI API key not configured")
-  }
-
-  // Get traced OpenAI client (automatically sends traces to LangFuse when enabled)
-  const openai = getTracedOpenAIWithConfig({
+  const result = await generateWithGemini(systemPrompt, userPrompt, {
+    model: DEFAULT_GEMINI_MODEL,
+    temperature: 0.7,
+    maxOutputTokens: 2000,
+    thinkingLevel: "low",
     generationName: options?.generationName || "action_generation",
     sessionId: options?.sessionId,
     userId: options?.userId,
     tags: options?.tags,
     metadata: options?.metadata,
+    responseJsonSchema: ACTION_RESPONSE_SCHEMA,
   })
 
+  if (!result) return null
+
+  let thought: string
+  let action: string
   try {
-    const response = await openai.chat.completions.create({
-      model: DEFAULT_MODEL, // Can be made configurable per tenant
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    })
+    const parsed = JSON.parse(result.content) as { thought?: string; action?: string }
+    thought = typeof parsed.thought === "string" ? parsed.thought : ""
+    action = typeof parsed.action === "string" ? parsed.action : ""
+  } catch {
+    return null
+  }
+  if (!thought || !action) return null
 
-    const content = response.choices[0]?.message?.content
-    const durationMs = Date.now() - startTime
+  const durationMs = Date.now() - startTime
+  const promptTokens = result.promptTokens ?? 0
+  const completionTokens = result.completionTokens ?? 0
 
-    if (!content) {
-      // Log to Sentry as this is an unexpected state
-      Sentry.captureException(new Error("Empty LLM response"), {
-        tags: { component: "llm-client", operation: "action-generation" },
-        extra: { model: DEFAULT_MODEL, langfuseEnabled: isLangfuseEnabled() },
+  let costTracking: LLMResponse["costTracking"]
+  if (options?.tenantId && options?.userId) {
+    const usageInput: RecordUsageInput = {
+      tenantId: options.tenantId,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      messageId: options.messageId,
+      taskId: options.taskId,
+      provider: "google",
+      model: DEFAULT_GEMINI_MODEL,
+      actionType: options.actionType || "ACTION_GENERATION",
+      inputTokens: promptTokens,
+      outputTokens: completionTokens,
+      durationMs,
+      langfuseTraceId: options.langfuseTraceId,
+      metadata: options.metadata,
+    }
+
+    recordUsage(usageInput)
+      .then((res) => {
+        if (!res.success) console.warn("[LLM] Cost tracking failed:", res.errors)
       })
-      return null
-    }
+      .catch((err: unknown) => {
+        console.error("[LLM] Cost tracking error:", err)
+      })
 
-    // Extract usage data
-    const promptTokens = response.usage?.prompt_tokens ?? 0
-    const completionTokens = response.usage?.completion_tokens ?? 0
+    costTracking = { costUSD: undefined, costCents: undefined }
+  } else if (options?.tenantId || options?.userId) {
+    console.warn(
+      "[LLM] Cost tracking skipped: both tenantId and userId required"
+    )
+  }
 
-    // Track cost (dual-write to MongoDB + LangFuse)
-    // Non-blocking - errors are logged but don't fail the request
-    let costTracking: LLMResponse["costTracking"]
-    if (options?.tenantId && options?.userId) {
-      const usageInput: RecordUsageInput = {
-        tenantId: options.tenantId,
-        userId: options.userId,
-        sessionId: options.sessionId,
-        messageId: options.messageId,
-        taskId: options.taskId,
-        provider: "openai",
-        model: DEFAULT_MODEL,
-        actionType: options.actionType || "ACTION_GENERATION",
-        inputTokens: promptTokens,
-        outputTokens: completionTokens,
-        durationMs,
-        langfuseTraceId: options.langfuseTraceId,
-        metadata: options.metadata,
-      }
-
-      // Fire-and-forget cost tracking (non-blocking)
-      recordUsage(usageInput)
-        .then((result) => {
-          if (!result.success) {
-            console.warn("[LLM] Cost tracking failed:", result.errors)
-          }
-        })
-        .catch((err: unknown) => {
-          console.error("[LLM] Cost tracking error:", err)
-        })
-
-      // For immediate access, we can estimate cost (actual recording is async)
-      costTracking = {
-        costUSD: undefined, // Set asynchronously
-        costCents: undefined,
-      }
-    } else if (options?.tenantId || options?.userId) {
-      console.warn(
-        "[LLM] Cost tracking skipped: both tenantId and userId required"
-      )
-    }
-
-    return {
-      thought: content, // Raw LLM response - will be parsed by parseActionResponse
-      action: content, // Same content (for compatibility)
-      usage: response.usage
-        ? {
-            promptTokens,
-            completionTokens,
-          }
+  return {
+    thought,
+    action,
+    usage:
+      promptTokens > 0 || completionTokens > 0
+        ? { promptTokens, completionTokens }
         : undefined,
-      costTracking,
-    }
-  } catch (error: unknown) {
-    // Sentry captures errors for alerting and debugging
-    // LangFuse does NOT capture errors (clear separation)
-    Sentry.captureException(error, {
-      tags: { component: "llm-client", operation: "action-generation" },
-      extra: { langfuseEnabled: isLangfuseEnabled() },
-    })
-    throw error
+    costTracking,
   }
 }

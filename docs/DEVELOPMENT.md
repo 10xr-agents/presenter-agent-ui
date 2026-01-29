@@ -59,8 +59,7 @@ pnpm dev
 - `S3_*` - S3 storage configuration
 - `STRIPE_*` - Stripe billing configuration
 - `LIVEKIT_*` - LiveKit video configuration
-- `OPENAI_API_KEY` - OpenAI API key
-- `ANTHROPIC_API_KEY` - Anthropic API key
+- `GEMINI_API_KEY` - Gemini API key (LLM for agent, planning, verification)
 
 **See**: `.env.example` for complete list
 

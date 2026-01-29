@@ -89,6 +89,7 @@ export async function verificationNode(
         userId: state.userId,
         sessionId: state.sessionId,
         taskId: state.taskId,
+        langfuseTraceId: state.langfuseTraceId,
       },
       subTaskObjective
     )

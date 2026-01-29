@@ -76,6 +76,7 @@ export async function stepRefinementNode(
         userId: state.userId,
         sessionId: state.sessionId,
         taskId: state.taskId,
+        langfuseTraceId: state.langfuseTraceId,
       }
     )
 

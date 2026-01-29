@@ -22,9 +22,8 @@ export const env = createEnv({
     EMAIL_FROM: z.string().refine((val) => !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), "Invalid email").optional(),
     // Uploadthing (file uploads)
     UPLOADTHING_TOKEN: z.string().optional(),
-    // AI Agent Configuration
-    OPENAI_API_KEY: z.string().optional(),
-    ANTHROPIC_API_KEY: z.string().optional(),
+    // AI Agent Configuration (Gemini)
+    GEMINI_API_KEY: z.string().optional(),
     TAVILY_API_KEY: z.string().optional(),
     // Organization Settings
     ORGANIZATION_LIMIT: z.string().optional(),
@@ -47,9 +46,6 @@ export const env = createEnv({
     LANGFUSE_PUBLIC_KEY: z.string().optional(),
     LANGFUSE_SECRET_KEY: z.string().optional(),
     LANGFUSE_BASE_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
-    ENABLE_LANGFUSE: z.enum(["true", "false"]).optional(),
-    // Feature Flags
-    FEATURE_FLAGS_ENABLED: z.string().optional(),
     // Browser Automation Service
     BROWSER_AUTOMATION_SERVICE_URL: z.string().refine((val) => !val || /^https?:\/\//.test(val), "Invalid URL").optional(),
     // S3 Storage (DigitalOcean Spaces or AWS S3)
@@ -93,9 +89,8 @@ export const env = createEnv({
     EMAIL_FROM: process.env.EMAIL_FROM,
     UPLOADTHING_TOKEN: process.env.UPLOADTHING_TOKEN,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    // AI Agent Configuration
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    // AI Agent Configuration (Gemini)
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     // Organization Settings
     ORGANIZATION_LIMIT: process.env.ORGANIZATION_LIMIT,
@@ -116,9 +111,6 @@ export const env = createEnv({
     LANGFUSE_PUBLIC_KEY: process.env.LANGFUSE_PUBLIC_KEY,
     LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY,
     LANGFUSE_BASE_URL: process.env.LANGFUSE_BASE_URL,
-    ENABLE_LANGFUSE: process.env.ENABLE_LANGFUSE,
-    // Feature Flags
-    FEATURE_FLAGS_ENABLED: process.env.FEATURE_FLAGS_ENABLED,
     // Prisma Logging
     PRISMA_LOG_QUERIES: process.env.PRISMA_LOG_QUERIES,
     // Browser Automation Service

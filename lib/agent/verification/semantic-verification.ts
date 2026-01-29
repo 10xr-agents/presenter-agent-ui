@@ -16,7 +16,11 @@ export const STEP_TASK_LEVEL_EXAMPLE =
 
 import { recordUsage } from "@/lib/cost"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
+import { VERIFICATION_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 import {
   extractTextContent,
   getSmartDomContext,
@@ -43,15 +47,71 @@ export interface SemanticVerificationResult {
 }
 
 /**
+ * Extract the last JSON object from content (for responses that include "Thought: ... { } Answer: { }").
+ * Balances braces from the last "}" backward so we get the final answer object, not thinking.
+ */
+function extractLastJsonObject(content: string): string | null {
+  const lastClose = content.lastIndexOf("}")
+  if (lastClose === -1) return null
+  let depth = 1
+  let i = lastClose - 1
+  while (i >= 0 && depth > 0) {
+    const c = content[i]
+    if (c === "}") depth++
+    else if (c === "{") depth--
+    i--
+  }
+  if (depth !== 0) return null
+  const start = i + 1
+  return content.slice(start, lastClose + 1)
+}
+
+/**
+ * Extract a JSON object string from raw LLM content.
+ * Handles: raw JSON, markdown code blocks (```json ... ```), and leading/trailing text (e.g. thought summaries).
+ * When multiple JSON objects or code blocks exist (e.g. thought then answer), uses the LAST one as the final verdict.
+ */
+function extractJsonFromVerificationContent(content: string): string {
+  const trimmed = content.trim()
+  const firstBrace = trimmed.indexOf("{")
+  if (firstBrace === -1) {
+    throw new Error("No JSON object found in response")
+  }
+  // When there are multiple code blocks (e.g. thought in first, answer in last), use the last block.
+  const allCodeBlocks = trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)
+  const blocks = [...allCodeBlocks]
+  const lastBlock = blocks.length > 0 ? blocks[blocks.length - 1]?.[1]?.trim() : null
+  if (lastBlock && lastBlock.indexOf("{") !== -1) {
+    // Single code block may contain two JSON objects (thought + answer); take the last one so we get the verdict.
+    const lastInBlock = extractLastJsonObject(lastBlock)
+    if (lastInBlock) return lastInBlock
+    return lastBlock
+  }
+  // If content has multiple JSON objects (e.g. thought then answer, no code blocks), use the last one.
+  const lastJson = extractLastJsonObject(trimmed)
+  if (lastJson) {
+    return lastJson
+  }
+  // Fallback: first { to last } (single object or legacy format).
+  const lastBrace = trimmed.lastIndexOf("}")
+  if (lastBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1)
+  }
+  throw new Error("No JSON object found in response")
+}
+
+/**
  * Parse LLM JSON response into SemanticVerificationResult.
  * Supports new schema (action_succeeded, task_completed) and legacy (match only).
+ * Extracts JSON from raw content (thought summaries, markdown) before parsing.
  * Used by performSemanticVerification and performSemanticVerificationOnObservations.
  */
 export function parseSemanticVerificationResponse(
   content: string,
   expectSubTaskCompleted?: boolean
 ): SemanticVerificationResult {
-  const obj = JSON.parse(content) as {
+  const jsonStr = extractJsonFromVerificationContent(content)
+  const obj = JSON.parse(jsonStr) as {
     action_succeeded?: boolean
     task_completed?: boolean
     sub_task_completed?: boolean
@@ -88,22 +148,14 @@ export async function performSemanticVerification(
     sessionId: context?.sessionId,
     taskId: context?.taskId ?? "",
   })
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
 
   if (!apiKey) {
-    Sentry.captureException(new Error("OPENAI_API_KEY not configured"))
-    throw new Error("OpenAI API key not configured")
+    Sentry.captureException(new Error("GEMINI_API_KEY not configured"))
+    throw new Error("Gemini API key not configured")
   }
 
-  const openai = getTracedOpenAIWithConfig({
-    generationName: "semantic_verification",
-    sessionId: context?.sessionId,
-    userId: context?.userId,
-    tags: ["verification"],
-    metadata: { expectedDescription: expectedOutcome.description },
-  })
-
-  const model = process.env.VERIFICATION_MODEL || "gpt-4o-mini"
+  const model = DEFAULT_PLANNING_MODEL
   const startTime = Date.now()
 
   const systemPrompt = `You are a verification AI that checks if an action achieved its expected outcome.
@@ -172,31 +224,35 @@ ${domContext}
 Remember: Focus on whether the user would see the expected result. Ignore technical details like exact element IDs.`
 
   try {
-    const response = await openai.chat.completions.create({
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
       model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
       temperature: 0.3,
-      max_tokens: 500,
-      response_format: { type: "json_object" },
+      maxOutputTokens: 500,
+      useGoogleSearchGrounding: true,
+      thinkingLevel: "high",
+      generationName: "semantic_verification",
+      sessionId: context?.sessionId,
+      userId: context?.userId,
+      tags: ["verification"],
+      metadata: { expectedDescription: expectedOutcome.description },
+      responseJsonSchema: VERIFICATION_RESPONSE_SCHEMA,
     })
 
     const durationMs = Date.now() - startTime
-    const content = response.choices[0]?.message?.content
+    const content = result?.content
 
-    if (context?.tenantId && context?.userId && response.usage) {
+    if (context?.tenantId && context?.userId && result?.promptTokens != null) {
       recordUsage({
         tenantId: context.tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         taskId: context.taskId,
-        provider: "openai",
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
         model,
         actionType: "VERIFICATION",
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
         durationMs,
         metadata: { expectedDescription: expectedOutcome.description },
       }).catch((err: unknown) => {
@@ -215,12 +271,24 @@ Remember: Focus on whether the user would see the expected result. Ignore techni
     }
 
     try {
-      const parsed = parseSemanticVerificationResponse(content)
-      const confidence = parsed.confidence ?? (parsed.match ? 1.0 : 0.0)
-      return { ...parsed, confidence }
+      const parsed = JSON.parse(content) as {
+        action_succeeded?: boolean
+        task_completed?: boolean
+        confidence?: number
+        reason?: string
+      }
+      const action_succeeded = parsed.action_succeeded ?? false
+      const task_completed = parsed.task_completed ?? false
+      const confidence = parsed.confidence ?? (task_completed ? 1.0 : 0)
+      const reason = parsed.reason ?? "No reason"
+      return {
+        action_succeeded,
+        task_completed,
+        match: task_completed,
+        reason,
+        confidence: Math.max(0, Math.min(1, confidence)),
+      }
     } catch {
-      // Deterministic: do not infer from free text. Default to false so routing never
-      // treats malformed LLM response as goal achieved.
       return {
         action_succeeded: false,
         task_completed: false,
@@ -252,25 +320,18 @@ export async function performSemanticVerificationOnObservations(
   context?: VerificationContext,
   subTaskObjective?: string
 ): Promise<SemanticVerificationResult> {
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     return {
       action_succeeded: false,
       task_completed: false,
       match: false,
-      reason: "OpenAI API key not configured",
+      reason: "Gemini API key not configured",
       confidence: 0,
     }
   }
 
-  const openai = getTracedOpenAIWithConfig({
-    generationName: "verification_observation",
-    sessionId: context?.sessionId,
-    userId: context?.userId,
-    tags: ["verification", "observation"],
-  })
-
-  const model = process.env.VERIFICATION_MODEL || "gpt-4o-mini"
+  const model = DEFAULT_PLANNING_MODEL
   const subTaskBlock =
     subTaskObjective != null
       ? `
@@ -278,11 +339,6 @@ export async function performSemanticVerificationOnObservations(
 **Current sub-task objective (Phase 4):** ${subTaskObjective}
 - **sub_task_completed**: true only when this sub-task objective is achieved (e.g. form opened for "Open patient form", patient saved for "Save patient"). Set false until that sub-task is done.`
       : ""
-
-  const jsonFields =
-    subTaskObjective != null
-      ? '{"action_succeeded": true/false, "task_completed": true/false, "sub_task_completed": true/false, "confidence": 0.0-1.0, "reason": "Brief explanation"}'
-      : '{"action_succeeded": true/false, "task_completed": true/false, "confidence": 0.0-1.0, "reason": "Brief explanation"}'
 
   const prompt = `You are a verification AI. The user wanted to achieve a goal. An action was executed. We observed specific changes. Decide two things: (1) did this action do something useful? (2) is the entire user goal done?${subTaskObjective != null ? " (3) Is the current sub-task objective achieved?" : ""}
 
@@ -293,9 +349,6 @@ export async function performSemanticVerificationOnObservations(
 **Observed changes (facts):**
 ${observations.map((o) => `- ${o}`).join("\n")}
 ${subTaskBlock}
-
-**Task:** Answer with JSON only:
-${jsonFields}
 
 **Contract:**
 - **action_succeeded**: true when this action did something useful (e.g. form opened, menu opened, page navigated). false when nothing useful happened (e.g. no change, wrong click).
@@ -311,14 +364,36 @@ Guidelines:
 - Be decisive: high confidence when observations clearly support success or failure.`
 
   try {
-    const response = await openai.chat.completions.create({
+    const result = await generateWithGemini("", prompt, {
       model,
-      messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
-      max_tokens: 300,
-      response_format: { type: "json_object" },
+      maxOutputTokens: 300,
+      useGoogleSearchGrounding: true,
+      thinkingLevel: "high",
+      generationName: "verification_observation",
+      sessionId: context?.sessionId,
+      userId: context?.userId,
+      tags: ["verification", "observation"],
+      responseJsonSchema: VERIFICATION_RESPONSE_SCHEMA,
     })
-    const content = response.choices[0]?.message?.content
+    if (context?.tenantId && context?.userId && result?.promptTokens != null) {
+      recordUsage({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        sessionId: context.sessionId,
+        taskId: context.taskId,
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
+        model,
+        actionType: "VERIFICATION",
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
+        metadata: { generationName: "verification_observation" },
+      }).catch((err: unknown) => {
+        console.error("[SemanticVerification] Cost tracking error:", err)
+      })
+    }
+    const content = result?.content
     if (!content) {
       return {
         action_succeeded: false,
@@ -329,7 +404,27 @@ Guidelines:
       }
     }
     try {
-      return parseSemanticVerificationResponse(content, subTaskObjective != null)
+      const parsed = JSON.parse(content) as {
+        action_succeeded?: boolean
+        task_completed?: boolean
+        sub_task_completed?: boolean
+        confidence?: number
+        reason?: string
+      }
+      const action_succeeded = parsed.action_succeeded ?? false
+      const task_completed = parsed.task_completed ?? false
+      const confidence = Math.max(0, Math.min(1, parsed.confidence ?? 0.5))
+      const reason = parsed.reason ?? "No reason"
+      const sub_task_completed =
+        subTaskObjective != null ? parsed.sub_task_completed ?? false : undefined
+      return {
+        action_succeeded,
+        task_completed,
+        sub_task_completed,
+        match: task_completed,
+        reason,
+        confidence,
+      }
     } catch {
       return {
         action_succeeded: false,

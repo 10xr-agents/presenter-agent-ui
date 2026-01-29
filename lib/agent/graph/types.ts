@@ -185,6 +185,9 @@ export interface InteractGraphState {
   taskId?: string
   isNewTask: boolean
 
+  /** Langfuse trace ID for this interact request (one trace per message; costs/scores attach here) */
+  langfuseTraceId?: string
+
   // RAG context
   ragChunks: ResolveKnowledgeChunk[]
   hasOrgKnowledge: boolean

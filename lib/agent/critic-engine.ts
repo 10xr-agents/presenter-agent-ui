@@ -19,16 +19,20 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
-import { getTracedOpenAIWithConfig } from "@/lib/observability"
+import {
+  DEFAULT_PLANNING_MODEL,
+  generateWithGemini,
+} from "@/lib/llm/gemini-client"
 
 /**
- * Context for critic evaluation
+ * Context for critic evaluation and Langfuse trace linkage
  */
 export interface CriticContext {
   tenantId: string
   userId: string
   sessionId?: string
   taskId?: string
+  langfuseTraceId?: string
 }
 
 /**
@@ -124,11 +128,10 @@ export async function evaluateAction(
   context?: CriticContext
 ): Promise<CriticResult> {
   const startTime = Date.now()
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
 
   if (!apiKey) {
-    Sentry.captureException(new Error("OPENAI_API_KEY not configured"))
-    // Fail open - don't block action if API key missing
+    Sentry.captureException(new Error("GEMINI_API_KEY not configured"))
     return {
       approved: true,
       confidence: 0,
@@ -137,21 +140,7 @@ export async function evaluateAction(
     }
   }
 
-  // Use traced OpenAI client for LangFuse observability
-  const openai = getTracedOpenAIWithConfig({
-    generationName: "critic_evaluation",
-    sessionId: context?.sessionId,
-    userId: context?.userId,
-    tags: ["critic", "validation"],
-    metadata: {
-      goal: input.goal,
-      action: input.action,
-      hasFailure: !!input.previousFailure,
-    },
-  })
-
-  // Use lightweight model for fast evaluation
-  const model = process.env.CRITIC_MODEL || "gpt-4o-mini"
+  const model = DEFAULT_PLANNING_MODEL
 
   const systemPrompt = `You are a Critic AI that validates web automation actions before execution.
 
@@ -200,35 +189,40 @@ When uncertain, approve with lower confidence.`
   const userPrompt = userParts.join("\n")
 
   try {
-    const response = await openai.chat.completions.create({
+    const genResult = await generateWithGemini(systemPrompt, userPrompt, {
       model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.3, // Low temperature for consistent evaluation
-      max_tokens: 300,
+      temperature: 0.3,
+      maxOutputTokens: 300,
+      thinkingLevel: "high",
+      generationName: "critic_evaluation",
+      sessionId: context?.sessionId,
+      userId: context?.userId,
+      tags: ["critic", "validation"],
+      metadata: {
+        goal: input.goal,
+        action: input.action,
+        hasFailure: !!input.previousFailure,
+      },
     })
 
     const durationMs = Date.now() - startTime
-    const content = response.choices[0]?.message?.content || ""
+    const content = genResult?.content ?? ""
 
-    // Parse response first (deterministic: approved from <Approved>YES|NO</Approved> only)
     const result = parseCriticResponse(content)
     result.durationMs = durationMs
 
-    // Track cost
-    if (context?.tenantId && context?.userId && response.usage) {
+    if (context?.tenantId && context?.userId && genResult?.promptTokens != null) {
       recordUsage({
         tenantId: context.tenantId,
         userId: context.userId,
         sessionId: context.sessionId,
         taskId: context.taskId,
-        provider: "openai",
+        langfuseTraceId: context.langfuseTraceId,
+        provider: "google",
         model,
         actionType: "CRITIC",
-        inputTokens: response.usage.prompt_tokens,
-        outputTokens: response.usage.completion_tokens,
+        inputTokens: genResult.promptTokens ?? 0,
+        outputTokens: genResult.completionTokens ?? 0,
         durationMs,
         metadata: {
           goal: input.goal,

@@ -11,22 +11,16 @@ import { describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/cost", () => ({ recordUsage: vi.fn().mockResolvedValue(undefined) }))
 
-const mockCreate = vi.fn()
-vi.mock("@/lib/observability", () => ({
-  getTracedOpenAIWithConfig: () => ({
-    chat: {
-      completions: {
-        create: mockCreate,
-      },
-    },
-  }),
+const mockGenerateWithGemini = vi.fn()
+vi.mock("@/lib/llm/gemini-client", () => ({
+  generateWithGemini: (...args: unknown[]) => mockGenerateWithGemini(...args),
+  DEFAULT_PLANNING_MODEL: "gemini-3-flash-preview",
 }))
 
 import type { PlanStep } from "@/lib/models/task"
 import { refineStep } from "../step-refinement-engine"
 
-// Allow engines to pass API key check (mock is used for actual call)
-vi.stubEnv("OPENAI_API_KEY", "test-key-for-step-refinement")
+vi.stubEnv("GEMINI_API_KEY", "test-key-for-step-refinement")
 
 describe("Step Refinement Engine", () => {
   const baseStep: PlanStep = {
@@ -53,10 +47,11 @@ click(68)
 `
 
   beforeEach(() => {
-    mockCreate.mockReset()
-    mockCreate.mockResolvedValue({
-      choices: [{ message: { content: validRefinementResponse } }],
-      usage: { prompt_tokens: 100, completion_tokens: 50 },
+    mockGenerateWithGemini.mockReset()
+    mockGenerateWithGemini.mockResolvedValue({
+      content: validRefinementResponse,
+      promptTokens: 100,
+      completionTokens: 50,
     })
   })
 
@@ -72,11 +67,10 @@ click(68)
       { tenantId: "t1", userId: "u1" }
     )
 
-    expect(mockCreate).toHaveBeenCalledTimes(1)
-    const call = mockCreate.mock.calls[0]
-    const messages = call[0]?.messages as Array<{ role: string; content: string }>
-    const userContent = messages?.find((m) => m.role === "user")?.content ?? ""
-    expect(userContent).toContain(
+    expect(mockGenerateWithGemini).toHaveBeenCalledTimes(1)
+    const call = mockGenerateWithGemini.mock.calls[0]
+    const userPrompt = (call?.[1] as string) ?? ""
+    expect(userPrompt).toContain(
       "Previous action succeeded; the full user goal is not yet achieved. Continue with the next step."
     )
   })
@@ -93,10 +87,9 @@ click(68)
       { tenantId: "t1", userId: "u1" }
     )
 
-    const call = mockCreate.mock.calls[0]
-    const messages = call[0]?.messages as Array<{ role: string; content: string }>
-    const userContent = messages?.find((m) => m.role === "user")?.content ?? ""
-    expect(userContent).not.toContain("Previous action succeeded; the full user goal is not yet achieved")
+    const call = mockGenerateWithGemini.mock.calls[0]
+    const userPrompt = (call?.[1] as string) ?? ""
+    expect(userPrompt).not.toContain("Previous action succeeded; the full user goal is not yet achieved")
   })
 
   it("does not include verification context when task_completed is true", async () => {
@@ -111,10 +104,9 @@ click(68)
       { tenantId: "t1", userId: "u1" }
     )
 
-    const call = mockCreate.mock.calls[0]
-    const messages = call[0]?.messages as Array<{ role: string; content: string }>
-    const userContent = messages?.find((m) => m.role === "user")?.content ?? ""
-    expect(userContent).not.toContain("Previous action succeeded; the full user goal is not yet achieved")
+    const call = mockGenerateWithGemini.mock.calls[0]
+    const userPrompt = (call?.[1] as string) ?? ""
+    expect(userPrompt).not.toContain("Previous action succeeded; the full user goal is not yet achieved")
   })
 
   it("does not include verification context when action_succeeded is false", async () => {
@@ -129,9 +121,8 @@ click(68)
       { tenantId: "t1", userId: "u1" }
     )
 
-    const call = mockCreate.mock.calls[0]
-    const messages = call[0]?.messages as Array<{ role: string; content: string }>
-    const userContent = messages?.find((m) => m.role === "user")?.content ?? ""
-    expect(userContent).not.toContain("Previous action succeeded; the full user goal is not yet achieved")
+    const call = mockGenerateWithGemini.mock.calls[0]
+    const userPrompt = (call?.[1] as string) ?? ""
+    expect(userPrompt).not.toContain("Previous action succeeded; the full user goal is not yet achieved")
   })
 })

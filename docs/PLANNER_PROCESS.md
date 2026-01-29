@@ -11,7 +11,7 @@
 ## Critical: Plan and Step Advancement
 
 - **Plan** is created once per task (or regenerated when re-planning triggers). **currentStepIndex** advances per executed action: at graph invocation, `currentStepIndex = previousActions.length` (see route-integration `run-graph.ts`). The planning node **reuses** the existing plan when present; it does not re-run `generatePlan` for continuation.
-- **Step refinement** turns the current plan step into a concrete DOM action (e.g. `click(68)`). If refinement fails or returns a SERVER tool, the graph falls back to **action_generation** (LLM).
+- **Step refinement** turns the current plan step into a concrete DOM action (e.g. `click(68)`). If refinement fails or returns a SERVER tool, the graph falls back to **action_generation** (LLM). Action generation uses **structured output** (Gemini `responseJsonSchema`: thought + action) so the response is valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
 - **Re-planning** runs after verification (when URL or DOM changed). Triggers: URL change, DOM similarity < 70%, or structural changes. Actions: `continue` (plan valid), `modify` (apply suggested changes), `regenerate` (full replan). Router uses **only** `replanningResult.planRegenerated === true` and `minorModificationsOnly` (see VERIFICATION_PROCESS.md and replanning-engine).
 
 **Files:** `lib/agent/planning-engine.ts`, `lib/agent/step-refinement-engine.ts`, `lib/agent/replanning-engine.ts`, `lib/agent/graph/nodes/planning.ts`, `lib/agent/graph/nodes/step-refinement.ts`, `lib/agent/graph/nodes/replanning.ts`, `lib/agent/graph/route-integration/run-graph.ts` (currentStepIndex from previousActions.length).
@@ -95,6 +95,8 @@ Planner and verification are **dependent**: planner needs verification outcomes 
 **Output:** TaskPlan with steps (description, reasoning, toolType, expectedOutcome per step). Plan is stored in graph state and persisted with the task.
 
 **When called:** Only when there is **no plan** in state (new task or after full regenerate in re-planning). For continuation, the planning node reuses the existing plan and does not call generatePlan again. When **replanning** regenerates a plan, it passes **verificationSummary** from `state.verificationResult` so the plan prompt can include continuation context (see § Optional verification summary below).
+
+**Gemini config:** Planning uses **Grounding with Google Search** (`useGoogleSearchGrounding: true`) and **thinking level high** (`thinkingLevel: "high"`) so the model can reason deeply and use current web information when generating steps. See `docs/GEMINI_USAGE.md` § Thinking and § Grounding with Google Search.
 
 ---
 
@@ -185,8 +187,9 @@ Planner and verification are **dependent**: planner needs verification outcomes 
 
 ## Configuration
 
-- **Planning:** No dedicated env var; uses same LLM config as other agent calls. RAG and webSearchResult are passed from context analysis.
-- **Re-planning:** DOM similarity threshold 0.7 (configurable in validatePlanHealth). Plan validator model: PLAN_VALIDATOR_MODEL (default gpt-4o-mini).
+- **Planning:** No dedicated env var; uses same LLM config as other agent calls. RAG and webSearchResult are passed from context analysis. **Grounding with Google Search** is enabled for planning (`useGoogleSearchGrounding: true`), so plans can be grounded in current web info (e.g. procedures, product steps); see [Gemini Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search).
+- **Re-planning:** DOM similarity threshold 0.7 (configurable in validatePlanHealth). Uses default Gemini model (`DEFAULT_PLANNING_MODEL`).
+- **Tavily:** When the reasoning engine triggers web search (e.g. insufficient RAG), we use **Tavily** for domain-restricted search. Use Tavily when confidence from Google Search grounding is lower or when domain-specific results are needed.
 - **Step advancement:** currentStepIndex = previousActions.length at graph invocation (run-graph.ts). Client must send taskId and updated dom/url so that previousActions are loaded and count is correct.
 
 ---

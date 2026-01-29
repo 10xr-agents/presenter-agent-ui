@@ -23,7 +23,7 @@ import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
  * Tenant isolation: Only returns messages for sessions owned by authenticated user/tenant.
  * DOM bloat prevention: Excludes full DOMs, only includes domSummary for context.
  *
- * See SERVER_SIDE_AGENT_ARCH.md §4.8.1 for complete specification.
+ * See ARCHITECTURE.md § Intelligence Layer and INTERACT_FLOW_WALKTHROUGH.md for complete specification.
  */
 
 const queryParamsSchema = z.object({

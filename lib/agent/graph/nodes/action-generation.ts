@@ -19,7 +19,7 @@ import {
   parseChainFromLLMResponse,
 } from "@/lib/agent/chaining"
 import { callActionLLM } from "@/lib/agent/llm-client"
-import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
+import { buildActionPrompt } from "@/lib/agent/prompt-builder"
 import { logger } from "@/lib/utils/logger"
 import type { ChainedActionResult, ChainMetadataResult, InteractGraphState } from "../types"
 
@@ -162,26 +162,12 @@ export async function actionGenerationNode(
     // Try to parse chain response first (if chaining was attempted)
     let actionChain: ActionChain | null = null
     if (chainOpportunity.canChain) {
-      actionChain = parseChainFromLLMResponse(llmResponse.thought, dom)
-      if (actionChain) {
-        log.info(
-          `Chain parsed: ${actionChain.actions.length} actions, reason=${actionChain.metadata.chainReason}`
-        )
-      }
+      // Chaining: structured output returns thought/action only; chain parsing from raw text is not used.
+      actionChain = null
     }
 
-    // Parse response (llmResponse.thought contains the raw LLM output)
-    const parsedResponse = parseActionResponse(llmResponse.thought)
-
-    if (!parsedResponse) {
-      log.error("Failed to parse LLM response")
-      return {
-        error: "Failed to parse LLM response",
-        status: "failed",
-      }
-    }
-
-    const { thought, action } = parsedResponse
+    // callActionLLM returns structured output (thought, action) from Gemini JSON schema
+    const { thought, action } = llmResponse
 
     // Handle special actions
     

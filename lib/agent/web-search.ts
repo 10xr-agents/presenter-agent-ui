@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs"
 import axios from "axios"
-import { OpenAI } from "openai"
+import { recordUsage } from "@/lib/cost"
+import { DEFAULT_GEMINI_MODEL, generateWithGemini } from "@/lib/llm/gemini-client"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 
 /**
@@ -31,11 +32,24 @@ export type WebSearchResult = {
 }
 
 /**
+ * Optional context for cost tracking (for LLM summary generation)
+ */
+export interface WebSearchUsageContext {
+  tenantId: string
+  userId: string
+  sessionId?: string
+  taskId?: string
+  langfuseTraceId?: string
+}
+
+/**
  * Web search options
  */
 export interface WebSearchOptions {
   strictDomainFilter?: boolean // Default: true, filter results to domain from URL
   allowDomainExpansion?: boolean // Default: false, if true, retry without filter if results poor
+  /** Optional: for cost tracking when generating search summary via LLM */
+  usageContext?: WebSearchUsageContext
 }
 
 /**
@@ -95,9 +109,13 @@ export async function performWebSearch(
 async function performTavilySearch(
   refinedQuery: string,
   url: string,
-  options?: { strictDomainFilter?: boolean; allowDomainExpansion?: boolean }
+  options?: {
+    strictDomainFilter?: boolean
+    allowDomainExpansion?: boolean
+    usageContext?: WebSearchUsageContext
+  }
 ): Promise<WebSearchResult | null> {
-  const { strictDomainFilter = true, allowDomainExpansion = false } = options || {}
+  const { strictDomainFilter = true, allowDomainExpansion = false, usageContext } = options || {}
   const tavilyApiKey = process.env.TAVILY_API_KEY
 
   if (!tavilyApiKey) {
@@ -107,14 +125,14 @@ async function performTavilySearch(
 
   try {
     // First attempt: with domain filter if enabled
-    let result = await performTavilyAPI(refinedQuery, url, tavilyApiKey, strictDomainFilter)
+    let result = await performTavilyAPI(refinedQuery, url, tavilyApiKey, strictDomainFilter, usageContext)
 
     // If domain expansion is allowed and we got poor results, retry without filter
     if (allowDomainExpansion && strictDomainFilter && result && result.results.length < 3) {
       console.log(
         `[Web Search] Few results with domain filter (${result.results.length}), retrying without filter`
       )
-      const expandedResult = await performTavilyAPI(refinedQuery, url, tavilyApiKey, false)
+      const expandedResult = await performTavilyAPI(refinedQuery, url, tavilyApiKey, false, usageContext)
       if (expandedResult && expandedResult.results.length > result.results.length) {
         console.log(
           `[Web Search] Expanded search found ${expandedResult.results.length} results (vs ${result.results.length} with filter)`
@@ -142,13 +160,15 @@ async function performTavilySearch(
  * @param url - Current page URL (for context and domain restriction)
  * @param apiKey - Tavily API key
  * @param strictDomainFilter - Whether to filter results to the domain from URL (default: true)
+ * @param usageContext - Optional context for cost tracking when generating LLM summary
  * @returns Search results with relevant information, or null if search failed
  */
 async function performTavilyAPI(
   refinedQuery: string,
   url: string,
   apiKey: string,
-  strictDomainFilter: boolean = true
+  strictDomainFilter: boolean = true,
+  usageContext?: WebSearchUsageContext
 ): Promise<WebSearchResult | null> {
   try {
     // Extract domain from URL for restriction (if enabled)
@@ -223,7 +243,7 @@ async function performTavilyAPI(
     // Use Tavily's AI-generated answer if available, otherwise generate summary
     const summary = data.answer
       ? data.answer
-      : await generateSearchSummary(refinedQuery, results)
+      : await generateSearchSummary(refinedQuery, results, usageContext)
 
     const domainInfo = strictDomainFilter && baseDomain ? ` for domain: ${baseDomain}` : ""
     console.log(`[Web Search] Found ${results.length} results${domainInfo}`)
@@ -263,51 +283,59 @@ async function performTavilyAPI(
  *
  * @param query - Original user query
  * @param results - Search results to summarize
+ * @param usageContext - Optional context for cost tracking
  * @returns LLM-generated summary
  */
 async function generateSearchSummary(
   query: string,
-  results: Array<{ title: string; url: string; snippet: string }>
+  results: Array<{ title: string; url: string; snippet: string }>,
+  usageContext?: WebSearchUsageContext
 ): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
 
   if (!apiKey) {
-    // If OpenAI API key is not configured, return a simple summary
     return `Found ${results.length} relevant results about how to complete this task.`
   }
 
   try {
-    const openai = new OpenAI({
-      apiKey,
-    })
-
     const resultsText = results
       .map((r, i) => `${i + 1}. ${r.title}\n   ${r.snippet}\n   ${r.url}`)
       .join("\n\n")
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Use lightweight model for summary
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a helpful assistant that summarizes web search results to help understand how to complete a task.",
-        },
-        {
-          role: "user",
-          content: `User wants to: ${query}
+    const systemPrompt =
+      "You are a helpful assistant that summarizes web search results to help understand how to complete a task."
+    const userPrompt = `User wants to: ${query}
 
 I found these search results:
 ${resultsText}
 
-Provide a concise summary (2-3 sentences) of the key information from these results that will help complete the task. Focus on actionable steps and important details.`,
-        },
-      ],
+Provide a concise summary (2-3 sentences) of the key information from these results that will help complete the task. Focus on actionable steps and important details.`
+
+    const result = await generateWithGemini(systemPrompt, userPrompt, {
       temperature: 0.7,
-      max_tokens: 300,
+      maxOutputTokens: 300,
+      thinkingLevel: "low",
     })
 
-    const summary = response.choices[0]?.message?.content?.trim()
+    if (usageContext && result?.promptTokens != null) {
+      recordUsage({
+        tenantId: usageContext.tenantId,
+        userId: usageContext.userId,
+        sessionId: usageContext.sessionId,
+        taskId: usageContext.taskId,
+        langfuseTraceId: usageContext.langfuseTraceId,
+        provider: "google",
+        model: DEFAULT_GEMINI_MODEL,
+        actionType: "MULTI_SOURCE_SYNTHESIS",
+        inputTokens: result.promptTokens ?? 0,
+        outputTokens: result.completionTokens ?? 0,
+        metadata: { operation: "web_search_summary", query },
+      }).catch((err: unknown) => {
+        console.error("[WebSearch] Cost tracking error:", err)
+      })
+    }
+
+    const summary = result?.content?.trim()
 
     return summary || `Found ${results.length} relevant results about how to complete this task.`
   } catch (error: unknown) {

@@ -12,7 +12,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { callActionLLM } from "@/lib/agent/llm-client"
-import { buildActionPrompt, parseActionResponse } from "@/lib/agent/prompt-builder"
+import { buildActionPrompt } from "@/lib/agent/prompt-builder"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
 
@@ -74,23 +74,13 @@ export async function directActionNode(
       }
     }
 
-    // Parse response (llmResponse.thought contains the raw LLM output)
-    const parsedResponse = parseActionResponse(llmResponse.thought)
-
-    if (!parsedResponse) {
-      log.error("Failed to parse LLM response")
-      return {
-        error: "Failed to parse LLM response",
-        status: "failed",
-      }
-    }
-
-    log.info(`Generated action: ${parsedResponse.action} (${llmDuration}ms)`)
+    // callActionLLM returns structured output (thought, action) from Gemini JSON schema
+    log.info(`Generated action: ${llmResponse.action} (${llmDuration}ms)`)
 
     return {
       actionResult: {
-        thought: parsedResponse.thought,
-        action: parsedResponse.action,
+        thought: llmResponse.thought,
+        action: llmResponse.action,
       },
       llmUsage: llmResponse.usage,
       llmDuration,
