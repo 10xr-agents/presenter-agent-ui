@@ -54,22 +54,25 @@ const response = await ai.models.generateContent({
 
 **Reference:** [Structured outputs](https://ai.google.dev/gemini-api/docs/structured-output).
 
-**Structured output status by component (verification):**
+**Structured output status (all single-turn LLM calls):** Every `generateWithGemini` call that expects a JSON-shaped response uses `responseJsonSchema`. We use the safe parser `parseStructuredResponse<T>()` from `lib/llm/parse-structured-response.ts` instead of raw `JSON.parse()` to handle edge cases (see [Structured Output Edge Cases](#structured-output-edge-cases) below).
 
-| Purpose (from Models table) | File(s) | Structured output? | Notes |
-|-----------------------------|---------|--------------------|-------|
-| General / actions | `lib/agent/llm-client.ts` | ✅ Yes | `ACTION_RESPONSE_SCHEMA` |
-| Verification | `lib/agent/verification/semantic-verification.ts` | ✅ Yes | `VERIFICATION_RESPONSE_SCHEMA` (observation + full-DOM) |
-| Planning | `lib/agent/planning-engine.ts` | ❌ No | Parses `<Step>`, `<Description>`, etc. |
-| Step refinement | `lib/agent/step-refinement-engine.ts` | ❌ No | Parses thought/action or tool from text |
-| Replanning | `lib/agent/replanning-engine.ts` | ❌ No | Parses validation result from text |
-| Critic | `lib/agent/critic-engine.ts` | ❌ No | Parses `<Approved>`, `<Reason>`, etc. |
-| Self-correction | `lib/agent/self-correction-engine.ts` | ❌ No | Parses correction from text |
-| Outcome prediction | `lib/agent/outcome-prediction-engine.ts` | ❌ No | Parses `<Description>`, DOM changes from text |
-| Reasoning / context | `lib/agent/reasoning-engine.ts`, `context-analyzer.ts`, `search-manager.ts` | ❌ No | Various text/JSON parsing |
-| Contingency planning | `lib/agent/conditional-planning.ts` | ❌ No | Parses contingency from text |
-| Hierarchical plan | `lib/agent/hierarchical-planning.ts` | ❌ No | Parses sub-tasks from text |
-| Web search synthesis | `lib/agent/web-search.ts` | ❌ No | Free-form synthesis text |
+| Purpose (from Models table) | File(s) | Schema | Notes |
+|-----------------------------|---------|--------|-------|
+| General / actions | `lib/agent/llm-client.ts` | ✅ `ACTION_RESPONSE_SCHEMA` | thought, action |
+| Verification | `lib/agent/verification/semantic-verification.ts` | ✅ `VERIFICATION_RESPONSE_SCHEMA` | observation + full-DOM |
+| Planning | `lib/agent/planning-engine.ts` | ✅ `PLANNING_RESPONSE_SCHEMA` | steps[] |
+| Step refinement | `lib/agent/step-refinement-engine.ts` | ✅ `STEP_REFINEMENT_SCHEMA` | toolName, toolType, parameters, action |
+| Replanning | `lib/agent/replanning-engine.ts` | ✅ `PLAN_VALIDATOR_SCHEMA` | valid, reason, suggestedChanges?, needsFullReplan? |
+| Critic | `lib/agent/critic-engine.ts` | ✅ `CRITIC_RESPONSE_SCHEMA` | approved, confidence, reason?, suggestion? |
+| Self-correction | `lib/agent/self-correction-engine.ts` | ✅ `SELF_CORRECTION_SCHEMA` | strategy, reason, correctedAction, correctedDescription? |
+| Outcome prediction | `lib/agent/outcome-prediction-engine.ts` | ✅ `OUTCOME_PREDICTION_SCHEMA` | description, domChanges?, nextGoal? |
+| Reasoning (task context) | `lib/agent/reasoning-engine.ts` | ✅ `TASK_CONTEXT_ANALYSIS_SCHEMA` | hasSufficientContext, missingFields, needsWebSearch, searchQuery, reasoning |
+| Reasoning (completeness) | `lib/agent/reasoning-engine.ts` | ✅ `INFORMATION_COMPLETENESS_SCHEMA` | canProceed, missingInformation, userQuestion, reasoning |
+| Context analyzer | `lib/agent/reasoning/context-analyzer.ts` | ✅ `CONTEXT_ANALYSIS_SCHEMA` | source, requiredSources, missingInfo, searchQuery, reasoning, confidence |
+| Search manager | `lib/agent/reasoning/search-manager.ts` | ✅ `SEARCH_EVALUATION_SCHEMA` | solved, refinedQuery?, shouldRetry, shouldAskUser, reasoning, confidence |
+| Contingency planning | `lib/agent/conditional-planning.ts` | ✅ `CONTINGENCY_RESPONSE_SCHEMA` | contingencies[] |
+| Hierarchical plan | `lib/agent/hierarchical-planning.ts` | ✅ `HIERARCHICAL_SUBTASKS_SCHEMA` | subTasks[] |
+| Web search synthesis | `lib/agent/web-search.ts` | ✅ `WEB_SEARCH_SUMMARY_SCHEMA` | summary |
 | Agent API (chat) | `lib/ai/agent-runner.ts` | N/A | Multi-turn; uses `generateContent` directly, not single JSON response |
 
 **Grounding with Google Search:** For planning and verification we pass `useGoogleSearchGrounding: true`, which adds `tools: [{ googleSearch: {} }]` to the config. The model can then search the web when it improves the answer (e.g. current procedures, factual checks). Responses may include `groundingMetadata` (webSearchQueries, groundingChunks, groundingSupports) for citations. Billing: per search query when the tool is used (see [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)). Reference: [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search).
@@ -202,6 +205,113 @@ MongoDB remains the source of truth for billing and per-session/task usage; Lang
 
 - **Gemini client:** `lib/llm/gemini-client.ts` catches errors, reports them to **Sentry** (with tags such as `component: "gemini-client"`, `model`), and rethrows. Empty or invalid responses are also reported.
 - **Observability:** LLM traces and scores are sent to **LangFuse** when enabled; Sentry remains the primary tool for errors and performance. See `docs/INTERACT_FLOW_WALKTHROUGH.md` (Phase 1 Task 2 & 3) for details.
+
+---
+
+## Structured Output Edge Cases
+
+Even though Gemini's structured output (`responseMimeType: "application/json"` + `responseJsonSchema`) **guarantees syntactically valid JSON**, there are documented edge cases where parsing can fail or require sanitization:
+
+### Why Parsing is Still Needed
+
+The Gemini SDK returns `response.text` as a **string**, not a parsed JavaScript object. Even the official Gemini documentation shows:
+
+```javascript
+// From Gemini docs - JSON.parse is required even with structured output
+const recipe = recipeSchema.parse(JSON.parse(response.text));
+```
+
+Structured output guarantees the string will be **valid JSON matching your schema**, but it's still a string that must be parsed.
+
+### Known Edge Cases
+
+| Issue | Description | Frequency |
+|-------|-------------|-----------|
+| **Invisible characters** | BOM (Byte Order Mark), zero-width spaces, zero-width joiners | Rare |
+| **Markdown fences** | Response wrapped in ` ```json ... ``` ` despite structured output | Very rare |
+| **Truncation** | Response cut off when `maxOutputTokens` is exceeded; unbalanced braces | Occasional |
+| **Grounding artifacts** | Extra content when `useGoogleSearchGrounding` is enabled | Very rare |
+| **Encoding issues** | Character encoding mismatches from certain prompts | Very rare |
+
+### Safe Parser: `parseStructuredResponse<T>()`
+
+**Location:** `lib/llm/parse-structured-response.ts`
+
+Instead of raw `JSON.parse()`, use the safe parser which handles all known edge cases:
+
+```typescript
+import { parseStructuredResponse, isParseSuccess, getField } from "@/lib/llm/parse-structured-response"
+
+// After calling generateWithGemini with responseJsonSchema
+const result = parseStructuredResponse<MyResponseType>(content, {
+  generationName: "my_generation",
+  taskId: context?.taskId,
+  sessionId: context?.sessionId,
+  schemaName: "MY_RESPONSE_SCHEMA",
+})
+
+if (isParseSuccess(result)) {
+  // Access parsed data with type safety
+  const myField = getField(result.data, "myField", defaultValue)
+} else {
+  // Handle parse failure with diagnostics
+  log.warn(`Parse failed: ${result.error}`, result.diagnostics)
+  // result.diagnostics.issueType tells you what went wrong:
+  // "empty_content" | "markdown_wrapped" | "invisible_chars" | "truncated_json" | "invalid_json"
+}
+```
+
+### What the Safe Parser Does
+
+1. **Strips invisible characters**: BOM, zero-width spaces, zero-width joiners, soft hyphens
+2. **Removes markdown fences**: Handles ` ```json ``` ` and ` ``` ``` ` wrapping
+3. **Detects truncation**: Checks for unbalanced braces/brackets
+4. **Attempts repair**: For truncated JSON, tries to close open structures
+5. **Reports diagnostics**: Logs and reports to Sentry with detailed context when parsing fails
+6. **Provides fallback info**: Returns the raw content and issue type for graceful degradation
+
+### When to Use
+
+| Scenario | Use Safe Parser? |
+|----------|-----------------|
+| Any `generateWithGemini` call with `responseJsonSchema` | **Yes** |
+| Agent API multi-turn responses (function calling) | No (different format) |
+| Raw text responses (no JSON expected) | No |
+
+### Migration
+
+Replace this pattern:
+
+```typescript
+// ❌ Old pattern - fails silently on edge cases
+try {
+  const parsed = JSON.parse(content)
+  // use parsed...
+} catch {
+  return { success: false, confidence: 0.3, reason: content.substring(0, 200) }
+}
+```
+
+With:
+
+```typescript
+// ✅ New pattern - handles edge cases with diagnostics
+const result = parseStructuredResponse<MyType>(content, { generationName: "...", schemaName: "..." })
+if (isParseSuccess(result)) {
+  // use result.data...
+} else {
+  log.warn(`Parse failed: ${result.error}`, result.diagnostics)
+  return { success: false, confidence: 0.3, reason: `Parse error (${result.diagnostics.issueType})` }
+}
+```
+
+### Files Using Safe Parser
+
+| File | Schema | Notes |
+|------|--------|-------|
+| `lib/agent/verification/semantic-verification.ts` | `VERIFICATION_RESPONSE_SCHEMA` | Full-DOM and observation-based verification |
+
+**TODO:** Migrate remaining engines to use `parseStructuredResponse` for consistency.
 
 ---
 

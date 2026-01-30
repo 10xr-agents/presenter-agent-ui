@@ -26,6 +26,7 @@ export type LLMActionType =
   | "PLAN_VALIDATION" // Phase 3 Task 2: Re-planning validation
   | "REFINEMENT"
   | "VERIFICATION"
+  | "VERIFICATION_LIGHTWEIGHT" // Phase 5: Tier 2 lightweight verification
   | "CONTEXT_ANALYSIS"
   | "SELF_CORRECTION"
   | "ACTION_GENERATION"

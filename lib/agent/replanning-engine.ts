@@ -13,6 +13,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { PLAN_VALIDATOR_SCHEMA } from "@/lib/llm/response-schemas"
 import { type DomSimilarityResult, shouldTriggerReplanning } from "./dom-similarity"
 
 /**
@@ -212,6 +213,7 @@ Can these remaining steps still be executed on the current page?`
       temperature: 0.3,
       maxOutputTokens: 500,
       thinkingLevel: "high",
+      responseJsonSchema: PLAN_VALIDATOR_SCHEMA,
       generationName: "plan_validation",
       sessionId: context?.sessionId,
       userId: context?.userId,

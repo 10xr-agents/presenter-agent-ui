@@ -1,12 +1,21 @@
 /**
  * Verification Engine — entry point for observation-based and prediction-based verification.
+ *
+ * Phase 5: Tiered verification for token efficiency:
+ * - Tier 1 (Deterministic): Zero LLM tokens for unambiguous outcomes
+ * - Tier 2 (Lightweight): ~100 tokens for simple final steps
+ * - Tier 3 (Full LLM): Current implementation for complex cases
+ *
  * @see docs/VERIFICATION_PROCESS.md
  */
 
+import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
+import type { TaskPlan } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import { computeDomHash, hasSignificantUrlChange } from "@/lib/utils/dom-helpers"
 import { logger } from "@/lib/utils/logger"
-import { classifyActionType } from "./action-type"
+import { classifyActionType, type ActionType } from "./action-type"
+import type { ComplexityLevel } from "./graph/types"
 import {
   type BeforeState,
   buildObservationList,
@@ -22,6 +31,10 @@ import {
   type SemanticVerificationResult,
   type VerificationContext,
   type VerificationResult,
+  type VerificationTier,
+  runTieredVerification,
+  computeIsLastStep,
+  estimateTokensSaved,
 } from "./verification"
 
 // Re-export types and entry points for backward compatibility
@@ -33,7 +46,11 @@ export type {
   DOMCheckResults,
   NextGoalCheckResult,
   VerificationResult,
+  VerificationTier,
 } from "./verification"
+
+// Re-export tiered verification helpers
+export { computeIsLastStep } from "./verification"
 
 /** Minimum confidence for goal achieved when task_completed is true (Task 2: low-confidence completion band). */
 const GOAL_ACHIEVED_MIN_CONFIDENCE = 0.7
@@ -55,9 +72,33 @@ export function computeGoalAchieved(
 }
 
 /**
+ * Phase 5: Extended options for tiered verification
+ */
+export interface TieredVerificationExtras {
+  /** Action type classification (navigation, dropdown, generic) */
+  actionType?: ActionType
+  /** Task complexity classification */
+  complexity?: ComplexityLevel
+  /** Current task plan */
+  plan?: TaskPlan
+  /** Hierarchical plan if active */
+  hierarchicalPlan?: HierarchicalPlan
+  /** Expected outcome from planner */
+  expectedOutcome?: ExpectedOutcome
+  /** Look-ahead check result for next step element */
+  nextGoalCheck?: { available: boolean; reason: string; required: boolean }
+}
+
+/**
  * Observation-Based Verification (v3.0): Verify using before/after state comparison.
  * If no changes were observed (URL same, DOM hash same, no client observations), we fail without calling LLM.
+ *
  * Phase 4 Task 9: When subTaskObjective is provided (hierarchical), also evaluates sub_task_completed.
+ *
+ * Phase 5: Tiered verification for token efficiency:
+ * - Tier 1 (Deterministic): Zero LLM tokens for unambiguous outcomes
+ * - Tier 2 (Lightweight): ~100 tokens for simple final steps
+ * - Tier 3 (Full LLM): Current implementation for complex cases
  */
 export async function verifyActionWithObservations(
   beforeState: BeforeState,
@@ -67,7 +108,8 @@ export async function verifyActionWithObservations(
   userGoal: string,
   clientObservations: ClientObservations | undefined,
   context?: VerificationContext,
-  subTaskObjective?: string
+  subTaskObjective?: string,
+  tieredExtras?: TieredVerificationExtras
 ): Promise<VerificationResult> {
   const log = logger.child({
     process: "Verification",
@@ -93,9 +135,11 @@ export async function verifyActionWithObservations(
     clientObservations?.didUrlChange === true
 
   const somethingChanged = urlChanged || meaningfulContentChange || clientSawSomething
+  const actualState = extractActualState(currentDom, currentUrl)
+
+  // Gate 0: No changes detected — fail without LLM
   if (!somethingChanged) {
-    log.info("[Observation] No changes detected — failing without LLM")
-    const actualState = extractActualState(currentDom, currentUrl)
+    log.info("[Observation] No changes detected — failing without LLM (Gate 0)")
     return {
       success: false,
       confidence: 0.2,
@@ -103,11 +147,95 @@ export async function verifyActionWithObservations(
       expectedState: { description: userGoal },
       actualState,
       comparison: { semanticMatch: false, overallMatch: false },
+      verificationTier: "deterministic",
     }
   }
+
   if (clientSawSomething && !urlChanged && !meaningfulContentChange) {
-    log.info("[Observation] Client witness override: proceeding with LLM (extension reported change)")
+    log.info("[Observation] Client witness override: proceeding with verification (extension reported change)")
   }
+
+  // Phase 5: Compute action type if not provided
+  const actionType = tieredExtras?.actionType ?? classifyActionType(action, currentDom)
+  
+  // Phase 5: Compute isLastStep with hierarchical awareness
+  const isLastStep = computeIsLastStep(tieredExtras?.plan, tieredExtras?.hierarchicalPlan)
+  
+  // Phase 5: Default complexity to COMPLEX if not provided (conservative)
+  const complexity = tieredExtras?.complexity ?? "COMPLEX"
+
+  // Phase 5: Try tiered verification (Tier 1 → Tier 2)
+  const tieredResult = await runTieredVerification({
+    beforeUrl: beforeState.url,
+    afterUrl: currentUrl,
+    action,
+    actionType,
+    isLastStep,
+    meaningfulContentChange,
+    complexity,
+    nextGoalCheck: tieredExtras?.nextGoalCheck,
+    plan: tieredExtras?.plan,
+    hierarchicalPlan: tieredExtras?.hierarchicalPlan,
+    expectedOutcome: tieredExtras?.expectedOutcome,
+    userGoal,
+    observations,
+    context,
+  })
+
+  // If tiered verification returned a result, use it
+  if (tieredResult !== null) {
+    const { action_succeeded, task_completed, confidence, reason, tier } = tieredResult
+
+    // Route to next action when this action did something useful and confidence is sufficient.
+    const success = action_succeeded && confidence >= 0.7
+
+    // Compute goalAchieved
+    const { goalAchieved, lowConfidenceCompletion } = computeGoalAchieved(task_completed, confidence)
+    if (lowConfidenceCompletion) {
+      log.info(
+        `[Tier ${tier}] Low confidence completion: task_completed=true, confidence=${confidence.toFixed(2)} (in [0.70, 0.85)); setting goalAchieved=true for single finish.`
+      )
+    }
+
+    const tokensSaved = estimateTokensSaved(tier)
+    log.info(
+      `[Tier ${tier}] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, action_succeeded=${action_succeeded}, task_completed=${task_completed}, goalAchieved=${goalAchieved}, tokensSaved=${tokensSaved}`
+    )
+
+    const reasonParts = [
+      ...observations,
+      `Tier ${tier} verdict: ${reason}`,
+      `Confidence: ${(confidence * 100).toFixed(1)}%`,
+      `action_succeeded: ${action_succeeded}`,
+      `task_completed: ${task_completed}`,
+    ]
+
+    const result: VerificationResult = {
+      success,
+      confidence,
+      reason: reasonParts.join(" | "),
+      expectedState: { description: userGoal },
+      actualState,
+      comparison: { semanticMatch: task_completed, overallMatch: success },
+      goalAchieved,
+      action_succeeded,
+      task_completed,
+      semanticSummary: reason.substring(0, 300).trim() || undefined,
+      verificationTier: tier,
+      tokensSaved,
+      routeToCorrection: "routeToCorrection" in tieredResult ? tieredResult.routeToCorrection : undefined,
+    }
+
+    if (subTaskObjective != null) {
+      // For tiered verification, sub_task_completed follows task_completed for sub-tasks
+      result.sub_task_completed = task_completed
+    }
+
+    return result
+  }
+
+  // Tier 3: Full LLM verification (fallback)
+  log.info("[Tier full] Running full LLM verification")
 
   const semanticResult = await performSemanticVerificationOnObservations(
     userGoal,
@@ -122,7 +250,6 @@ export async function verifyActionWithObservations(
   const task_completed = semanticResult.task_completed
   // Route to next action when this action did something useful and confidence is sufficient.
   const success = action_succeeded && confidence >= 0.7
-  const actualState = extractActualState(currentDom, currentUrl)
   const reasonParts = [
     ...observations,
     `Semantic verdict: ${semanticResult.reason}`,
@@ -135,11 +262,11 @@ export async function verifyActionWithObservations(
   const { goalAchieved, lowConfidenceCompletion } = computeGoalAchieved(task_completed, confidence)
   if (lowConfidenceCompletion) {
     log.info(
-      `[Observation] Low confidence completion: task_completed=true, confidence=${confidence.toFixed(2)} (in [0.70, 0.85)); setting goalAchieved=true for single finish.`
+      `[Tier full] Low confidence completion: task_completed=true, confidence=${confidence.toFixed(2)} (in [0.70, 0.85)); setting goalAchieved=true for single finish.`
     )
   }
   log.info(
-    `[Observation] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, action_succeeded=${action_succeeded}, task_completed=${task_completed}, goalAchieved=${goalAchieved}, ${semanticResult.reason}`
+    `[Tier full] ${success ? "SUCCESS" : "FAILED"}: confidence=${confidence.toFixed(2)}, action_succeeded=${action_succeeded}, task_completed=${task_completed}, goalAchieved=${goalAchieved}, ${semanticResult.reason}`
   )
 
   const semanticSummary =
@@ -156,6 +283,8 @@ export async function verifyActionWithObservations(
     action_succeeded,
     task_completed,
     semanticSummary,
+    verificationTier: "full",
+    tokensSaved: 0,
   }
   if (subTaskObjective != null && semanticResult.sub_task_completed !== undefined) {
     result.sub_task_completed = semanticResult.sub_task_completed

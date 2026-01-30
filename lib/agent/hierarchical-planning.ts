@@ -27,6 +27,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { HIERARCHICAL_SUBTASKS_SCHEMA } from "@/lib/llm/response-schemas"
 
 /**
  * Internal Plan type that extends TaskPlan for consistency
@@ -243,6 +244,7 @@ Respond with JSON:
       temperature: 0.4,
       maxOutputTokens: 2000,
       thinkingLevel: "high",
+      responseJsonSchema: HIERARCHICAL_SUBTASKS_SCHEMA,
       generationName: "hierarchical_decomposition",
       sessionId: context.sessionId,
       userId: context.userId,

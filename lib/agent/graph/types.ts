@@ -81,6 +81,11 @@ export interface ActionResult {
 }
 
 /**
+ * Phase 5: Verification tier used (for observability and cost tracking).
+ */
+export type VerificationTier = "deterministic" | "lightweight" | "full"
+
+/**
  * Verification result.
  * goalAchieved is set when semantic LLM returns task_completed=true with confidence >= 0.85.
  * success is set when action_succeeded=true and confidence >= 0.7 (route to next action vs correction).
@@ -103,6 +108,12 @@ export interface VerificationResult {
   sub_task_completed?: boolean
   /** Short semantic summary for display; set by engine. */
   semanticSummary?: string
+  /** Phase 5: Which verification tier was used. */
+  verificationTier?: VerificationTier
+  /** Phase 5: Estimated tokens saved by using tiered verification. */
+  tokensSaved?: number
+  /** Phase 5: When true, bypass Tier 2/3 and route directly to Correction (hard failures). */
+  routeToCorrection?: boolean
 }
 
 /**
@@ -211,6 +222,8 @@ export interface InteractGraphState {
 
   // Previous actions history
   previousActions: PreviousAction[]
+  /** When previousActions were trimmed (rolling context), summary of earlier steps. */
+  previousActionsSummary?: string
   previousMessages: Array<{
     role: "user" | "assistant"
     content: string
@@ -246,6 +259,8 @@ export interface InteractGraphState {
   correctionResult?: CorrectionResult
   correctionAttempts: number
   consecutiveFailures: number
+  /** Semantic loop prevention: consecutive successful verifications without task_completed (goal not achieved). When >= threshold, route to finalize. */
+  consecutiveSuccessWithoutTaskComplete: number
 
   // Phase 3 Task 2: Re-planning
   previousDom?: string // DOM from previous request (for similarity comparison)

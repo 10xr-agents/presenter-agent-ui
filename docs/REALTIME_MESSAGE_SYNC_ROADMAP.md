@@ -1,11 +1,13 @@
 # Real-Time Message Sync Roadmap (WebSocket Push-Based Retrieval)
 
-**Document Version:** 1.10  
-**Last Updated:** January 28, 2026  
+**Document Version:** 1.11  
+**Last Updated:** January 30, 2026  
 **Status:** Backend and client integration complete (Sockudo/Pusher); Manual QA pending  
 **Purpose:** Roadmap for migrating from poll-based to push-based message retrieval using Pusher/Sockudo
 
 **Sync with backend:** The backend repo may keep a separate copy of this roadmap (e.g. v1.5, "client integration pending"). **This doc is the extension-side source of truth:** client implementation is complete (Pusher transport, connection reuse, auth); backend is **Sockudo** on port **3005**, main server (Next.js) on **3000**; auth flow and 403 troubleshooting are in §11.11.
+
+**Changelog (1.11):** **Chat UI Contract reference.** Added reference to SPECS_AND_CONTRACTS.md §3.5 in §11.11 Server events table. Emphasized that `new_message` payload **must** include `role` for Chat UI alignment (user messages right/blue, agent messages left/gray).
 
 **Changelog (1.10):** **Aligned with backend Sockudo naming.** Purpose and status now say Sockudo (not Soketi). §11.11 table: added backend env names `SOCKUDO_APP_ID`, `SOCKUDO_APP_KEY`, `SOCKUDO_APP_SECRET`, `SOCKUDO_HOST`, `SOCKUDO_PORT`. Added **Sync with backend** note above (backend may have its own roadmap copy; this doc = extension source of truth).
 
@@ -1730,7 +1732,7 @@ The backend has **one** real-time implementation: **Sockudo** (Pusher-compatible
 | **Channels** | One **private** channel per session: `private-session-<sessionId>`. Subscription requires auth. |
 | **Authentication** | **POST /api/pusher/auth** is called on the **main server (3000)**. Client sends **form data**: `socket_id`, `channel_name`, and **Authorization: Bearer &lt;token&gt;** (header). Server validates token, verifies user can subscribe to that session, returns signed auth. See **How the main server gets the subscription auth** below. |
 | **Client SDK** | Extension uses **pusher-js**. Configure: `key`, `wsHost`, `wsPort: 3005`, `authEndpoint` = main server base + `/api/pusher/auth` (e.g. `http://localhost:3000/api/pusher/auth`). |
-| **Server events (triggered by main server)** | **`new_message`** — when a user message is persisted (e.g. POST /api/agent/interact). Payload: `{ type: "new_message", sessionId, message }` where `message` has `messageId`, `role`, `content`, `sequenceNumber`, `timestamp`, etc. **`interact_response`** — when an assistant turn is returned (same interact call). Payload: `{ type: "interact_response", sessionId, data }` with `taskId`, `action`, `thought`, `status`, etc. |
+| **Server events (triggered by main server)** | **`new_message`** — when a user message is persisted (e.g. POST /api/agent/interact). Payload: `{ type: "new_message", sessionId, message }` where `message` **must** include `role: 'user' \| 'assistant' \| 'system'` (required for Chat UI alignment), `messageId`, `content`, `sequenceNumber`, `timestamp`, etc. **`interact_response`** — when an assistant turn is returned (same interact call). Payload: `{ type: "interact_response", sessionId, data }` with `taskId`, `action`, `thought`, `status`, etc. See **[SPECS_AND_CONTRACTS.md §3.5](./SPECS_AND_CONTRACTS.md#35-websocket--push-pushersockudo)** for full Chat UI contract. |
 | **Heartbeat** | Sockudo/Pusher handles connection keepalive. No separate PING/PONG in application protocol. |
 | **Env (server)** | **Sockudo:** `SOCKUDO_APP_ID`, `SOCKUDO_APP_KEY`, `SOCKUDO_APP_SECRET`, `SOCKUDO_HOST` (e.g. `127.0.0.1`), `SOCKUDO_PORT` (3005). Main server uses same app key/secret to sign channel auth. |
 | **Env (client)** | `WEBPACK_PUSHER_KEY`, `WEBPACK_PUSHER_WS_HOST`, `WEBPACK_PUSHER_WS_PORT` (3005), `WEBPACK_API_BASE` (main server, e.g. `http://localhost:3000`). |

@@ -26,51 +26,60 @@ export async function saveGraphResults(
   if (result.actionResult && userId) {
     const stepIndex = result.currentStepIndex
     const log = logger.child({ process: "RouteIntegration", sessionId, taskId })
-    log.info(
-      `saveGraphResults: creating TaskAction taskId=${taskId}, stepIndex=${stepIndex}, action=${result.actionResult.action}, urlAtAction=${url}`
-    )
+    const action = result.actionResult.action
+    const isFinish = action.startsWith("finish(")
 
-    let beforeState:
-      | { url: string; domHash: string; activeElement?: string; semanticSkeleton?: Record<string, unknown> }
-      | undefined
-    if (url && dom) {
-      const { computeDomHash } = await import("@/lib/utils/dom-helpers")
-      const { extractSemanticSkeleton } = await import("@/lib/agent/observation/diff-engine")
-      beforeState = {
-        url,
-        domHash: computeDomHash(dom),
+    // finish() is a sentinel meaning "task completed" — no new step. Only persist real actions (click, setValue, etc.).
+    if (isFinish) {
+      log.info(
+        `saveGraphResults: task completed (finish) — no new TaskAction; existing step(s) represent the only action(s)`
+      )
+    } else {
+      log.info(
+        `saveGraphResults: creating TaskAction taskId=${taskId}, stepIndex=${stepIndex}, action=${action}, urlAtAction=${url}`
+      )
+
+      let beforeState:
+        | { url: string; domHash: string; activeElement?: string; semanticSkeleton?: Record<string, unknown> }
+        | undefined
+      if (url && dom) {
+        const { computeDomHash } = await import("@/lib/utils/dom-helpers")
+        const { extractSemanticSkeleton } = await import("@/lib/agent/observation/diff-engine")
+        beforeState = {
+          url,
+          domHash: computeDomHash(dom),
+        }
+        try {
+          const skeleton = extractSemanticSkeleton(dom)
+          beforeState.semanticSkeleton = skeleton as Record<string, unknown>
+        } catch (err: unknown) {
+          logger.child({ process: "RouteIntegration", taskId }).warn("extractSemanticSkeleton failed", {
+            err: err instanceof Error ? err.message : String(err),
+          })
+        }
       }
+
       try {
-        const skeleton = extractSemanticSkeleton(dom)
-        beforeState.semanticSkeleton = skeleton as Record<string, unknown>
+        await (TaskAction as any).create({
+          tenantId,
+          taskId,
+          userId,
+          stepIndex,
+          thought: result.actionResult.thought || "",
+          action,
+          expectedOutcome: result.expectedOutcome ?? undefined,
+          urlAtAction: url,
+          beforeState,
+          metrics: result.llmDuration
+            ? { requestDuration: 0, llmDuration: result.llmDuration, tokenUsage: result.llmUsage }
+            : undefined,
+        })
       } catch (err: unknown) {
-        logger.child({ process: "RouteIntegration", taskId }).warn("extractSemanticSkeleton failed", {
-          err: err instanceof Error ? err.message : String(err),
+        log.error(`saveGraphResults: TaskAction.create failed for taskId=${taskId}`, err)
+        Sentry.captureException(err, {
+          extra: { taskId, stepIndex, action, tenantId },
         })
       }
-    }
-
-    try {
-      await (TaskAction as any).create({
-        tenantId,
-        taskId,
-        userId,
-        stepIndex,
-        thought: result.actionResult.thought || "",
-        action: result.actionResult.action,
-        expectedOutcome: result.expectedOutcome ?? undefined,
-        urlAtAction: url,
-        beforeState,
-        metrics: result.llmDuration
-          ? { requestDuration: 0, llmDuration: result.llmDuration, tokenUsage: result.llmUsage }
-          : undefined,
-      })
-    } catch (err: unknown) {
-      const log = logger.child({ process: "RouteIntegration", sessionId, taskId })
-      log.error(`saveGraphResults: TaskAction.create failed for taskId=${taskId}`, err)
-      Sentry.captureException(err, {
-        extra: { taskId, stepIndex, action: result.actionResult.action, tenantId },
-      })
     }
   }
 
@@ -92,6 +101,16 @@ export async function saveGraphResults(
       .exec()
   }
 
+  // Persist terminal task status so the task record reflects completion or failure
+  if (result.status === "completed" || result.status === "failed") {
+    await (Task as any)
+      .findOneAndUpdate(
+        { taskId, tenantId },
+        { $set: { status: result.status } }
+      )
+      .exec()
+  }
+
   if (result.verificationResult) {
     await (VerificationRecord as any).create({
       tenantId,
@@ -107,11 +126,12 @@ export async function saveGraphResults(
     })
 
     if (result.verificationResult.success) {
+      const update: Record<string, unknown> = {
+        consecutiveFailures: 0,
+        consecutiveSuccessWithoutTaskComplete: result.consecutiveSuccessWithoutTaskComplete ?? 0,
+      }
       await (Task as any)
-        .findOneAndUpdate(
-          { taskId, tenantId },
-          { $set: { consecutiveFailures: 0 } }
-        )
+        .findOneAndUpdate({ taskId, tenantId }, { $set: update })
         .exec()
     }
   }

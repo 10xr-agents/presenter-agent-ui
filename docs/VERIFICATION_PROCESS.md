@@ -76,8 +76,15 @@ Tasks below are ordered by importance (1 = highest). Same status legend: ✅ = C
 | **5** | **Sub-task-level verification (when hierarchical in graph)** | ✅ Complete | 4.x | When hierarchicalPlan is present: verification engine accepts optional **subTaskObjective** (current sub-task objective); semantic verification returns **sub_task_completed**; verification node advances sub-task (completeSubTask) when sub_task_completed && confidence ≥ 0.7, fails sub-task when sub_task_completed === false && !success; goalAchieved when all sub-tasks complete (isHierarchicalPlanComplete). **Files:** `lib/agent/verification/types.ts` (sub_task_completed), `lib/agent/verification/semantic-verification.ts`, `lib/agent/verification-engine.ts`, `lib/agent/graph/nodes/verification.ts`, `lib/agent/hierarchical-planning.ts`. |
 | **6** | **Extension beforeDomHash (optional)** | 🔲 Planned | 3.x | Extension captures domHash (or skeleton) **immediately before** executing the action and sends in request; server compares client-before vs client-after to reduce state drift from tickers/ads. Protocol/extension change. **Files:** API schema, extension, verification engine (optional beforeDomHash in request). |
 | **7** | **Planner / step_refinement: pass verification outcome into context (optional)** | ✅ Complete | 3.0.4 | Pass `action_succeeded` and `task_completed` into planning and step_refinement so the prompt can say "Previous action succeeded; full goal not yet achieved." **Files:** `lib/agent/verification/types.ts` (VerificationSummary), `lib/agent/planning-engine.ts` (PlanningContext.verificationSummary), `lib/agent/step-refinement-engine.ts` (verificationSummary param), `lib/agent/graph/nodes/step-refinement.ts` (pass from state.verificationResult), `lib/agent/graph/nodes/replanning.ts` (pass verificationSummary to generatePlan). |
+| **8** | **Semantic loop prevention (velocity check)** | ✅ Complete | — | If the agent performs 5+ consecutive successful verifications without task_completed (e.g. paging through list forever), route to finalize with a reflection message. **Logic:** `consecutiveSuccessWithoutTaskComplete` incremented when verification success && !goalAchieved; reset when goalAchieved or verification failed. When >= 5, verification node sets error/status and router routes to finalize. **Files:** `lib/agent/graph/nodes/verification.ts`, `lib/agent/graph/types.ts`, `lib/models/task.ts`, `lib/agent/graph/route-integration/persistence.ts`. See INTERACT_FLOW_WALKTHROUGH.md § Logical improvements. |
+| **10** | **Tiered verification: Add isLastStep to context** | 🔲 Planned | 5.0 | Pass `plan.currentStepIndex` and `plan.steps.length` to verification; compute `isLastStep`. **Critical for Tier 1 optimization.** See "Phase 5: Tiered Verification Optimization" below. |
+| **11** | **Tiered verification: Tier 1 deterministic heuristics** | 🔲 Planned | 5.0 | Implement `tryDeterministicVerification()` for intermediate navigation/interaction success (0 tokens). |
+| **12** | **Tiered verification: Tier 2 lightweight LLM** | 🔲 Planned | 5.0 | Implement `performLightweightVerification()` with `thinkingLevel="low"`, no grounding (~100 tokens). |
+| **13** | **Tiered verification: Wire tiers into main flow** | 🔲 Planned | 5.0 | Update `verifyActionWithObservations()` to try Tier 1 → Tier 2 → Tier 3. |
+| **14** | **URL normalization utility** | 🔲 Planned | 5.0 | Use `URL` API for robust hostname/pathname comparison, `isCrossDomainNavigation()`. |
+| **15** | **Observability: tier attribution** | 🔲 Planned | 5.0 | Add `verificationTier` to result; log which tier was used for cost tracking. |
 
-**Progress (Verification + Planner):** Task 7 implemented. `VerificationSummary` type added; step-refinement and planning engines accept it and inject the continuation sentence into the LLM prompt when `action_succeeded === true` and `task_completed === false`. Step-refinement and replanning nodes pass summary from `state.verificationResult`. Tests: `lib/agent/__tests__/step-refinement-engine.test.ts`, `lib/agent/__tests__/planning-engine.test.ts`. See PLANNER_PROCESS.md Changelog.
+**Progress (Verification + Planner):** Task 7 implemented. `VerificationSummary` type added; step-refinement and planning engines accept it and inject the continuation sentence into the LLM prompt when `action_succeeded === true` and `task_completed === false`. Step-refinement and replanning nodes pass summary from `state.verificationResult`. Task 8 (velocity check) implemented: prevents semantic loops by failing the task with a reflection message after 5 steps without sub-goal completion. Tests: `lib/agent/__tests__/step-refinement-engine.test.ts`, `lib/agent/__tests__/planning-engine.test.ts`. See PLANNER_PROCESS.md Changelog.
 **Progress (Task 9 — Sub-task-level verification):** When hierarchicalPlan is present, verification node passes current sub-task objective (subTaskObjective) to verifyActionWithObservations. Semantic verification prompt and parser support sub_task_completed; engine returns sub_task_completed when subTaskObjective was provided. Verification node advances sub-task (completeSubTask with success: true) when sub_task_completed && confidence ≥ 0.7, fails sub-task (completeSubTask with success: false) when sub_task_completed === false && !success; goalAchieved set when all sub-tasks complete (isHierarchicalPlanComplete). Files: verification/types.ts, semantic-verification.ts, verification-engine.ts, graph/nodes/verification.ts.
 
 ---
@@ -97,8 +104,717 @@ Verification and planner are **dependent**: verification produces outcomes that 
 | **7** | Verification | Extension beforeDomHash (optional) | — | Verification Task 6; protocol/extension change. Independent of 1–6. |
 | **8** | Planner | **Wire hierarchical planning into interact graph** | — | ✅ Complete. hierarchicalPlan in graph state; planning node calls decomposePlan; persisted with task. |
 | **9** | Verification | **Sub-task-level verification** (when hierarchical in graph) | 8 | ✅ Complete. subTaskObjective passed to verification; sub_task_completed returned; verification node advances/fails sub-task; goalAchieved when all sub-tasks complete. |
+| **10** | Verification | **Tiered verification: Planner-aware isLastStep** | — | 🔲 Planned. Pass plan context to verification; enable Tier 1 deterministic checks for intermediate steps. See Phase 5 below. |
+| **11** | Verification | **Tiered verification: Deterministic heuristics (Tier 1)** | 10 | 🔲 Planned. Zero-token verification for intermediate navigation/interaction. |
+| **12** | Verification | **Tiered verification: Lightweight LLM (Tier 2)** | 10 | 🔲 Planned. Reduced tokens for simple final-step verification. |
 
 **Summary:** Do **Verification 1 → 2, 3, 4** (verification contract and robustness), then **5 + 6** (wire verification outcome to planner), then **7** (optional extension), then **8 → 9** (hierarchical: planner first, then verification sub-task support). See **PLANNER_PROCESS.md** § Unified Task Order for the same table and planner-side details.
+
+---
+
+## Phase 5: Tiered Verification Optimization (Token Efficiency)
+
+**Status:** ✅ Implemented | **Priority:** High | **Phase:** 5.0
+
+**Problem:** Currently, **every** verification calls the LLM with `thinkingLevel: "high"` and `useGoogleSearchGrounding: true`, even for trivially observable actions like cross-domain navigation. This wastes tokens and adds latency for actions where the outcome is deterministically verifiable.
+
+**Example waste:** User says "Go to google.com", action `click(link)` executes, URL changes from `example.com` to `google.com`. Current flow still calls LLM (~300+ tokens) to verify what is obviously successful.
+
+**Solution:** Three-tier verification with **Planner-aware** heuristics. The key insight: **intermediate steps don't need semantic LLM verification** — if we're on step 1 of 5, `task_completed` is FALSE by definition.
+
+---
+
+### Design Review Summary
+
+This plan has been refined based on code review feedback. Key improvements incorporated:
+
+| Issue Identified | Resolution |
+|------------------|------------|
+| **Sub-Task Awareness** | `isLastStep` now respects hierarchical plan boundaries (see "Sub-Task Awareness" section) |
+| **"One-Step Plan" Trap** | Added Check 1.6 for SIMPLE navigation tasks, preventing unnecessary Tier 2/3 calls |
+| **Tier 2 False Positives** | Added safety gate: Tier 2 can only return `task_completed=true` for SIMPLE goals |
+| **URL Normalization (SPAs)** | Query param changes now significant for `actionType="navigation"` |
+| **Look-Ahead as Positive Signal** | Added Check 1.5: `nextGoalCheck.available` confirms action success |
+| **Hard Failures** | Check 1.4 routes DIRECTLY to Correction (bypasses Tier 2/3) |
+| **Cost Tracking** | Added `verificationCostSaved` for ROI measurement |
+
+**Verdict:** Plan is production-ready with these refinements. Fails safe to higher tiers on uncertainty.
+
+---
+
+### The "Missing Link": Planner Awareness
+
+**Problem with goal parsing:** Attempting to determine "is navigation the whole goal?" by parsing the user query (regex, keyword extraction) is fragile and error-prone.
+
+**Solution:** Use the **TaskPlan** state, not the raw user query.
+
+| Check | Source | Reliability |
+|-------|--------|-------------|
+| "Is this the final step?" | `plan.currentStepIndex === plan.steps.length - 1` | ✅ 100% reliable |
+| "Did user only want navigation?" | Regex on `query` | ❌ Fragile |
+
+**Rule:** If `!isLastStep`, then `task_completed = false` **by definition** (zero tokens needed to determine this).
+
+---
+
+### Critical Refinements (from Review)
+
+The following refinements address edge cases discovered during design review:
+
+#### 1. Sub-Task Awareness (Hierarchical Planning)
+
+When **Hierarchical Planning** (Task 9) is active, `isLastStep` must respect the **current hierarchy level**:
+
+| Context | `isLastStep` Definition |
+|---------|-------------------------|
+| **No hierarchical plan** | `currentStepIndex === plan.steps.length - 1` |
+| **With hierarchical plan** | `currentSubTaskStepIndex === currentSubTask.steps.length - 1` (within sub-task) |
+
+**Why:** If a user is on Step 3 of Sub-Task A (which has 5 steps), the *global* `isLastStep` might be false, but we need to handle sub-task completion signals correctly.
+
+```typescript
+function computeIsLastStep(
+  plan: TaskPlan,
+  hierarchicalPlan?: HierarchicalPlan
+): boolean {
+  if (hierarchicalPlan) {
+    const currentSubTask = getCurrentSubTask(hierarchicalPlan)
+    if (currentSubTask) {
+      // Within a sub-task: check sub-task step count
+      const subTaskStepIndex = hierarchicalPlan.currentSubTaskStepIndex ?? 0
+      return subTaskStepIndex === currentSubTask.estimatedSteps - 1
+    }
+  }
+  // No hierarchy: check main plan
+  return plan.currentStepIndex === plan.steps.length - 1
+}
+```
+
+#### 2. The "One-Step Plan" Trap
+
+**Problem:** If a plan has only **1 step** (e.g., "Go to Google"), then `isLastStep = true` immediately. This means Tier 1 checks (which require `!isLastStep`) are skipped, and we fall through to Tier 2/3, wasting tokens on trivially simple tasks.
+
+**Solution:** Allow Tier 1 for **SIMPLE** complexity tasks even when `isLastStep = true`:
+
+```typescript
+// REFINED Rule for Check 1.1:
+// Allow Tier 1 if NOT last step, OR if task is SIMPLE and navigation-only
+const canUseTier1ForNavigation = 
+  !isLastStep || (complexity === "SIMPLE" && actionType === "navigation")
+
+if (actionType === "navigation" && urlChanged && canUseTier1ForNavigation) {
+  // For SIMPLE single-step navigation: task_completed = true (goal achieved)
+  // For intermediate navigation: task_completed = false
+  return {
+    action_succeeded: true,
+    task_completed: isLastStep && complexity === "SIMPLE",
+    confidence: 1.0,
+    reason: isLastStep 
+      ? "Deterministic: SIMPLE navigation task completed."
+      : "Deterministic: Navigation successful for intermediate step.",
+    tier: "deterministic"
+  }
+}
+```
+
+#### 3. URL Normalization for SPAs
+
+**Problem:** The current `hasSignificantUrlChange` ignores query params if the path is the same. In SPAs or search pages, `example.com/search?q=foo` → `example.com/search?q=bar` IS a significant change.
+
+**Solution:** For `actionType === "navigation"`, treat query param changes as significant:
+
+```typescript
+function hasSignificantUrlChange(
+  before: string, 
+  after: string, 
+  actionType?: ActionType
+): boolean {
+  try {
+    const beforeUrl = new URL(before)
+    const afterUrl = new URL(after)
+    
+    // Different hostname = always significant
+    if (beforeUrl.hostname !== afterUrl.hostname) return true
+    
+    // Different pathname = always significant
+    const beforePath = beforeUrl.pathname.replace(/\/$/, '')
+    const afterPath = afterUrl.pathname.replace(/\/$/, '')
+    if (beforePath !== afterPath) return true
+    
+    // For navigation actions: query param changes ARE significant
+    // (e.g., search results, SPA state changes)
+    if (actionType === "navigation") {
+      if (beforeUrl.search !== afterUrl.search) return true
+    }
+    
+    return false
+  } catch {
+    return before !== after
+  }
+}
+```
+
+#### 4. Tier 2 Safety: Prevent False `task_completed`
+
+**Problem:** Lightweight LLM (Tier 2) with `thinkingLevel="low"` and no grounding might hallucinate `task_completed=true` on complex pages.
+
+**Solution:** Only allow Tier 2 to return `task_completed=true` under restricted conditions:
+
+```typescript
+// Tier 2 Safety Check
+const tier2AllowedForTaskComplete = 
+  complexity === "SIMPLE" || 
+  (actionType === "navigation" && expectedOutcome?.domChanges?.urlShouldChange)
+
+async function performLightweightVerification(...) {
+  const result = await callLightweightLLM(...)
+  
+  // Safety: If goal is complex, force task_completed=false from Tier 2
+  if (result.task_completed && !tier2AllowedForTaskComplete) {
+    log.warn("Tier 2 returned task_completed=true for non-SIMPLE goal; forcing Tier 3")
+    return null // Fall through to Tier 3
+  }
+  
+  return result
+}
+```
+
+#### 5. Deterministic Failures Bypass Tier 2/3
+
+**Critical:** Check 1.4 (Look-Ahead Failure) returns `action_succeeded=false`. This is a **hard failure** that should go directly to **Correction**, not fall back to Tier 2/3.
+
+```typescript
+// In the main verification flow:
+const heuristicResult = tryDeterministicVerification(...)
+
+if (heuristicResult !== null) {
+  // Deterministic result found
+  if (heuristicResult.action_succeeded === false) {
+    // HARD FAILURE: Route to correction immediately
+    return {
+      ...heuristicResult,
+      routeToCorrection: true  // Signal to skip Tier 2/3
+    }
+  }
+  return heuristicResult  // Success: done
+}
+
+// Only reach Tier 2/3 if heuristicResult is null (undecided)
+```
+
+---
+
+### Three-Tier Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           VERIFICATION REQUEST                               │
+│  beforeState, afterState, action, plan, currentStepIndex, userGoal          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  GATE 0: No Change Detected? (existing)                                      │
+│  ─────────────────────────────────────────────────────────────────────────── │
+│  !urlChanged && !meaningfulContentChange && !clientSawSomething              │
+│  → FAIL immediately (confidence 0.2, no LLM)                         [EXISTS]│
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │ Something changed
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TIER 1: Deterministic Heuristics (Zero LLM Tokens)                          │
+│  ─────────────────────────────────────────────────────────────────────────── │
+│  Planner-aware checks for unambiguous outcomes:                              │
+│                                                                              │
+│  CHECK 1.1: Intermediate Navigation Success                                  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: actionType === "navigation" && urlChanged && !isLastStep     ││
+│  │ Verdict:   action_succeeded=true, task_completed=false, confidence=1.0  ││
+│  │ Cost:      0 tokens                                                     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  CHECK 1.2: Intermediate DOM Interaction Success                             │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: meaningfulContentChange && !isLastStep                       ││
+│  │ Verdict:   action_succeeded=true, task_completed=false, confidence=0.95 ││
+│  │ Cost:      0 tokens                                                     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  CHECK 1.3: Cross-Domain Navigation (Any Step)                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: beforeUrl.hostname !== afterUrl.hostname && !isLastStep      ││
+│  │ Verdict:   action_succeeded=true, task_completed=false, confidence=1.0  ││
+│  │ Cost:      0 tokens                                                     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  CHECK 1.4: Look-Ahead Failure (Fast Fail → Correction)                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: nextGoal check fails (expected element missing)              ││
+│  │ Verdict:   action_succeeded=false, task_completed=false, confidence=0.8 ││
+│  │ Route:     DIRECT to Correction (bypass Tier 2/3)                       ││
+│  │ Cost:      0 tokens                                                     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  CHECK 1.5: Look-Ahead Success (Next Element Available)                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: nextGoalCheck.available && !isLastStep                       ││
+│  │ Verdict:   action_succeeded=true, task_completed=false, confidence=0.95 ││
+│  │ Why:       Next step's element is present = strong action success signal││
+│  │ Cost:      0 tokens                                                     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  CHECK 1.6: SIMPLE Navigation (Single-Step Plan)                             │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: complexity="SIMPLE" && actionType="navigation" && urlChanged ││
+│  │ Verdict:   action_succeeded=true, task_completed=true, confidence=1.0   ││
+│  │ Why:       Single-step navigation task fully completed                  ││
+│  │ Cost:      0 tokens                                                     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  If any Tier 1 check matches → RETURN deterministic result                   │
+│  Note: Check 1.4 routes DIRECTLY to Correction (bypass Tier 2/3)             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │ No Tier 1 match
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TIER 2: Lightweight LLM (~50-100 tokens)                                    │
+│  ─────────────────────────────────────────────────────────────────────────── │
+│  For final steps or when Tier 1 can't decide but context is simple:         │
+│                                                                              │
+│  ⚠️  SAFETY GATE: Tier 2 can only return task_completed=true if:            │
+│      - complexity === "SIMPLE", OR                                           │
+│      - actionType === "navigation" && expectedOutcome.urlShouldChange       │
+│      Otherwise: fall through to Tier 3 for task_completed decisions         │
+│                                                                              │
+│  CHECK 2.1: Simple Final Step Navigation                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: isLastStep && urlChanged && actionType === "navigation"      ││
+│  │ LLM Call:  thinkingLevel="low", NO grounding, maxOutputTokens=100       ││
+│  │ Prompt:    "URL changed from X to Y. User goal: Z. Is goal complete?"   ││
+│  │ Cost:      ~100 tokens (vs ~400 current)                                ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  CHECK 2.2: Clear DOM Change on Final Step                                   │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ Condition: isLastStep && meaningfulContentChange && observations clear  ││
+│  │ LLM Call:  thinkingLevel="low", NO grounding, maxOutputTokens=150       ││
+│  │ Safety:    If complexity !== "SIMPLE", can only return action_succeeded ││
+│  │ Cost:      ~150 tokens (vs ~400 current)                                ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                              │
+│  If Tier 2 applies AND passes safety gate → RETURN lightweight LLM result    │
+│  If Tier 2 would return task_completed but fails safety gate → Tier 3        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │ Complex/ambiguous case
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TIER 3: Full LLM Verification (Current Implementation)                      │
+│  ─────────────────────────────────────────────────────────────────────────── │
+│  For complex, ambiguous, or multi-step completion verification:              │
+│                                                                              │
+│  - thinkingLevel="high"                                                      │
+│  - useGoogleSearchGrounding=true                                             │
+│  - Full observation list + semantic verdict                                  │
+│  - maxOutputTokens=300                                                       │
+│  - Cost: ~400+ tokens                                                        │
+│                                                                              │
+│  Use for: Multi-step final verification, form submissions, ambiguous goals   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Implementation Tasks (Tiered Verification)
+
+| Priority | Task | Status | Description |
+|----------|------|--------|-------------|
+| **10** | Add `isLastStep` to verification context | ✅ Done | Pass `plan.currentStepIndex` and `plan.steps.length` to verification engine; compute `isLastStep`. **Must handle hierarchical plans.** |
+| **10a** | Sub-task aware `isLastStep` | ✅ Done | When `hierarchicalPlan` is active, compute `isLastStep` for the current sub-task, not just the main plan. See "Sub-Task Awareness" above. |
+| **10b** | Pass `complexity` to verification | ✅ Done | Pass complexity classification result ("SIMPLE"/"COMPLEX") to enable one-step plan optimization. |
+| **11** | Implement Tier 1: Deterministic heuristics | ✅ Done | New function `tryDeterministicVerification()` with checks 1.1-1.6. Returns `HeuristicResult | null`. |
+| **11a** | Check 1.5: Look-Ahead Success | ✅ Done | Use `nextGoalCheck.available` as a positive signal for `action_succeeded`. |
+| **11b** | Check 1.6: SIMPLE navigation | ✅ Done | Handle single-step SIMPLE navigation tasks in Tier 1 (avoids "one-step trap"). |
+| **11c** | Hard failure routing | ✅ Done | Ensure Check 1.4 (deterministic failure) routes directly to Correction, bypassing Tier 2/3. |
+| **12** | Implement Tier 2: Lightweight LLM | ✅ Done | New function `performLightweightVerification()` with reduced config (low thinking, no grounding). |
+| **12a** | Tier 2 safety gate | ✅ Done | Only allow `task_completed=true` from Tier 2 for SIMPLE goals or navigation-only expectedOutcome. |
+| **13** | Wire tiers into `verifyActionWithObservations` | ✅ Done | Update main verification function to try Tier 1 → Tier 2 → Tier 3 in sequence. |
+| **14** | URL normalization utility | ✅ Done | Use `URL` API for robust hostname/pathname comparison. **Include query param handling for navigation actions (SPA support).** |
+| **15** | Observability: tier attribution | ✅ Done | Log which tier was used; add `verificationTier` to result for cost tracking. |
+| **15a** | Estimated cost savings | ✅ Done | Add `tokensSaved` (estimated tokens saved) to results for ROI tracking. |
+| **16** | Metrics: token savings dashboard | 🔲 Planned | Track tokens saved by tier; integrate with LangFuse/cost module. (Deferred - requires dashboard UI work) |
+
+---
+
+### Detailed Tier 1 Logic (Pseudo-Code)
+
+```typescript
+interface HeuristicResult {
+  action_succeeded: boolean
+  task_completed: boolean
+  confidence: number
+  reason: string
+  tier: "deterministic"
+  routeToCorrection?: boolean  // For hard failures (Check 1.4)
+}
+
+function tryDeterministicVerification(
+  beforeState: BeforeState,
+  afterState: AfterState,
+  action: string,
+  actionType: ActionType,
+  isLastStep: boolean,
+  meaningfulContentChange: boolean,
+  complexity: "SIMPLE" | "COMPLEX",
+  nextGoalCheck?: NextGoalCheckResult,
+  hierarchicalPlan?: HierarchicalPlan
+): HeuristicResult | null {
+
+  // Handle sub-task aware isLastStep
+  const effectiveIsLastStep = computeIsLastStep(plan, hierarchicalPlan)
+  
+  const urlChanged = hasSignificantUrlChange(beforeState.url, afterState.url, actionType)
+  const crossDomain = isCrossDomainNavigation(beforeState.url, afterState.url)
+
+  // CHECK 1.1: Intermediate Navigation Success
+  // If we're NOT on the last step and navigation succeeded, we KNOW task_completed=false
+  if (actionType === "navigation" && urlChanged && !effectiveIsLastStep) {
+    return {
+      action_succeeded: true,
+      task_completed: false,  // ← Deterministic: not last step
+      confidence: 1.0,
+      reason: "Deterministic: Navigation successful for intermediate step.",
+      tier: "deterministic"
+    }
+  }
+
+  // CHECK 1.2: Intermediate DOM Interaction Success
+  // Meaningful content change on non-final step = action worked, task not done
+  if (meaningfulContentChange && !effectiveIsLastStep) {
+    return {
+      action_succeeded: true,
+      task_completed: false,  // ← Deterministic: not last step
+      confidence: 0.95,
+      reason: "Deterministic: Content changed as expected for intermediate step.",
+      tier: "deterministic"
+    }
+  }
+
+  // CHECK 1.3: Cross-Domain Navigation (any non-final step)
+  // User is now on a completely different site
+  if (crossDomain && !effectiveIsLastStep) {
+    return {
+      action_succeeded: true,
+      task_completed: false,
+      confidence: 1.0,
+      reason: `Deterministic: Cross-domain navigation (${new URL(beforeState.url).hostname} → ${new URL(afterState.url).hostname}).`,
+      tier: "deterministic"
+    }
+  }
+
+  // CHECK 1.4: Look-Ahead Failure (Fast Fail → DIRECT to Correction)
+  // If we expected an element for the next step and it's missing, fail fast
+  // This is a HARD FAILURE that bypasses Tier 2/3
+  if (nextGoalCheck && !nextGoalCheck.available && nextGoalCheck.required) {
+    return {
+      action_succeeded: false,
+      task_completed: false,
+      confidence: 0.8,
+      reason: `Deterministic failure: Expected element for next step not found.`,
+      tier: "deterministic",
+      routeToCorrection: true  // ← Bypass Tier 2/3, go direct to Correction
+    }
+  }
+
+  // CHECK 1.5: Look-Ahead Success (Next Element Available)
+  // If the element for the next step IS available, strong signal action succeeded
+  if (nextGoalCheck?.available && !effectiveIsLastStep) {
+    return {
+      action_succeeded: true,
+      task_completed: false,
+      confidence: 0.95,
+      reason: "Deterministic: Next step element is available (look-ahead success).",
+      tier: "deterministic"
+    }
+  }
+
+  // CHECK 1.6: SIMPLE Navigation (Single-Step Plan - Avoids "One-Step Trap")
+  // For SIMPLE complexity tasks where navigation is the entire goal
+  if (complexity === "SIMPLE" && actionType === "navigation" && urlChanged) {
+    return {
+      action_succeeded: true,
+      task_completed: true,  // ← SIMPLE task fully completed
+      confidence: 1.0,
+      reason: "Deterministic: SIMPLE navigation task completed (single-step plan).",
+      tier: "deterministic"
+    }
+  }
+
+  // No deterministic verdict possible → fall through to Tier 2 or 3
+  return null
+}
+
+// Helper: Compute isLastStep respecting hierarchy
+function computeIsLastStep(
+  plan: TaskPlan,
+  hierarchicalPlan?: HierarchicalPlan
+): boolean {
+  if (hierarchicalPlan) {
+    const currentSubTask = getCurrentSubTask(hierarchicalPlan)
+    if (currentSubTask) {
+      const subTaskStepIndex = hierarchicalPlan.currentSubTaskStepIndex ?? 0
+      return subTaskStepIndex === currentSubTask.estimatedSteps - 1
+    }
+  }
+  return plan.currentStepIndex === plan.steps.length - 1
+}
+```
+
+---
+
+### Detailed Tier 2 Logic (Lightweight LLM)
+
+```typescript
+interface Tier2Options {
+  userGoal: string
+  action: string
+  observations: string[]
+  complexity: "SIMPLE" | "COMPLEX"
+  actionType: ActionType
+  expectedOutcome?: ExpectedOutcome
+  context?: VerificationContext
+}
+
+async function performLightweightVerification(
+  options: Tier2Options
+): Promise<SemanticVerificationResult | null> {
+  const { userGoal, action, observations, complexity, actionType, expectedOutcome, context } = options
+  const log = logger.child({ process: "Verification:Tier2", ...context })
+
+  // SAFETY GATE: Determine if Tier 2 is allowed to return task_completed=true
+  const tier2AllowedForTaskComplete = 
+    complexity === "SIMPLE" || 
+    (actionType === "navigation" && expectedOutcome?.domChanges?.urlShouldChange === true)
+
+  // Simplified prompt for final-step confirmation
+  const prompt = `You are a verification AI. Quick check only.
+
+User goal: ${userGoal}
+Action: ${action}
+Observations:
+${observations.map(o => `- ${o}`).join('\n')}
+
+Is the user's goal fully achieved? Reply JSON only:
+{"action_succeeded": true/false, "task_completed": true/false, "confidence": 0.0-1.0, "reason": "brief"}`
+
+  const result = await generateWithGemini("", prompt, {
+    model: DEFAULT_PLANNING_MODEL,
+    temperature: 0,
+    maxOutputTokens: 100,          // ← Reduced from 300
+    thinkingLevel: "low",          // ← Reduced from "high"
+    useGoogleSearchGrounding: false, // ← Disabled (not needed for verification)
+    responseJsonSchema: VERIFICATION_RESPONSE_SCHEMA,
+    generationName: "verification_lightweight",
+  })
+
+  // Parse result using safe parser
+  const parsed = parseStructuredResponse<VerificationLLMResponse>(
+    result?.content,
+    { schemaName: "VERIFICATION_RESPONSE_SCHEMA", generationName: "verification_lightweight" }
+  )
+
+  if (!isParseSuccess(parsed)) {
+    log.warn("Tier 2 parse failed, falling through to Tier 3")
+    return null  // Fall through to Tier 3
+  }
+
+  const verificationResult = parsed.data
+
+  // SAFETY CHECK: If Tier 2 returned task_completed=true but not allowed, reject
+  if (verificationResult.task_completed && !tier2AllowedForTaskComplete) {
+    log.warn(
+      `Tier 2 returned task_completed=true for non-SIMPLE goal (complexity=${complexity}); falling through to Tier 3`,
+      { actionType, hasExpectedOutcome: !!expectedOutcome }
+    )
+    return null  // Fall through to Tier 3 for proper verification
+  }
+
+  // Success: return Tier 2 result
+  return {
+    action_succeeded: verificationResult.action_succeeded ?? false,
+    task_completed: verificationResult.task_completed ?? false,
+    match: verificationResult.task_completed ?? false,
+    reason: verificationResult.reason ?? "Lightweight verification",
+    confidence: Math.max(0, Math.min(1, verificationResult.confidence ?? 0.7)),
+    tier: "lightweight"
+  }
+}
+```
+
+---
+
+### URL Normalization (Robust Comparison)
+
+**Problem:** String-based URL comparison is fragile.
+- `includes("google.com")` matches `google.com.malicious.xyz`
+- Trailing slashes, query params, fragments cause false negatives
+- **SPA edge case:** `example.com/search?q=foo` → `example.com/search?q=bar` IS significant for search/SPA pages
+
+**Solution:** Use the standard `URL` API for robust comparison, with **action-type awareness**.
+
+```typescript
+/**
+ * Check if URL change is significant.
+ * 
+ * @param before - URL before action
+ * @param after - URL after action
+ * @param actionType - Optional action type for context-aware comparison
+ * @returns true if the URL change is meaningful
+ */
+function hasSignificantUrlChange(
+  before: string, 
+  after: string,
+  actionType?: ActionType
+): boolean {
+  try {
+    const beforeUrl = new URL(before)
+    const afterUrl = new URL(after)
+    
+    // Different hostname = ALWAYS significant
+    if (beforeUrl.hostname !== afterUrl.hostname) return true
+    
+    // Different pathname (ignore trailing slash) = ALWAYS significant
+    const beforePath = beforeUrl.pathname.replace(/\/$/, '')
+    const afterPath = afterUrl.pathname.replace(/\/$/, '')
+    if (beforePath !== afterPath) return true
+    
+    // For NAVIGATION actions: query param changes ARE significant
+    // This handles SPAs, search pages, filters, etc.
+    // Example: google.com/search?q=foo → google.com/search?q=bar
+    if (actionType === "navigation") {
+      if (beforeUrl.search !== afterUrl.search) {
+        return true
+      }
+    }
+    
+    // Same host + path (+ same search for non-navigation) = not significant
+    return false
+  } catch {
+    // Fallback to string comparison if URL parsing fails
+    return before !== after
+  }
+}
+
+/**
+ * Check if navigation crossed domain boundaries.
+ * Cross-domain = different hostname (e.g., example.com → google.com)
+ */
+function isCrossDomainNavigation(before: string, after: string): boolean {
+  try {
+    return new URL(before).hostname !== new URL(after).hostname
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Extract hostname safely for logging/comparison.
+ */
+function getHostname(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+```
+
+---
+
+### Expected Token Savings
+
+| Scenario | Current Cost | With Optimization | Savings |
+|----------|-------------|-------------------|---------|
+| **Intermediate navigation** (step 1 of 5) | ~400 tokens | **0 tokens** (Tier 1) | 100% |
+| **Intermediate click** (step 2 of 5) | ~400 tokens | **0 tokens** (Tier 1) | 100% |
+| **Final navigation** (step 5 of 5) | ~400 tokens | ~100 tokens (Tier 2) | 75% |
+| **Complex final step** (form submit) | ~400 tokens | ~400 tokens (Tier 3) | 0% |
+
+**Estimated overall savings:** 40-60% reduction in verification token usage for typical multi-step workflows.
+
+---
+
+### Safety Guarantees
+
+| Guarantee | How Enforced |
+|-----------|--------------|
+| **No false task_completed (intermediate)** | Tier 1 returns `task_completed=false` for all intermediate steps (checks 1.1-1.3, 1.5) |
+| **SIMPLE task completion allowed** | Check 1.6 can return `task_completed=true` ONLY for `complexity="SIMPLE"` navigation tasks |
+| **Tier 2 safety gate** | Tier 2 can only return `task_completed=true` for SIMPLE goals or navigation-only expectations; otherwise falls through to Tier 3 |
+| **Hard failures bypass Tier 2/3** | Check 1.4 (Look-Ahead Failure) routes DIRECTLY to Correction, not Tier 2/3 |
+| **Conservative fallback** | If Tier 1 can't decide → Tier 2 (with safety gate) → Tier 3 (never skip verification) |
+| **Planner is source of truth** | `isLastStep` comes from the plan (with hierarchical awareness), not query parsing |
+| **Sub-task aware** | When hierarchical plan is active, `isLastStep` respects sub-task boundaries |
+| **SPA-aware URL comparison** | Query param changes ARE significant for navigation actions (handles SPAs, search pages) |
+| **Observable signals only** | No prediction; only URL/DOM/nextGoalCheck comparison |
+| **Consistent output format** | All tiers return the same `VerificationResult` shape (with `tier` attribute for tracking) |
+
+---
+
+### Files Modified/Created
+
+| File | Status | Changes |
+|------|--------|---------|
+| `lib/agent/verification/tiered-verification.ts` | ✅ Created | New file: `tryDeterministicVerification()`, `performLightweightVerification()`, `runTieredVerification()`, `computeIsLastStep()`, `estimateTokensSaved()` |
+| `lib/agent/verification-engine.ts` | ✅ Modified | Added `TieredVerificationExtras` interface, wired tiered verification into `verifyActionWithObservations()` |
+| `lib/agent/verification/types.ts` | ✅ Modified | Added `VerificationTier` type, `verificationTier`, `tokensSaved`, `routeToCorrection` to `VerificationResult` |
+| `lib/agent/verification/index.ts` | ✅ Modified | Exported tiered verification module |
+| `lib/agent/graph/nodes/verification.ts` | ✅ Modified | Pass `actionType`, `complexity`, `plan`, `hierarchicalPlan`, `expectedOutcome`, `nextGoalCheck` to verification engine; handle `routeToCorrection` |
+| `lib/agent/graph/types.ts` | ✅ Modified | Added `VerificationTier` type and fields to `VerificationResult` |
+| `lib/utils/dom-helpers.ts` | ✅ Modified | Added `isCrossDomainNavigation()`, `getHostname()` utilities |
+| `lib/models/token-usage-log.ts` | ✅ Modified | Added `"VERIFICATION_LIGHTWEIGHT"` to `LLMActionType` |
+| `lib/agent/__tests__/tiered-verification.test.ts` | ✅ Created | 17 unit tests for tiered verification logic |
+| `lib/agent/graph/route-integration/context.ts` | ⏭️ Skipped | `isLastStep` computed in verification node via `computeIsLastStep()` helper |
+| `lib/llm/response-schemas.ts` | ⏭️ Skipped | Reused existing `VERIFICATION_RESPONSE_SCHEMA` for Tier 2 |
+| `lib/cost/usage-service.ts` | ⏭️ Skipped | Tier tracking via existing `recordUsage()` with new `"VERIFICATION_LIGHTWEIGHT"` action type |
+| `lib/agent/graph/nodes/correction.ts` | ⏭️ Skipped | `routeToCorrection` handled in verification node via `shouldCorrect` flag |
+
+---
+
+### Open Questions (Before Implementation)
+
+1. ✅ **RESOLVED - Confidence values for deterministic checks:** 
+   - **Decision:** Use `confidence=1.0` for truly deterministic checks (1.1, 1.3, 1.6), `confidence=0.95` for heuristic-assisted checks (1.2, 1.5), `confidence=0.8` for failures (1.4).
+
+2. ✅ **RESOLVED - Tier 2 threshold:** 
+   - **Decision:** Tier 2 applies when `isLastStep && (urlChanged || meaningfulContentChange)`.
+   - **Safety gate:** Tier 2 can only return `task_completed=true` for `complexity="SIMPLE"` or navigation-only expected outcomes.
+
+3. **OPEN - Feature flag:** Should tiered verification be behind a feature flag for gradual rollout?
+   - **Recommendation:** Yes, use `ENABLE_TIERED_VERIFICATION` env var for A/B testing and safe rollback.
+
+4. ✅ **RESOLVED - Sub-task handling:** 
+   - **Decision:** When hierarchical plan is active, `isLastStep` checks the **current sub-task's** step index, not the top-level plan. See "Sub-Task Awareness" section above.
+
+5. **OPEN - Look-ahead granularity:** Should Check 1.5 (Look-Ahead Success) require `nextGoalCheck.confidence > 0.8` or just `available === true`?
+   - **Recommendation:** Start with `available === true` (simpler), tune based on observed false positives.
+
+6. **OPEN - URL query param significance:** For non-navigation actions (e.g., click, setValue), should query param changes be significant?
+   - **Current Decision:** Only significant for `actionType === "navigation"`. Monitor for edge cases.
+
+---
+
+### Success Metrics
+
+| Metric | Target | How to Measure |
+|--------|--------|----------------|
+| **Token reduction** | 40%+ on multi-step tasks | Compare before/after token usage in LangFuse |
+| **Latency reduction** | 200ms+ per intermediate step | Measure verification duration by tier |
+| **Accuracy maintained** | No increase in false positives/negatives | Compare goalAchieved accuracy before/after |
+| **Tier 1 hit rate** | 60%+ of verifications | Log `verificationTier` and aggregate |
+| **Tier 2 safety gate triggers** | <5% of Tier 2 calls | Log when Tier 2 falls through to Tier 3 due to safety gate |
+| **One-step plan optimization** | 95%+ SIMPLE navigation via Tier 1 | Track Check 1.6 usage for `complexity="SIMPLE"` |
+| **SPA URL detection** | Monitor for edge cases | Log query-param-only URL changes for navigation actions |
+| **Sub-task boundary accuracy** | 100% (no misrouting) | Verify `isLastStep` is correct when hierarchical plan active |
 
 ---
 
@@ -276,17 +992,19 @@ GET /api/session/{sessionId}/task/active?url={currentTabUrl}
 
 Returns the most recent active task for the session (or 404 if none — start fresh).
 
-**See:** `INTERACT_FLOW_WALKTHROUGH.md` § Client Contract: State Persistence & Stability for full implementation guidance including code examples.
+**See:** `INTERACT_FLOW_WALKTHROUGH.md` § Client Contract: State Persistence & Stability for full implementation guidance including code examples, extension checklist, and implementation alignment (e.g. `taskPersistence.ts`, `domWaiting.ts`, `currentTask.ts`, `api/client.ts`). The Chrome extension has been verified against this contract.
 
 **Troubleshooting: same step repeats even when client sends taskId**
 
 The backend persists each returned action as a **TaskAction** so the next request can load `previousActions` and route to **verification** (not direct_action). If the same step keeps repeating with `hasTaskId: true` in logs, check:
 
-1. **After first request:** `[RouteIntegration] saveGraphResults: creating TaskAction taskId=..., stepIndex=0, action=click(169)` — confirms the action was persisted. If `TaskAction.create` failed, inspect the error (e.g. validation, duplicate key).
-2. **On follow-up request:** `[RouteIntegration] loadTaskContext: taskId=..., previousActions.length=1, hasLastAction=true, lastAction=click(169)` — confirms the task had one previous action and `lastAction` is set. If `previousActions.length=0` or `hasLastAction=false`, the follow-up is not seeing the persisted action (wrong `taskId`, wrong tenant, or TaskAction not created).
-3. **Router:** `[Graph:router] Routing to verification (existing task)` — confirms the graph is going to verification. If you still see `Routing to direct_action (SIMPLE task)` on the follow-up, the state had `previousActions.length === 0` (see step 2).
+1. **After first request:** `[RouteIntegration][task:UUID] saveGraphResults: creating TaskAction taskId=..., stepIndex=0, action=click(169)` — confirms the action was persisted. If `TaskAction.create` failed, inspect the error (e.g. validation, duplicate key).
+2. **On follow-up request:** `[RouteIntegration][task:UUID] loadTaskContext: taskId=..., previousActions.length=1, hasLastAction=true, lastAction=click(169)` — confirms the task had one previous action and `lastAction` is set. If `previousActions.length=0` or `hasLastAction=false`, the follow-up is not seeing the persisted action (wrong `taskId`, wrong tenant, or TaskAction not created).
+3. **Router:** `[Graph:router][task:UUID] Routing to verification (existing task)` — confirms the graph is going to verification. If you still see `Routing to direct_action (SIMPLE task)` on the follow-up, the state had `previousActions.length === 0` (see step 2).
 
 Ensure the client sends the **exact `taskId`** from the previous response (`data.taskId`) and that the same tenant/user is used.
+
+> **Note on Provisional IDs:** All logs now include `[task:UUID]` from the first line of execution, even for new tasks. The provisional ID is generated at the start of `runInteractGraph` for observability, but the task is only persisted to the database after successful action generation. If a request fails or returns `needs_user_input`, the provisional ID appears in logs but no Task record exists in the database. This is by design — it enables debugging failed requests without polluting the database with orphan tasks.
 
 ---
 
@@ -310,7 +1028,7 @@ The extension runs the action returned by the previous request (e.g. `click(169)
    - Maximum wait: 5000ms timeout
 3. **Then** capture: DOM snapshot (`document.documentElement.outerHTML`), current URL, and optionally previous URL and **clientObservations** (didNetworkOccur, didDomMutate, didUrlChange).
 
-**See:** `INTERACT_FLOW_WALKTHROUGH.md` § Client Contract: State Persistence & Stability for full implementation guidance including code examples.
+**See:** `INTERACT_FLOW_WALKTHROUGH.md` § Client Contract: State Persistence & Stability for full implementation guidance including code examples and extension checklist.
 
 ### Step 3 — Extension Sends Request
 
@@ -526,6 +1244,7 @@ When observation-based verification fails (confidence < 70%), the correction nod
 
 ## Changelog (Summary)
 
+- **v3.0.10 (impl):** **Provisional ID Pattern for logging traceability.** A provisional `taskId` (UUID) is now generated at the start of `runInteractGraph` for all new tasks. This ID is used for all logging throughout graph execution, ensuring full traceability from the first log line. The task is only **persisted to the database** after successful action generation (not for `ASK_USER` or failures). This solves the "blind logs" problem where new tasks had `[task:]` (empty) in logs until persistence. **Files:** `lib/agent/graph/route-integration/run-graph.ts` (generate provisional ID upfront), `lib/agent/graph/route-integration/context.ts` (createTask accepts optional provisionalTaskId). **Docs:** Updated troubleshooting section with note on provisional IDs; updated INTERACT_FLOW_WALKTHROUGH.md § "Create task".
 - **v3.0.9 (impl):** **Task 4 — Explicit step-level vs task-level in prompt.** Semantic verification prompts (full-DOM and observation) now include a dedicated "Step-level vs task-level (Task 4)" block using `STEP_TASK_LEVEL_CONTRACT` and `STEP_TASK_LEVEL_EXAMPLE`. Contract: task_completed = true ONLY when entire user request is done; for multi-step tasks set task_completed = false until final step. Example: "Add a patient named Jas" → form open = action_succeeded true, task_completed false. **Progress:** Files: `lib/agent/verification/semantic-verification.ts`. Tests: `lib/agent/__tests__/semantic-verification.test.ts` (2 new tests for prompt contract constants; 10 tests total, all pass). Next: Task 5 (Verification + Planner — pass verification outcome into planning/step_refinement).
 - **v3.0.8 (impl):** **Task 3 — State drift: skeleton-primary diff, client witness override.** `buildObservationList` now returns `{ observations, meaningfulContentChange }`. meaningfulContentChange is true only when skeleton diff had items or (no skeleton) domHash changed; when skeleton diff empty but hash changed (e.g. tickers/ads) → false. Engine uses somethingChanged = urlChanged || meaningfulContentChange || clientSawSomething; clientSawSomething includes didUrlChange. When proceeding only due to client report, log "Client witness override". **Progress:** Files: `lib/agent/verification/observation-builder.ts`, `lib/agent/verification-engine.ts`, `lib/agent/verification/index.ts`, `lib/agent/verification/__tests__/observation-builder.test.ts`. Tests: 5 new observation-builder tests + 5 verification-engine tests, all pass. Next: Task 4 (explicit step-level vs task-level in prompt).
 - **v3.0.7 (impl):** **Task 2 — Low-confidence completion handling.** When task_completed === true and confidence in [0.70, 0.85) we set goalAchieved = true (single finish) and log "Low confidence completion". Prevents routing to correction or generating another action when the LLM said the goal is done but confidence is medium. Implemented via `computeGoalAchieved(task_completed, confidence)` in `lib/agent/verification-engine.ts`; used in both observation and prediction paths. **Progress:** Files changed: `lib/agent/verification-engine.ts`. Tests: `lib/agent/__tests__/verification-engine.test.ts` (5 tests, all pass). Next: Task 3 (state drift).

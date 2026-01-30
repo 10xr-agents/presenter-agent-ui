@@ -37,15 +37,20 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     clientVerification,
   } = input
   const startTime = Date.now()
-  const log = logger.child({ process: "RouteIntegration", sessionId, taskId: taskId ?? "" })
+
+  // Provisional ID Pattern: Generate taskId upfront for new tasks (logging traceability)
+  // The ID is used for all logging but only persisted to DB on successful action generation
+  const isNewTask = !taskId
+  const provisionalTaskId = isNewTask ? crypto.randomUUID() : undefined
+  let currentTaskId = taskId || provisionalTaskId
+
+  const log = logger.child({ process: "RouteIntegration", sessionId, taskId: currentTaskId ?? "" })
 
   log.info(`Running graph for tenant ${tenantId}`)
 
   let traceCtx: InteractTraceContext = { enabled: false, metadata: {} }
 
   try {
-    let isNewTask = !taskId
-    let currentTaskId = taskId
     let taskContext: Awaited<ReturnType<typeof loadTaskContext>> | null = null
 
     if (taskId) {
@@ -53,16 +58,23 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
         taskContext = await loadTaskContext(taskId, tenantId, sessionId)
 
         if (taskContext.task.status === "completed" || taskContext.task.status === "failed") {
+          const terminalStatus = taskContext.task.status as string
+          const thought =
+            terminalStatus === "completed"
+              ? "This task is already completed. No further action needed."
+              : "This task already failed. You can start a new task or rephrase your request."
+          log.info(`Task already ${terminalStatus}, returning 200 with action=finish() so client can stop cleanly`)
           return {
-            success: false,
+            success: true,
             taskId,
             isNewTask: false,
+            thought,
+            action: "finish()",
             currentStepIndex: 0,
             webSearchPerformed: false,
             complexity: "COMPLEX",
             complexityReason: "Task already completed/failed",
-            status: taskContext.task.status as string,
-            error: `Task ${taskId} is already ${taskContext.task.status}`,
+            status: terminalStatus,
             needsUserInput: false,
             graphDuration: Date.now() - startTime,
           }
@@ -86,7 +98,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
 
     if (currentTaskId && taskContext) {
       log.info(
-        `Executing graph for existing task: taskId=${currentTaskId}, previousActions.length=${taskContext.previousActions.length}, lastAction=${taskContext.lastAction?.action ?? "none"}`,
+        `Executing graph for existing task: taskId=${currentTaskId}, status=${taskContext.task.status}, previousActions.length=${taskContext.previousActions.length}, lastAction=${taskContext.lastAction?.action ?? "none"}`,
         { taskId: currentTaskId }
       )
     }
@@ -108,9 +120,10 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       ragChunks,
       hasOrgKnowledge,
       plan: taskContext?.plan,
-      currentStepIndex: taskContext?.previousActions.length || 0,
+      currentStepIndex: taskContext?.currentStepIndex ?? 0,
       hierarchicalPlan: taskContext?.hierarchicalPlan,
       previousActions: taskContext?.previousActions || [],
+      previousActionsSummary: taskContext?.previousActionsSummary,
       previousMessages: taskContext?.previousMessages || [],
       lastActionExpectedOutcome: taskContext?.lastAction?.expectedOutcome,
       lastAction: taskContext?.lastAction?.action,
@@ -119,6 +132,8 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       clientObservations: input.clientObservations,
       correctionAttempts: taskContext?.correctionAttempts || 0,
       consecutiveFailures: taskContext?.consecutiveFailures || 0,
+      consecutiveSuccessWithoutTaskComplete:
+        taskContext?.consecutiveSuccessWithoutTaskComplete ?? 0,
       webSearchResult: taskContext?.webSearchResult,
     })
 
@@ -198,15 +213,17 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       }
     }
 
+    // Persist task to DB only on successful action generation (not for needs_user_input or failures)
+    // Use the provisional taskId we generated at the start for logging traceability
     if (isNewTask && graphResult.status !== "needs_user_input" && graphResult.actionResult) {
       currentTaskId = await createTask(
         tenantId,
         userId,
         url,
         query,
-        graphResult.webSearchResult
+        graphResult.webSearchResult,
+        provisionalTaskId // Use pre-generated ID so logs match the persisted task
       )
-      isNewTask = true
     }
 
     if (currentTaskId) {
@@ -292,10 +309,10 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
 
     Sentry.captureException(error, {
       tags: { component: "route-integration" },
-      extra: { tenantId, query: query.substring(0, 100), taskId },
+      extra: { tenantId, query: query.substring(0, 100), taskId: currentTaskId },
     })
 
-    log.error("Error", error, { taskId: taskId ?? "" })
+    log.error("Error", error, { taskId: currentTaskId ?? "" })
 
     await finalizeInteractTrace(traceCtx, {
       status: "failed",
@@ -305,8 +322,8 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
 
     return {
       success: false,
-      taskId: taskId || "",
-      isNewTask: !taskId,
+      taskId: currentTaskId || "",
+      isNewTask,
       currentStepIndex: 0,
       webSearchPerformed: false,
       complexity: "COMPLEX",

@@ -13,10 +13,8 @@
 import * as Sentry from "@sentry/nextjs"
 import { validateActionName } from "@/lib/agent/action-config"
 import {
-  type ActionChain,
   enhancePromptForChaining,
   identifyChainableGroups,
-  parseChainFromLLMResponse,
 } from "@/lib/agent/chaining"
 import { callActionLLM } from "@/lib/agent/llm-client"
 import { buildActionPrompt } from "@/lib/agent/prompt-builder"
@@ -159,18 +157,11 @@ export async function actionGenerationNode(
       }
     }
 
-    // Try to parse chain response first (if chaining was attempted)
-    let actionChain: ActionChain | null = null
-    if (chainOpportunity.canChain) {
-      // Chaining: structured output returns thought/action only; chain parsing from raw text is not used.
-      actionChain = null
-    }
-
+    // Structured output returns thought/action only; chaining from raw LLM text is disabled.
     // callActionLLM returns structured output (thought, action) from Gemini JSON schema
     const { thought, action } = llmResponse
 
     // Handle special actions
-    
     // googleSearch action - execute web search inline
     // Note: We skip the inline search in graph execution and let the route handle it
     // This simplifies the graph logic and avoids needing tenantId in this node
@@ -185,7 +176,7 @@ export async function actionGenerationNode(
       }
     }
 
-    // Build action result
+    // Build action result (single action; chaining not used with structured output)
     const actionResult: {
       thought: string
       action: string
@@ -196,35 +187,7 @@ export async function actionGenerationNode(
       action,
     }
 
-    // Add chain data if chain was successfully parsed
-    if (actionChain && actionChain.actions.length > 1) {
-      actionResult.chainedActions = actionChain.actions.map((a) => ({
-        action: a.action,
-        description: a.description,
-        index: a.index,
-        canFail: a.canFail,
-        targetElementId: a.targetElementId,
-      }))
-      actionResult.chainMetadata = {
-        totalActions: actionChain.metadata.totalActions,
-        estimatedDuration: actionChain.metadata.estimatedDuration,
-        safeToChain: actionChain.metadata.safeToChain,
-        chainReason: actionChain.metadata.chainReason,
-        containerSelector: actionChain.metadata.containerSelector,
-      }
-
-      // Update action to be the first in chain for backwards compatibility
-      const firstChainAction = actionChain.actions[0]
-      if (firstChainAction) {
-        actionResult.action = firstChainAction.action
-      }
-
-      log.info(
-        `Generated chain of ${actionChain.actions.length} actions (${llmDuration}ms)`
-      )
-    } else {
-      log.info(`Generated single action: ${action} (${llmDuration}ms)`)
-    }
+    log.info(`Generated single action: ${action} (${llmDuration}ms)`)
 
     return {
       actionResult,

@@ -87,6 +87,10 @@ export interface ExecuteGraphParams {
   // Task metrics
   correctionAttempts?: number
   consecutiveFailures?: number
+  /** Semantic loop prevention: consecutive successful verifications without task_completed. */
+  consecutiveSuccessWithoutTaskComplete?: number
+  /** When previousActions were trimmed (rolling context), summary of earlier steps. */
+  previousActionsSummary?: string
 
   // Existing web search result
   webSearchResult?: WebSearchResult | null
@@ -123,6 +127,8 @@ export interface ExecuteGraphResult {
   correctionResult?: CorrectionResult
   correctionAttempts: number
   consecutiveFailures: number
+  /** Semantic loop prevention: consecutive successful verifications without task_completed. */
+  consecutiveSuccessWithoutTaskComplete?: number
 
   // Action (and failed action when correction occurred, for CorrectionRecord.originalStep)
   actionResult?: ActionResult
@@ -198,6 +204,7 @@ export async function executeInteractGraph(
       currentStepIndex: params.currentStepIndex || 0,
       hierarchicalPlan: params.hierarchicalPlan,
       previousActions: params.previousActions || [],
+      previousActionsSummary: params.previousActionsSummary,
       previousMessages: params.previousMessages || [],
 
       // Verification context
@@ -210,6 +217,7 @@ export async function executeInteractGraph(
       // Task metrics
       correctionAttempts: params.correctionAttempts || 0,
       consecutiveFailures: params.consecutiveFailures || 0,
+      consecutiveSuccessWithoutTaskComplete: params.consecutiveSuccessWithoutTaskComplete ?? 0,
 
       // Web search
       webSearchResult: params.webSearchResult,
@@ -254,6 +262,7 @@ export async function executeInteractGraph(
       correctionResult: result.correctionResult,
       correctionAttempts: result.correctionAttempts || 0,
       consecutiveFailures: result.consecutiveFailures || 0,
+      consecutiveSuccessWithoutTaskComplete: result.consecutiveSuccessWithoutTaskComplete,
 
       // Action (include lastAction when correction occurred for CorrectionRecord.originalStep)
       actionResult: result.actionResult,

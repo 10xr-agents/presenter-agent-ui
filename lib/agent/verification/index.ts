@@ -12,6 +12,7 @@ export type {
   VerificationResult,
   ClientObservations,
   BeforeState,
+  VerificationTier,
 } from "./types"
 
 export { extractActualState, isPopupExpectation, performDOMChecks } from "./dom-checks"
@@ -26,3 +27,15 @@ export {
   type ObservationListResult,
 } from "./observation-builder"
 export { calculateConfidence, checkNextGoalAvailability } from "./confidence"
+
+// Phase 5: Tiered verification
+export {
+  tryDeterministicVerification,
+  performLightweightVerification,
+  runTieredVerification,
+  computeIsLastStep,
+  estimateTokensSaved,
+  type HeuristicResult,
+  type LightweightResult,
+  type TieredVerificationOptions,
+} from "./tiered-verification"

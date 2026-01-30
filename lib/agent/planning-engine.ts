@@ -6,6 +6,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { PLANNING_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 import type { VerificationSummary } from "@/lib/agent/verification/types"
 import type { WebSearchResult } from "./web-search"
 
@@ -71,27 +72,15 @@ For each step, provide:
 - ❌ AVOID: "Click element ID 68", "Navigate to DOM structure", "Verify element exists"
 - ✅ USE: "Click on the 'Patient' button", "Go to the patient registration page", "Check if the form is open"
 
-Response Format:
-You must respond in the following format:
-<Plan>
-<Step index="0">
-<Description>User-friendly step description</Description>
-<Reasoning>Why this step is needed (in plain language)</Reasoning>
-<ToolType>DOM|SERVER|MIXED</ToolType>
-<ExpectedOutcome>What should happen after this step (user-friendly description)</ExpectedOutcome>
-</Step>
-<Step index="1">
-...
-</Step>
-</Plan>
+Respond with JSON only. Schema: steps (array of { index, description, reasoning?, toolType?, expectedOutcome? }).
+- index: 0-based step number
+- description: user-friendly step description (required)
+- reasoning: why this step is needed (optional)
+- toolType: "DOM" | "SERVER" | "MIXED" (optional, default DOM)
+- expectedOutcome: what should happen after this step (optional)
 
 Guidelines:
-- Keep steps high-level and logical
-- Each step should be independent (no complex dependencies initially)
-- Use "DOM" for browser interactions (click, setValue, etc.)
-- Use "SERVER" for API calls or data operations
-- Use "MIXED" if step requires both DOM and server actions
-- Keep plan linear (no complex DAGs initially)
+- Keep steps high-level and logical; each step independent
 - Aim for 3-10 steps depending on task complexity
 - Write all descriptions as if explaining to a non-technical user`
 
@@ -154,6 +143,7 @@ Remember: Write all step descriptions in user-friendly language that a non-techn
       maxOutputTokens: 2000,
       useGoogleSearchGrounding: true,
       thinkingLevel: "high",
+      responseJsonSchema: PLANNING_RESPONSE_SCHEMA,
       generationName: "task_planning",
       sessionId: context?.sessionId,
       userId: context?.userId,
@@ -198,16 +188,39 @@ Remember: Write all step descriptions in user-friendly language that a non-techn
       return null
     }
 
-    // Parse plan from LLM response
-    const plan = parsePlanResponse(content)
-
-    if (!plan) {
-      Sentry.captureException(new Error("Failed to parse planning response"))
+    let parsed: { steps: Array<{ index: number; description: string; reasoning?: string; toolType?: string; expectedOutcome?: string }> }
+    try {
+      parsed = JSON.parse(content) as typeof parsed
+    } catch (e: unknown) {
+      Sentry.captureException(e)
+      return null
+    }
+    if (!Array.isArray(parsed.steps) || parsed.steps.length === 0) {
+      Sentry.captureException(new Error("Planning response had no steps"))
       return null
     }
 
+    const steps: PlanStep[] = parsed.steps
+      .filter((s) => s.description?.trim())
+      .map((s) => {
+        const toolTypeStr = (s.toolType ?? "DOM").toUpperCase()
+        const toolType: "DOM" | "SERVER" | "MIXED" =
+          toolTypeStr === "SERVER" || toolTypeStr === "MIXED" ? toolTypeStr : "DOM"
+        return {
+          index: Number(s.index),
+          description: s.description.trim(),
+          reasoning: s.reasoning?.trim() || undefined,
+          toolType,
+          status: "pending" as const,
+          expectedOutcome: s.expectedOutcome?.trim()
+            ? { description: s.expectedOutcome.trim() }
+            : undefined,
+        }
+      })
+      .sort((a, b) => a.index - b.index)
+
     return {
-      steps: plan.steps,
+      steps,
       currentStepIndex: 0,
       createdAt: new Date(),
     }
@@ -217,61 +230,3 @@ Remember: Write all step descriptions in user-friendly language that a non-techn
   }
 }
 
-/**
- * Parse LLM response to extract plan steps.
- *
- * @param content - LLM response content
- * @returns Parsed plan or null if parse fails
- */
-function parsePlanResponse(content: string): { steps: PlanStep[] } | null {
-  // Extract all Step blocks
-  const stepRegex = /<Step\s+index="(\d+)">([\s\S]*?)<\/Step>/gi
-  const steps: PlanStep[] = []
-
-  let match
-  while ((match = stepRegex.exec(content)) !== null) {
-    const index = parseInt(match[1] || "0", 10)
-    const stepContent = match[2] || ""
-
-    // Extract fields from step content
-    const descriptionMatch = stepContent.match(/<Description>([\s\S]*?)<\/Description>/i)
-    const reasoningMatch = stepContent.match(/<Reasoning>([\s\S]*?)<\/Reasoning>/i)
-    const toolTypeMatch = stepContent.match(/<ToolType>([\s\S]*?)<\/ToolType>/i)
-    const expectedOutcomeMatch = stepContent.match(/<ExpectedOutcome>([\s\S]*?)<\/ExpectedOutcome>/i)
-
-    const description = descriptionMatch?.[1]?.trim() || ""
-    const reasoning = reasoningMatch?.[1]?.trim()
-    const toolTypeStr = toolTypeMatch?.[1]?.trim()?.toUpperCase() || "DOM"
-    const expectedOutcomeStr = expectedOutcomeMatch?.[1]?.trim()
-
-    // Validate tool type
-    const toolType = toolTypeStr === "SERVER" || toolTypeStr === "MIXED" ? toolTypeStr : "DOM"
-
-    if (!description) {
-      // Skip steps without description
-      continue
-    }
-
-    steps.push({
-      index,
-      description,
-      reasoning: reasoning || undefined,
-      toolType,
-      status: "pending",
-      expectedOutcome: expectedOutcomeStr
-        ? {
-            description: expectedOutcomeStr,
-          }
-        : undefined,
-    })
-  }
-
-  if (steps.length === 0) {
-    return null
-  }
-
-  // Sort steps by index to ensure correct order
-  steps.sort((a, b) => a.index - b.index)
-
-  return { steps }
-}

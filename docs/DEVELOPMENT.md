@@ -670,6 +670,14 @@ See `docs/API_REFERENCE.md` for detailed test cases organized by feature:
 3. Add to `.env.example` with description
 4. Document in relevant guide
 
+### Chrome Extension Integration
+
+The backend interact flow expects the Chrome extension to follow a **client contract** so the agent advances correctly and verification works. Extension developers should use:
+
+- **`docs/INTERACT_FLOW_WALKTHROUGH.md`** § **Client Contract: State Persistence & Stability** — Single source for Chrome extension requirements: checklist (taskId persistence, stability wait, clientObservations, request shape), detailed behavior and code examples, **client ↔ server implementation alignment** with extension file locations (`taskPersistence.ts`, `domWaiting.ts`, `currentTask.ts`, `api/client.ts`), request shape recap, and note that no additional extension changes are required for recent backend work (velocity check, zombie expiration, rolling summarization, RAG spec).
+
+The Chrome extension has been verified against the server contract; the contract is implemented and wired up (taskId persistence, task/active recovery, stability wait, clientObservations).
+
 ---
 
 ## Troubleshooting

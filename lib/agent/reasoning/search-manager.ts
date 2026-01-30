@@ -5,6 +5,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { SEARCH_EVALUATION_SCHEMA } from "@/lib/llm/response-schemas"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 
 /**
@@ -146,6 +147,7 @@ Examples:
       temperature: 0.3,
       maxOutputTokens: 600,
       thinkingLevel: "low",
+      responseJsonSchema: SEARCH_EVALUATION_SCHEMA,
     })
 
     if (tenantId && usageContext && result?.promptTokens != null) {

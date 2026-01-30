@@ -6,6 +6,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { OUTCOME_PREDICTION_SCHEMA } from "@/lib/llm/response-schemas"
 import { classifyActionType } from "./action-type"
 
 /**
@@ -214,6 +215,7 @@ Remember: Write the <Description> in user-friendly language that a non-technical
       temperature: 0.7,
       maxOutputTokens: 500,
       thinkingLevel: "high",
+      responseJsonSchema: OUTCOME_PREDICTION_SCHEMA,
       generationName: "outcome_prediction",
       sessionId: context?.sessionId,
       userId: context?.userId,
@@ -254,152 +256,31 @@ Remember: Write the <Description> in user-friendly language that a non-technical
       return null
     }
 
-    // Parse expected outcome from LLM response
-    const expectedOutcome = parseOutcomeResponse(content)
-
-    if (!expectedOutcome) {
-      Sentry.captureException(new Error("Failed to parse outcome prediction response"))
+    let parsed: {
+      description?: string
+      domChanges?: ExpectedOutcome["domChanges"]
+      nextGoal?: ExpectedOutcome["nextGoal"]
+    }
+    try {
+      parsed = JSON.parse(content) as typeof parsed
+    } catch (e: unknown) {
+      Sentry.captureException(e)
       return null
     }
-
-    return expectedOutcome
+    const description = (parsed.description ?? "").trim()
+    if (!description) {
+      return null
+    }
+    const domChanges = parsed.domChanges ?? {}
+    const nextGoal = parsed.nextGoal
+    return {
+      description,
+      ...(Object.keys(domChanges).length > 0 ? { domChanges } : {}),
+      ...(nextGoal ? { nextGoal } : {}),
+    }
   } catch (error: unknown) {
     Sentry.captureException(error)
     throw error
   }
 }
 
-/**
- * Parse LLM response to extract expected outcome structure
- */
-function parseOutcomeResponse(content: string): ExpectedOutcome | null {
-  // Extract description
-  const descriptionMatch = content.match(/<Description>([\s\S]*?)<\/Description>/i)
-  const description = descriptionMatch?.[1]?.trim() || ""
-
-  if (!description) {
-    // If no description provided, return null
-    return null
-  }
-
-  // Extract DOM changes
-  const domChanges: ExpectedOutcome["domChanges"] = {}
-
-  // Element should exist
-  const elementShouldExistMatch = content.match(/<ElementShouldExist>([\s\S]*?)<\/ElementShouldExist>/i)
-  if (elementShouldExistMatch?.[1]?.trim()) {
-    domChanges.elementShouldExist = elementShouldExistMatch[1].trim()
-  }
-
-  // Element should not exist
-  const elementShouldNotExistMatch = content.match(/<ElementShouldNotExist>([\s\S]*?)<\/ElementShouldNotExist>/i)
-  if (elementShouldNotExistMatch?.[1]?.trim()) {
-    domChanges.elementShouldNotExist = elementShouldNotExistMatch[1].trim()
-  }
-
-  // Element should have text
-  const elementShouldHaveTextMatch = content.match(
-    /<ElementShouldHaveText>[\s\S]*?<Selector>([\s\S]*?)<\/Selector>[\s\S]*?<Text>([\s\S]*?)<\/Text>[\s\S]*?<\/ElementShouldHaveText>/i
-  )
-  if (elementShouldHaveTextMatch?.[1]?.trim() && elementShouldHaveTextMatch?.[2]?.trim()) {
-    domChanges.elementShouldHaveText = {
-      selector: elementShouldHaveTextMatch[1].trim(),
-      text: elementShouldHaveTextMatch[2].trim(),
-    }
-  }
-
-  // URL should change
-  const urlShouldChangeMatch = content.match(/<URLShouldChange>([\s\S]*?)<\/URLShouldChange>/i)
-  if (urlShouldChangeMatch?.[1]?.trim()) {
-    const urlShouldChangeStr = urlShouldChangeMatch[1].trim().toLowerCase()
-    domChanges.urlShouldChange = urlShouldChangeStr === "true" || urlShouldChangeStr === "yes"
-  }
-
-  // Attribute changes (for popup/dropdown elements)
-  const attributeChangeMatches = Array.from(
-    content.matchAll(/<AttributeChange>[\s\S]*?<Attribute>([\s\S]*?)<\/Attribute>[\s\S]*?<ExpectedValue>([\s\S]*?)<\/ExpectedValue>[\s\S]*?<\/AttributeChange>/gi)
-  )
-  const attributeChanges: Array<{ attribute: string; expectedValue: string }> = []
-  for (const match of attributeChangeMatches) {
-    if (match[1]?.trim() && match[2]?.trim()) {
-      attributeChanges.push({
-        attribute: match[1].trim(),
-        expectedValue: match[2].trim(),
-      })
-    }
-  }
-  if (attributeChanges.length > 0) {
-    domChanges.attributeChanges = attributeChanges
-  }
-
-  // Elements to appear (for popup/dropdown verification)
-  const elementShouldAppearMatches = Array.from(
-    content.matchAll(/<ElementShouldAppear>[\s\S]*?(?:<Role>([\s\S]*?)<\/Role>)?[\s\S]*?(?:<Selector>([\s\S]*?)<\/Selector>)?[\s\S]*?<\/ElementShouldAppear>/gi)
-  )
-  const elementsToAppear: Array<{ role?: string; selector?: string }> = []
-  for (const match of elementShouldAppearMatches) {
-    if (match[1]?.trim() || match[2]?.trim()) {
-      elementsToAppear.push({
-        role: match[1]?.trim(),
-        selector: match[2]?.trim(),
-      })
-    }
-  }
-  if (elementsToAppear.length > 0) {
-    domChanges.elementsToAppear = elementsToAppear
-  }
-
-  // Elements to disappear
-  const elementShouldDisappearMatches = Array.from(
-    content.matchAll(/<ElementShouldDisappear>[\s\S]*?(?:<Role>([\s\S]*?)<\/Role>)?[\s\S]*?(?:<Selector>([\s\S]*?)<\/Selector>)?[\s\S]*?<\/ElementShouldDisappear>/gi)
-  )
-  const elementsToDisappear: Array<{ role?: string; selector?: string }> = []
-  for (const match of elementShouldDisappearMatches) {
-    if (match[1]?.trim() || match[2]?.trim()) {
-      elementsToDisappear.push({
-        role: match[1]?.trim(),
-        selector: match[2]?.trim(),
-      })
-    }
-  }
-  if (elementsToDisappear.length > 0) {
-    domChanges.elementsToDisappear = elementsToDisappear
-  }
-
-  // Phase 3 Task 3: Parse NextGoal for look-ahead verification
-  const nextGoalMatch = content.match(/<NextGoal>([\s\S]*?)<\/NextGoal>/i)
-  let nextGoal: ExpectedOutcome["nextGoal"] | undefined
-  
-  if (nextGoalMatch?.[1]) {
-    const nextGoalContent = nextGoalMatch[1]
-    
-    const ngDescriptionMatch = nextGoalContent.match(/<Description>([\s\S]*?)<\/Description>/i)
-    const ngSelectorMatch = nextGoalContent.match(/<Selector>([\s\S]*?)<\/Selector>/i)
-    const ngTextContentMatch = nextGoalContent.match(/<TextContent>([\s\S]*?)<\/TextContent>/i)
-    const ngRoleMatch = nextGoalContent.match(/<Role>([\s\S]*?)<\/Role>/i)
-    const ngRequiredMatch = nextGoalContent.match(/<Required>([\s\S]*?)<\/Required>/i)
-    
-    const ngDescription = ngDescriptionMatch?.[1]?.trim()
-    const ngSelector = ngSelectorMatch?.[1]?.trim()
-    const ngTextContent = ngTextContentMatch?.[1]?.trim()
-    const ngRole = ngRoleMatch?.[1]?.trim()
-    const ngRequiredStr = ngRequiredMatch?.[1]?.trim()?.toLowerCase()
-    const ngRequired = ngRequiredStr === "true" || ngRequiredStr === "yes"
-    
-    if (ngDescription) {
-      nextGoal = {
-        description: ngDescription,
-        selector: ngSelector || undefined,
-        textContent: ngTextContent || undefined,
-        role: ngRole || undefined,
-        required: ngRequired,
-      }
-    }
-  }
-
-  return {
-    description,
-    ...(Object.keys(domChanges).length > 0 ? { domChanges } : {}),
-    ...(nextGoal ? { nextGoal } : {}),
-  }
-}

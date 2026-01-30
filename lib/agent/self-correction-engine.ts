@@ -7,6 +7,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { SELF_CORRECTION_SCHEMA } from "@/lib/llm/response-schemas"
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 import { classifyActionType } from "./action-type"
 import type { VerificationResult } from "./verification-engine"
@@ -231,6 +232,7 @@ Remember: Write your <Analysis>, <Reason>, and <CorrectedDescription> in user-fr
       temperature: 0.7,
       maxOutputTokens: 1000,
       thinkingLevel: "high",
+      responseJsonSchema: SELF_CORRECTION_SCHEMA,
       generationName: "self_correction",
       sessionId: context?.sessionId,
       userId: context?.userId,
@@ -271,140 +273,74 @@ Remember: Write your <Analysis>, <Reason>, and <CorrectedDescription> in user-fr
       return null
     }
 
-    // Parse correction from LLM response
-    const correction = parseCorrectionResponse(content, failedStep, previousCorrections, failedAction)
-
-    if (!correction) {
-      Sentry.captureException(new Error("Failed to parse correction response"))
+    let parsed: { strategy?: string; reason?: string; correctedAction?: string; correctedDescription?: string }
+    try {
+      parsed = JSON.parse(content) as typeof parsed
+    } catch (e: unknown) {
+      Sentry.captureException(e)
+      return null
+    }
+    const retryAction = (parsed.correctedAction ?? "").trim()
+    if (!retryAction) {
       return null
     }
 
-    return correction
+    const validStrategies: CorrectionStrategy[] = [
+      "ALTERNATIVE_SELECTOR",
+      "ALTERNATIVE_TOOL",
+      "GATHER_INFORMATION",
+      "UPDATE_PLAN",
+      "RETRY_WITH_DELAY",
+    ]
+    const strategyStr = (parsed.strategy ?? "").toUpperCase()
+    const strategy = validStrategies.includes(strategyStr as CorrectionStrategy)
+      ? (strategyStr as CorrectionStrategy)
+      : "ALTERNATIVE_SELECTOR"
+    const reason = (parsed.reason ?? "Correction needed based on verification failure").trim()
+    const correctedDescription = (parsed.correctedDescription ?? failedStep.description).trim()
+
+    if (previousCorrections.some((prev) => prev.action === retryAction)) {
+      const errorMessage = `Self-correction generated a duplicate action that was already tried: "${retryAction}". Previous attempts: ${previousCorrections.map((p) => p.action).join(", ")}`
+      Sentry.captureException(new Error(errorMessage), {
+        tags: { component: "self-correction-engine", action: retryAction, strategy, duplicate: true },
+        extra: { failedStep: { description: failedStep.description, toolType: failedStep.toolType }, previousCorrections },
+      })
+      console.error(`[Self-Correction] ${errorMessage}`)
+      return null
+    }
+    if (failedAction && retryAction === failedAction) {
+      const errorMessage = `Self-correction generated the same action that already failed: "${retryAction}"`
+      Sentry.captureException(new Error(errorMessage), {
+        tags: { component: "self-correction-engine", action: retryAction, strategy, sameAsFailed: true },
+        extra: { failedStep: { description: failedStep.description, toolType: failedStep.toolType }, failedAction },
+      })
+      console.error(`[Self-Correction] ${errorMessage}`)
+      return null
+    }
+
+    const validation = validateActionName(retryAction)
+    if (!validation.valid) {
+      const errorMessage = `Invalid corrected action generated: "${retryAction}". ${validation.error}`
+      Sentry.captureException(new Error(errorMessage), {
+        tags: { component: "self-correction-engine", action: retryAction, strategy },
+        extra: { failedStep: { description: failedStep.description, toolType: failedStep.toolType } },
+      })
+      console.error(`[Self-Correction] ${errorMessage}`)
+      return null
+    }
+
+    return {
+      strategy,
+      reason,
+      retryAction,
+      correctedStep: {
+        description: correctedDescription,
+        action: retryAction,
+        expectedOutcome: failedStep.expectedOutcome,
+      },
+    }
   } catch (error: unknown) {
     Sentry.captureException(error)
     throw error
-  }
-}
-
-/**
- * Parse LLM response to extract correction strategy and action
- */
-function parseCorrectionResponse(
-  content: string,
-  failedStep: PlanStep,
-  previousCorrections: Array<{ action: string; strategy: string }> = [],
-  failedAction?: string
-): CorrectionResult | null {
-  // Extract strategy
-  const strategyMatch = content.match(/<Strategy>([\s\S]*?)<\/Strategy>/i)
-  const strategyStr = strategyMatch?.[1]?.trim()?.toUpperCase() || ""
-
-  // Validate strategy
-  const validStrategies: CorrectionStrategy[] = [
-    "ALTERNATIVE_SELECTOR",
-    "ALTERNATIVE_TOOL",
-    "GATHER_INFORMATION",
-    "UPDATE_PLAN",
-    "RETRY_WITH_DELAY",
-  ]
-  const strategy = validStrategies.includes(strategyStr as CorrectionStrategy)
-    ? (strategyStr as CorrectionStrategy)
-    : "ALTERNATIVE_SELECTOR" // Default fallback
-
-  // Extract reason
-  const reasonMatch = content.match(/<Reason>([\s\S]*?)<\/Reason>/i)
-  const reason = reasonMatch?.[1]?.trim() || "Correction needed based on verification failure"
-
-  // Extract corrected action
-  const actionMatch = content.match(/<CorrectedAction>([\s\S]*?)<\/CorrectedAction>/i)
-  const retryAction = actionMatch?.[1]?.trim() || ""
-
-  if (!retryAction) {
-    // If no corrected action provided, return null
-    return null
-  }
-
-  // CRITICAL: Check if this action was already tried (prevent infinite loops)
-  if (previousCorrections.some((prev) => prev.action === retryAction)) {
-    const errorMessage = `Self-correction generated a duplicate action that was already tried: "${retryAction}". Previous attempts: ${previousCorrections.map((p) => p.action).join(", ")}`
-    Sentry.captureException(new Error(errorMessage), {
-      tags: {
-        component: "self-correction-engine",
-        action: retryAction,
-        strategy,
-        duplicate: true,
-      },
-      extra: {
-        failedStep: {
-          description: failedStep.description,
-          toolType: failedStep.toolType,
-        },
-        previousCorrections,
-      },
-    })
-    console.error(`[Self-Correction] ${errorMessage}`)
-    // Return null to reject duplicate action
-    return null
-  }
-
-  // Also check if it's the same as the original failed action
-  if (failedAction && retryAction === failedAction) {
-    const errorMessage = `Self-correction generated the same action that already failed: "${retryAction}"`
-    Sentry.captureException(new Error(errorMessage), {
-      tags: {
-        component: "self-correction-engine",
-        action: retryAction,
-        strategy,
-        sameAsFailed: true,
-      },
-      extra: {
-        failedStep: {
-          description: failedStep.description,
-          toolType: failedStep.toolType,
-        },
-        failedAction,
-      },
-    })
-    console.error(`[Self-Correction] ${errorMessage}`)
-    // Return null to reject same action
-    return null
-  }
-
-  // CRITICAL: Validate action against configuration
-  const validation = validateActionName(retryAction)
-  if (!validation.valid) {
-    // Log error and reject invalid action
-    const errorMessage = `Invalid corrected action generated: "${retryAction}". ${validation.error}`
-    Sentry.captureException(new Error(errorMessage), {
-      tags: {
-        component: "self-correction-engine",
-        action: retryAction,
-        strategy,
-      },
-      extra: {
-        failedStep: {
-          description: failedStep.description,
-          toolType: failedStep.toolType,
-        },
-      },
-    })
-    console.error(`[Self-Correction] ${errorMessage}`)
-    // Return null to reject invalid action
-    return null
-  }
-
-  // Extract corrected description
-  const descriptionMatch = content.match(/<CorrectedDescription>([\s\S]*?)<\/CorrectedDescription>/i)
-  const correctedDescription = descriptionMatch?.[1]?.trim() || failedStep.description
-
-  return {
-    strategy,
-    reason,
-    retryAction,
-    correctedStep: {
-      description: correctedDescription,
-      action: retryAction,
-      expectedOutcome: failedStep.expectedOutcome, // Keep original expected outcome
-    },
   }
 }

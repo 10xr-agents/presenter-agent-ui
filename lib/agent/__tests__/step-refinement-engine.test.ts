@@ -64,6 +64,7 @@ click(68)
       [],
       false,
       { action_succeeded: true, task_completed: false },
+      undefined,
       { tenantId: "t1", userId: "u1" }
     )
 
@@ -84,6 +85,7 @@ click(68)
       [],
       false,
       undefined,
+      undefined,
       { tenantId: "t1", userId: "u1" }
     )
 
@@ -101,6 +103,7 @@ click(68)
       [],
       false,
       { action_succeeded: true, task_completed: true },
+      undefined,
       { tenantId: "t1", userId: "u1" }
     )
 
@@ -118,6 +121,7 @@ click(68)
       [],
       false,
       { action_succeeded: false, task_completed: false },
+      undefined,
       { tenantId: "t1", userId: "u1" }
     )
 

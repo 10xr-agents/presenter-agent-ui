@@ -26,6 +26,7 @@ export async function stepRefinementNode(
     dom,
     url,
     previousActions,
+    previousActionsSummary,
     ragChunks,
     hasOrgKnowledge,
     verificationResult,
@@ -71,6 +72,7 @@ export async function stepRefinementNode(
       ragChunks,
       hasOrgKnowledge,
       verificationSummary,
+      previousActionsSummary,
       {
         tenantId: state.tenantId,
         userId: state.userId,

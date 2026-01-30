@@ -24,6 +24,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { CONTINGENCY_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 
 /**
  * Internal Plan type that extends TaskPlan for consistency
@@ -218,6 +219,7 @@ Respond with JSON:
       temperature: 0.5,
       maxOutputTokens: 1500,
       thinkingLevel: "high",
+      responseJsonSchema: CONTINGENCY_RESPONSE_SCHEMA,
       generationName: "contingency_generation",
       sessionId: context.sessionId,
       userId: context.userId,

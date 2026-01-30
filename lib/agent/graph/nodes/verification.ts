@@ -8,17 +8,28 @@
  * On success: Proceeds to next action generation
  * On failure: Routes to correction node
  *
+ * Phase 5: Tiered verification for token efficiency:
+ * - Tier 1 (Deterministic): Zero LLM tokens for unambiguous outcomes
+ * - Tier 2 (Lightweight): ~100 tokens for simple final steps
+ * - Tier 3 (Full LLM): Current implementation for complex cases
+ *
  * @see docs/VERIFICATION_PROCESS.md
  */
 
 import * as Sentry from "@sentry/nextjs"
+import { classifyActionType } from "@/lib/agent/action-type"
 import {
   completeSubTask,
   extractSubTaskOutputs,
   getCurrentSubTask,
   isHierarchicalPlanComplete,
 } from "@/lib/agent/hierarchical-planning"
-import { verifyActionWithObservations } from "@/lib/agent/verification-engine"
+import {
+  verifyActionWithObservations,
+  type TieredVerificationExtras,
+} from "@/lib/agent/verification-engine"
+import { checkNextGoalAvailability } from "@/lib/agent/verification/confidence"
+import { extractActualState } from "@/lib/agent/verification/dom-checks"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, VerificationResult } from "../types"
 
@@ -77,6 +88,29 @@ export async function verificationNode(
   )
 
   try {
+    // Phase 5: Classify action type for tiered verification
+    const actionType = classifyActionType(lastAction, dom)
+
+    // Phase 5: Build next goal check if we have expected outcome
+    let nextGoalCheck: { available: boolean; reason: string; required: boolean } | undefined
+    if (state.lastActionExpectedOutcome?.nextGoal) {
+      const actualState = extractActualState(dom, url)
+      nextGoalCheck = checkNextGoalAvailability(
+        state.lastActionExpectedOutcome.nextGoal,
+        actualState.domSnapshot
+      )
+    }
+
+    // Phase 5: Build tiered verification extras
+    const tieredExtras: TieredVerificationExtras = {
+      actionType,
+      complexity: state.complexity,
+      plan: state.plan,
+      hierarchicalPlan: state.hierarchicalPlan,
+      expectedOutcome: state.lastActionExpectedOutcome,
+      nextGoalCheck,
+    }
+
     const result = await verifyActionWithObservations(
       lastActionBeforeState,
       dom,
@@ -91,11 +125,12 @@ export async function verificationNode(
         taskId: state.taskId,
         langfuseTraceId: state.langfuseTraceId,
       },
-      subTaskObjective
+      subTaskObjective,
+      tieredExtras
     )
 
     log.info(
-      `Verification ${result.success ? "SUCCESS" : "FAILED"}: confidence=${result.confidence.toFixed(2)}, action_succeeded=${result.action_succeeded}, task_completed=${result.task_completed}, sub_task_completed=${result.sub_task_completed ?? "—"}, goalAchieved=${result.goalAchieved === true}, reason=${result.reason}`
+      `Verification ${result.success ? "SUCCESS" : "FAILED"}: tier=${result.verificationTier ?? "full"}, confidence=${result.confidence.toFixed(2)}, action_succeeded=${result.action_succeeded}, task_completed=${result.task_completed}, sub_task_completed=${result.sub_task_completed ?? "—"}, goalAchieved=${result.goalAchieved === true}, tokensSaved=${result.tokensSaved ?? 0}`
     )
 
     let updatedHierarchicalPlan = hierarchicalPlan
@@ -157,16 +192,36 @@ export async function verificationNode(
       task_completed: result.task_completed,
       sub_task_completed: result.sub_task_completed,
       semanticSummary: result.semanticSummary,
+      // Phase 5: Tiered verification metadata
+      verificationTier: result.verificationTier,
+      tokensSaved: result.tokensSaved,
+      routeToCorrection: result.routeToCorrection,
     }
+
+    // Phase 5: Handle routeToCorrection flag from Tier 1 Check 1.4
+    // This bypasses Tier 2/3 and goes directly to correction
+    const shouldCorrect = !result.success || result.routeToCorrection === true
 
     const out: Partial<InteractGraphState> = {
       verificationResult,
-      status: result.success ? "executing" : "correcting",
+      status: shouldCorrect ? "correcting" : "executing",
     }
-    if (result.success) {
+    if (!shouldCorrect) {
+      // Success path: reset failures, track consecutive successes
       out.consecutiveFailures = 0
+      // Semantic loop prevention: count consecutive successes without task completion
+      const nextVelocity =
+        goalAchieved === true ? 0 : (state.consecutiveSuccessWithoutTaskComplete ?? 0) + 1
+      out.consecutiveSuccessWithoutTaskComplete = nextVelocity
+      if (nextVelocity >= 5) {
+        out.error =
+          "Reflection: I've performed several steps without completing the goal. You may want to rephrase or try a different approach."
+        out.status = "failed"
+      }
     } else {
+      // Failure or routeToCorrection path: increment failures
       out.consecutiveFailures = state.consecutiveFailures + 1
+      out.consecutiveSuccessWithoutTaskComplete = 0
     }
     if (updatedHierarchicalPlan !== hierarchicalPlan) {
       out.hierarchicalPlan = updatedHierarchicalPlan
@@ -200,7 +255,12 @@ export async function verificationNode(
 export function routeAfterVerification(
   state: InteractGraphState
 ): "correction" | "planning" | "goal_achieved" | "finalize" {
-  const { verificationResult, consecutiveFailures, correctionAttempts } = state
+  const {
+    verificationResult,
+    consecutiveFailures,
+    correctionAttempts,
+    consecutiveSuccessWithoutTaskComplete,
+  } = state
   const log = logger.child({
     process: "Graph:router",
     sessionId: state.sessionId,
@@ -219,9 +279,19 @@ export function routeAfterVerification(
     return "finalize"
   }
 
+  // Semantic loop prevention: many steps without sub-goal completion (e.g. paging forever)
+  if ((consecutiveSuccessWithoutTaskComplete ?? 0) >= 5) {
+    log.info("Routing to finalize (velocity check: 5+ steps without task completion)")
+    return "finalize"
+  }
+
   // Verification failed - route to correction
-  if (verificationResult && !verificationResult.success) {
-    log.info("Routing to correction (verification failed)")
+  // Phase 5: Also check routeToCorrection flag from Tier 1 Check 1.4 (hard failures)
+  if (verificationResult && (!verificationResult.success || verificationResult.routeToCorrection === true)) {
+    const reason = verificationResult.routeToCorrection
+      ? "verification deterministic failure (routeToCorrection)"
+      : "verification failed"
+    log.info(`Routing to correction (${reason})`)
     return "correction"
   }
 

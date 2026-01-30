@@ -110,6 +110,7 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
 
       // Previous actions
       previousActions: { value: (a: any[], b?: any[]) => b ?? a, default: () => [] },
+      previousActionsSummary: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
       previousMessages: { value: (a: any[], b?: any[]) => b ?? a, default: () => [] },
 
       // Verification
@@ -127,6 +128,7 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
       correctionResult: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
       correctionAttempts: { value: (a: number, b?: number) => b ?? a, default: () => 0 },
       consecutiveFailures: { value: (a: number, b?: number) => b ?? a, default: () => 0 },
+      consecutiveSuccessWithoutTaskComplete: { value: (a: number, b?: number) => b ?? a, default: () => 0 },
 
       // Phase 3 Task 2: Re-planning
       previousDom: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },

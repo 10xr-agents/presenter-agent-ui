@@ -150,6 +150,28 @@ export async function GET(
       return addCorsHeaders(req, err)
     }
 
+    // Lazy expiration: mark tasks untouched for >30 minutes as interrupted (zombie cleanup)
+    const STALE_TASK_MINUTES = 30
+    const staleThreshold = new Date(Date.now() - STALE_TASK_MINUTES * 60 * 1000)
+    const activeStatusesForExpiry = ["active", "planning", "executing", "verifying", "correcting"]
+    const expiredResult = await (Task as any)
+      .updateMany(
+        {
+          tenantId,
+          userId,
+          status: { $in: activeStatusesForExpiry },
+          updatedAt: { $lt: staleThreshold },
+        },
+        { $set: { status: "interrupted" } }
+      )
+      .exec()
+    if (expiredResult.modifiedCount > 0) {
+      Sentry.logger.info("Task active: expired stale tasks", {
+        modifiedCount: expiredResult.modifiedCount,
+        thresholdMinutes: STALE_TASK_MINUTES,
+      })
+    }
+
     // Build query for active tasks
     // Active statuses: active, planning, executing, verifying, correcting
     const activeStatuses = ["active", "planning", "executing", "verifying", "correcting"]

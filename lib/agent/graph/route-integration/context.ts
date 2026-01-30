@@ -21,6 +21,10 @@ export interface LoadTaskContextResult {
   /** Phase 4 Task 8: Hierarchical plan (sub-tasks). */
   hierarchicalPlan?: HierarchicalPlan
   previousActions: PreviousAction[]
+  /** When previousActions were trimmed (rolling context), a short summary of earlier steps. */
+  previousActionsSummary?: string
+  /** Actual step index (from plan or full action count); use this for currentStepIndex, not trimmed previousActions.length. */
+  currentStepIndex: number
   previousMessages: Array<{ role: "user" | "assistant"; content: string; timestamp: Date }>
   lastAction?: {
     action: string
@@ -34,6 +38,8 @@ export interface LoadTaskContextResult {
   }
   correctionAttempts: number
   consecutiveFailures: number
+  /** Semantic loop prevention: consecutive successful verifications without task_completed. */
+  consecutiveSuccessWithoutTaskComplete: number
   webSearchResult?: WebSearchResult | null
 }
 
@@ -133,33 +139,52 @@ export async function loadTaskContext(
 
   const log = logger.child({ process: "RouteIntegration", sessionId, taskId })
   log.info(
-    `loadTaskContext: taskId=${taskId}, previousActions.length=${previousActions.length}, hasLastAction=${!!lastAction}${lastAction ? `, lastAction=${lastAction.action}` : ""}`
+    `loadTaskContext: taskId=${taskId}, status=${task.status}, previousActions.length=${previousActions.length}, hasLastAction=${!!lastAction}${lastAction ? `, lastAction=${lastAction.action}` : ""}`
   )
+
+  // Rolling summarization: keep only last 10 raw actions to avoid context explosion
+  const ROLLING_CONTEXT_WINDOW = 10
+  const fullActionCount = previousActions.length
+  let previousActionsSummary: string | undefined
+  let trimmedPreviousActions = previousActions
+  if (previousActions.length > ROLLING_CONTEXT_WINDOW) {
+    const kept = previousActions.length - ROLLING_CONTEXT_WINDOW
+    trimmedPreviousActions = previousActions.slice(-ROLLING_CONTEXT_WINDOW)
+    previousActionsSummary = `${kept} earlier steps completed.`
+  }
+  const currentStepIndex =
+    (task.plan as TaskPlan | undefined)?.currentStepIndex ?? fullActionCount
 
   return {
     task,
     plan: task.plan as TaskPlan | undefined,
     hierarchicalPlan: task.hierarchicalPlan as HierarchicalPlan | undefined,
-    previousActions,
+    previousActions: trimmedPreviousActions,
+    previousActionsSummary,
+    currentStepIndex,
     previousMessages,
     lastAction,
     correctionAttempts,
     consecutiveFailures: task.consecutiveFailures || 0,
+    consecutiveSuccessWithoutTaskComplete:
+      (task as any).consecutiveSuccessWithoutTaskComplete ?? 0,
     webSearchResult: task.webSearchResult,
   }
 }
 
 /**
  * Create a new task
+ * @param provisionalTaskId - Optional pre-generated taskId (for logging traceability)
  */
 export async function createTask(
   tenantId: string,
   userId: string,
   url: string,
   query: string,
-  webSearchResult?: WebSearchResult | null
+  webSearchResult?: WebSearchResult | null,
+  provisionalTaskId?: string
 ): Promise<string> {
-  const taskId = randomUUID()
+  const taskId = provisionalTaskId || randomUUID()
   await (Task as any).create({
     taskId,
     tenantId,

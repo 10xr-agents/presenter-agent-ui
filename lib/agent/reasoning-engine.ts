@@ -6,6 +6,10 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import {
+  INFORMATION_COMPLETENESS_SCHEMA,
+  TASK_CONTEXT_ANALYSIS_SCHEMA,
+} from "@/lib/llm/response-schemas"
 
 /**
  * Reasoning Engine
@@ -151,6 +155,7 @@ Guidelines:
       temperature: 0.3,
       maxOutputTokens: 500,
       thinkingLevel: "low",
+      responseJsonSchema: TASK_CONTEXT_ANALYSIS_SCHEMA,
     })
 
     const content = result?.content
@@ -270,6 +275,7 @@ Examples:
       temperature: 0.3,
       maxOutputTokens: 500,
       thinkingLevel: "low",
+      responseJsonSchema: INFORMATION_COMPLETENESS_SCHEMA,
     })
 
     if (usageContext && result?.promptTokens != null) {
@@ -296,6 +302,7 @@ Examples:
     }
 
     const verification = JSON.parse(content) as InformationCompletenessCheck
+    // Schema enforces JSON; no regex/split on content
 
     // Validate and sanitize response
     return {

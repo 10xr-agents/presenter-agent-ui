@@ -400,3 +400,38 @@ export function normalizeUrl(url: string): string {
     return url.toLowerCase().replace(/\/+$/, "")
   }
 }
+
+/**
+ * Check if navigation crossed domain boundaries.
+ * Cross-domain = different hostname (e.g., example.com → google.com).
+ *
+ * Used by Tiered Verification (Phase 5) for deterministic success checks.
+ *
+ * @param beforeUrl - URL before action
+ * @param afterUrl - URL after action
+ * @returns true if hostnames differ
+ */
+export function isCrossDomainNavigation(beforeUrl: string, afterUrl: string): boolean {
+  try {
+    const before = new URL(beforeUrl)
+    const after = new URL(afterUrl)
+    return before.hostname.toLowerCase() !== after.hostname.toLowerCase()
+  } catch {
+    // If URL parsing fails, assume not cross-domain
+    return false
+  }
+}
+
+/**
+ * Extract hostname safely for logging/comparison.
+ *
+ * @param url - URL to extract hostname from
+ * @returns hostname or original URL on parse failure
+ */
+export function getHostname(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase()
+  } catch {
+    return url
+  }
+}

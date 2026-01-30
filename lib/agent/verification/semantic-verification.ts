@@ -20,6 +20,11 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import {
+  parseStructuredResponse,
+  isParseSuccess,
+  getField,
+} from "@/lib/llm/parse-structured-response"
 import { VERIFICATION_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 import {
   extractTextContent,
@@ -44,6 +49,15 @@ export interface SemanticVerificationResult {
   match: boolean
   reason: string
   confidence: number
+}
+
+/** Expected shape from VERIFICATION_RESPONSE_SCHEMA structured output. */
+interface VerificationLLMResponse {
+  action_succeeded?: boolean
+  task_completed?: boolean
+  sub_task_completed?: boolean
+  confidence?: number
+  reason?: string
 }
 
 /**
@@ -260,27 +274,20 @@ Remember: Focus on whether the user would see the expected result. Ignore techni
       })
     }
 
-    if (!content) {
-      return {
-        action_succeeded: false,
-        task_completed: false,
-        match: false,
-        reason: "Empty LLM response",
-        confidence: 0,
-      }
-    }
+    // Use safe structured response parser (handles edge cases like BOM, markdown fences, truncation)
+    const parseResult = parseStructuredResponse<VerificationLLMResponse>(content, {
+      generationName: "semantic_verification",
+      taskId: context?.taskId,
+      sessionId: context?.sessionId,
+      schemaName: "VERIFICATION_RESPONSE_SCHEMA",
+    })
 
-    try {
-      const parsed = JSON.parse(content) as {
-        action_succeeded?: boolean
-        task_completed?: boolean
-        confidence?: number
-        reason?: string
-      }
-      const action_succeeded = parsed.action_succeeded ?? false
-      const task_completed = parsed.task_completed ?? false
-      const confidence = parsed.confidence ?? (task_completed ? 1.0 : 0)
-      const reason = parsed.reason ?? "No reason"
+    if (isParseSuccess(parseResult)) {
+      const parsed = parseResult.data
+      const action_succeeded = getField(parsed, "action_succeeded", false)
+      const task_completed = getField(parsed, "task_completed", false)
+      const confidence = getField(parsed, "confidence", task_completed ? 1.0 : 0)
+      const reason = getField(parsed, "reason", "No reason")
       return {
         action_succeeded,
         task_completed,
@@ -288,12 +295,17 @@ Remember: Focus on whether the user would see the expected result. Ignore techni
         reason,
         confidence: Math.max(0, Math.min(1, confidence)),
       }
-    } catch {
+    } else {
+      // Parse failed - log diagnostics and return degraded result
+      log.warn(
+        `Structured output parse failed for semantic_verification: ${parseResult.error}`,
+        parseResult.diagnostics
+      )
       return {
         action_succeeded: false,
         task_completed: false,
         match: false,
-        reason: content.substring(0, 200),
+        reason: `Parse error (${parseResult.diagnostics.issueType}): ${parseResult.rawContent.substring(0, 100)}`,
         confidence: 0.3,
       }
     }
@@ -394,29 +406,23 @@ Guidelines:
       })
     }
     const content = result?.content
-    if (!content) {
-      return {
-        action_succeeded: false,
-        task_completed: false,
-        match: false,
-        reason: "Empty response",
-        confidence: 0,
-      }
-    }
-    try {
-      const parsed = JSON.parse(content) as {
-        action_succeeded?: boolean
-        task_completed?: boolean
-        sub_task_completed?: boolean
-        confidence?: number
-        reason?: string
-      }
-      const action_succeeded = parsed.action_succeeded ?? false
-      const task_completed = parsed.task_completed ?? false
-      const confidence = Math.max(0, Math.min(1, parsed.confidence ?? 0.5))
-      const reason = parsed.reason ?? "No reason"
+
+    // Use safe structured response parser (handles edge cases like BOM, markdown fences, truncation)
+    const parseResult = parseStructuredResponse<VerificationLLMResponse>(content, {
+      generationName: "verification_observation",
+      taskId: context?.taskId,
+      sessionId: context?.sessionId,
+      schemaName: "VERIFICATION_RESPONSE_SCHEMA",
+    })
+
+    if (isParseSuccess(parseResult)) {
+      const parsed = parseResult.data
+      const action_succeeded = getField(parsed, "action_succeeded", false)
+      const task_completed = getField(parsed, "task_completed", false)
+      const confidence = Math.max(0, Math.min(1, getField(parsed, "confidence", 0.5)))
+      const reason = getField(parsed, "reason", "No reason")
       const sub_task_completed =
-        subTaskObjective != null ? parsed.sub_task_completed ?? false : undefined
+        subTaskObjective != null ? getField(parsed, "sub_task_completed", false) : undefined
       return {
         action_succeeded,
         task_completed,
@@ -425,12 +431,22 @@ Guidelines:
         reason,
         confidence,
       }
-    } catch {
+    } else {
+      // Parse failed - log diagnostics and return degraded result
+      const log = logger.child({
+        process: "SemanticVerification",
+        sessionId: context?.sessionId,
+        taskId: context?.taskId,
+      })
+      log.warn(
+        `Structured output parse failed for verification_observation: ${parseResult.error}`,
+        parseResult.diagnostics
+      )
       return {
         action_succeeded: false,
         task_completed: false,
         match: false,
-        reason: content.substring(0, 200),
+        reason: `Parse error (${parseResult.diagnostics.issueType}): ${parseResult.rawContent.substring(0, 100)}`,
         confidence: 0.3,
       }
     }

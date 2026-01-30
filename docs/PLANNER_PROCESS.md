@@ -10,11 +10,12 @@
 
 ## Critical: Plan and Step Advancement
 
-- **Plan** is created once per task (or regenerated when re-planning triggers). **currentStepIndex** advances per executed action: at graph invocation, `currentStepIndex = previousActions.length` (see route-integration `run-graph.ts`). The planning node **reuses** the existing plan when present; it does not re-run `generatePlan` for continuation.
-- **Step refinement** turns the current plan step into a concrete DOM action (e.g. `click(68)`). If refinement fails or returns a SERVER tool, the graph falls back to **action_generation** (LLM). Action generation uses **structured output** (Gemini `responseJsonSchema`: thought + action) so the response is valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
+- **Plan** is created once per task (or regenerated when re-planning triggers). **currentStepIndex** advances per executed action: at graph invocation, `currentStepIndex` is set from task context (plan.currentStepIndex or full action count; see route-integration `run-graph.ts` and `context.ts`). The planning node **reuses** the existing plan when present; it does not re-run `generatePlan` for continuation.
+- **Step refinement** turns the current plan step into a concrete DOM action (e.g. `click(68)`). If refinement fails or returns a SERVER tool, the graph falls back to **action_generation** (LLM). Action generation uses **structured output** (Gemini `responseJsonSchema`: thought + action) so the response is valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs. **Rolling context:** When `previousActions.length` > 10, only the last 10 raw actions are passed to step_refinement; a short summary (e.g. "N earlier steps completed.") is prepended to the prompt to avoid context explosion.
 - **Re-planning** runs after verification (when URL or DOM changed). Triggers: URL change, DOM similarity < 70%, or structural changes. Actions: `continue` (plan valid), `modify` (apply suggested changes), `regenerate` (full replan). Router uses **only** `replanningResult.planRegenerated === true` and `minorModificationsOnly` (see VERIFICATION_PROCESS.md and replanning-engine).
+- **Semantic loop prevention (velocity check):** If the agent performs 5+ consecutive successful verifications without task_completed (e.g. clicking "Next Page" forever), the verification router routes to finalize with a reflection message. See VERIFICATION_PROCESS.md and `lib/agent/graph/nodes/verification.ts` (`consecutiveSuccessWithoutTaskComplete`).
 
-**Files:** `lib/agent/planning-engine.ts`, `lib/agent/step-refinement-engine.ts`, `lib/agent/replanning-engine.ts`, `lib/agent/graph/nodes/planning.ts`, `lib/agent/graph/nodes/step-refinement.ts`, `lib/agent/graph/nodes/replanning.ts`, `lib/agent/graph/route-integration/run-graph.ts` (currentStepIndex from previousActions.length).
+**Files:** `lib/agent/planning-engine.ts`, `lib/agent/step-refinement-engine.ts`, `lib/agent/replanning-engine.ts`, `lib/agent/graph/nodes/planning.ts`, `lib/agent/graph/nodes/step-refinement.ts`, `lib/agent/graph/nodes/verification.ts`, `lib/agent/graph/nodes/replanning.ts`, `lib/agent/graph/route-integration/run-graph.ts`, `lib/agent/graph/route-integration/context.ts` (currentStepIndex, rolling summary).
 
 ---
 
@@ -35,6 +36,8 @@
 | **Plan in Graph State** | ✅ Implemented | — | plan, currentStepIndex passed through state; plan persisted with task |
 | **Verification outcome in planner context** | ✅ Implemented | 3.0.4 | Pass action_succeeded / task_completed into planning and step_refinement for "next step" context (VerificationSummary in PlanningContext and refineStep; see VERIFICATION_PROCESS.md Task 7) |
 | **Hierarchical in graph** | ✅ Implemented | 4.x | hierarchicalPlan in graph state; planning node calls decomposePlan; persisted with task; verification node uses sub_task_completed to advance/fail sub-task (see VERIFICATION_PROCESS.md Task 5) |
+| **Semantic loop prevention (velocity check)** | ✅ Implemented | — | After 5 consecutive successful verifications without task_completed, route to finalize with reflection message. Task field `consecutiveSuccessWithoutTaskComplete`; verification node and router. See INTERACT_FLOW_WALKTHROUGH.md § Logical improvements. |
+| **Rolling summarization (context cap)** | ✅ Implemented | — | When previousActions.length > 10, keep only last 10 raw actions; pass `previousActionsSummary` (e.g. "N earlier steps completed.") to step_refinement. loadTaskContext trims; currentStepIndex from plan or full count. |
 
 **Legend:** ✅ = Complete | 🔄 = In Progress | 🔲 = Planned
 

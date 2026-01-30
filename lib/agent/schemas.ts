@@ -202,9 +202,13 @@ export type ExecutionMetrics = z.infer<typeof executionMetricsSchema>
 
 /**
  * Plan step schema (Task 6)
+ * 
+ * Chat UI Contract: PlanWidget expects `id` (string) for step identification.
+ * The `id` field is generated from `index` (e.g., "step_0") in the response.
  */
 export const planStepSchema = z.object({
   index: z.number().int().nonnegative(),
+  id: z.string().optional(), // Chat UI: step identifier for PlanWidget stepper
   description: z.string(),
   reasoning: z.string().optional(),
   toolType: z.enum(["DOM", "SERVER", "MIXED"]),
@@ -301,6 +305,7 @@ export const nextActionResponseSchema = z.object({
       "executing",
       "verifying",
       "correcting",
+      "needs_user_input", // Chat UI: shows UserInputPrompt when this status is returned
     ])
     .optional(), // Task status
   // Task 7: Verification result (if verification occurred)

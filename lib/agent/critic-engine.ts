@@ -23,6 +23,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { CRITIC_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 
 /**
  * Context for critic evaluation and Langfuse trace linkage
@@ -194,6 +195,7 @@ When uncertain, approve with lower confidence.`
       temperature: 0.3,
       maxOutputTokens: 300,
       thinkingLevel: "high",
+      responseJsonSchema: CRITIC_RESPONSE_SCHEMA,
       generationName: "critic_evaluation",
       sessionId: context?.sessionId,
       userId: context?.userId,
@@ -208,7 +210,24 @@ When uncertain, approve with lower confidence.`
     const durationMs = Date.now() - startTime
     const content = genResult?.content ?? ""
 
-    const result = parseCriticResponse(content)
+    let result: CriticResult
+    try {
+      const parsed = JSON.parse(content) as { approved?: boolean; confidence?: number; reason?: string; suggestion?: string }
+      result = {
+        approved: Boolean(parsed.approved),
+        confidence: Math.min(1, Math.max(0, Number(parsed.confidence) ?? 0.5)),
+        reason: parsed.approved ? undefined : (parsed.reason?.trim() ?? undefined),
+        suggestion: parsed.approved ? undefined : (parsed.suggestion?.trim() ?? undefined),
+        durationMs: 0,
+      }
+    } catch {
+      result = {
+        approved: true,
+        confidence: 0,
+        reason: "Critic parse error - failing open",
+        durationMs: 0,
+      }
+    }
     result.durationMs = durationMs
 
     if (context?.tenantId && context?.userId && genResult?.promptTokens != null) {
@@ -254,33 +273,6 @@ When uncertain, approve with lower confidence.`
       durationMs: Date.now() - startTime,
       reason: "Critic error - failing open",
     }
-  }
-}
-
-/**
- * Parse critic LLM response.
- * Deterministic: approved is set only from <Approved>YES</Approved> or <Approved>NO</Approved>.
- * No fallback to free-text (e.g. "APPROVED>YES"); routing uses this boolean only.
- */
-function parseCriticResponse(content: string): CriticResult {
-  const approvedMatch = content.match(/<Approved>\s*(YES|NO)\s*<\/Approved>/i)
-  const approved = approvedMatch?.[1]?.toUpperCase() === "YES"
-
-  const confidenceMatch = content.match(/<Confidence>([\d.]+)<\/Confidence>/i)
-  const confidence = confidenceMatch ? parseFloat(confidenceMatch[1] || "0.5") : 0.5
-
-  const reasonMatch = content.match(/<Reason>([\s\S]*?)<\/Reason>/i)
-  const reason = reasonMatch?.[1]?.trim() || undefined
-
-  const suggestionMatch = content.match(/<Suggestion>([\s\S]*?)<\/Suggestion>/i)
-  const suggestion = suggestionMatch?.[1]?.trim() || undefined
-
-  return {
-    approved,
-    confidence: Math.min(1, Math.max(0, confidence)),
-    reason: approved ? undefined : reason,
-    suggestion: approved ? undefined : suggestion,
-    durationMs: 0,
   }
 }
 

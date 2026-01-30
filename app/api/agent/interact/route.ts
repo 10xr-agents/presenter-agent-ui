@@ -437,10 +437,16 @@ export async function POST(req: NextRequest) {
     // Build response (200 with thought + status; status may be "failed" with a user-visible message)
     const duration = Date.now() - startTime
     
-    // Convert plan createdAt from Date to string for schema compatibility
+    // Convert plan for Chat UI compatibility:
+    // - createdAt: Date → string (ISO format)
+    // - steps: add `id` field for PlanWidget (Chat UI contract expects id: string)
     const responsePlan = graphResult.plan
       ? {
           ...graphResult.plan,
+          steps: graphResult.plan.steps.map((step) => ({
+            ...step,
+            id: `step_${step.index}`, // Chat UI contract: id: string for PlanWidget stepper
+          })),
           createdAt: graphResult.plan.createdAt instanceof Date
             ? graphResult.plan.createdAt.toISOString()
             : graphResult.plan.createdAt,
@@ -454,9 +460,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const isTerminal = graphResult.status === "completed" || graphResult.status === "failed"
     const response: NextActionResponse = {
       thought: graphResult.thought || "",
-      action: graphResult.action || "",
+      action: graphResult.action || (isTerminal ? "finish()" : ""),
       usage: graphResult.llmUsage,
       taskId: graphResult.taskId || undefined,
       hasOrgKnowledge,

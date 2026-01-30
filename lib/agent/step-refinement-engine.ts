@@ -6,6 +6,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { STEP_REFINEMENT_SCHEMA } from "@/lib/llm/response-schemas"
 import type { VerificationSummary } from "@/lib/agent/verification/types"
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 
@@ -47,6 +48,7 @@ export interface RefinedToolAction {
  * @param ragChunks - RAG context chunks (if available)
  * @param hasOrgKnowledge - Whether org-specific knowledge was used
  * @param verificationSummary - Optional verification outcome (action_succeeded, task_completed) for "next step" context
+ * @param previousActionsSummary - When rolling context is used, summary of earlier steps (e.g. "20 earlier steps completed.")
  * @param context - Cost tracking context (optional)
  * @returns Refined tool action
  */
@@ -58,6 +60,7 @@ export async function refineStep(
   ragChunks: ResolveKnowledgeChunk[] = [],
   hasOrgKnowledge = false,
   verificationSummary?: VerificationSummary,
+  previousActionsSummary?: string,
   context?: RefinementContext
 ): Promise<RefinedToolAction | null> {
   const model = DEFAULT_PLANNING_MODEL
@@ -119,6 +122,10 @@ Guidelines:
   // Build user message with context
   const userParts: string[] = []
 
+  if (previousActionsSummary) {
+    userParts.push(`Earlier progress: ${previousActionsSummary}\n`)
+  }
+
   if (
     verificationSummary?.action_succeeded === true &&
     verificationSummary?.task_completed === false
@@ -173,6 +180,7 @@ Note: The plan step description is written in user-friendly language. When gener
       temperature: 0.7,
       maxOutputTokens: 500,
       thinkingLevel: "low",
+      responseJsonSchema: STEP_REFINEMENT_SCHEMA,
       generationName: "step_refinement",
       sessionId: context?.sessionId,
       userId: context?.userId,
@@ -215,131 +223,75 @@ Note: The plan step description is written in user-friendly language. When gener
       return null
     }
 
-    // Parse refined tool action from LLM response
-    const refinedAction = parseRefinementResponse(content, planStep.toolType, planStep)
+    let parsed: { toolName: string; toolType: string; parameters?: Record<string, unknown>; action?: string }
+    try {
+      parsed = JSON.parse(content) as typeof parsed
+    } catch (e: unknown) {
+      Sentry.captureException(e)
+      return null
+    }
+    const toolName = parsed.toolName?.trim() ?? ""
+    if (!toolName) {
+      return null
+    }
+    const toolTypeStr = (parsed.toolType ?? planStep.toolType).toString().toUpperCase()
+    const toolType: "DOM" | "SERVER" = toolTypeStr === "SERVER" ? "SERVER" : "DOM"
+    const parameters =
+      typeof parsed.parameters === "object" && parsed.parameters !== null && !Array.isArray(parsed.parameters)
+        ? (parsed.parameters as Record<string, unknown>)
+        : {}
 
-    if (!refinedAction) {
-      Sentry.captureException(new Error("Failed to parse step refinement response"))
+    if (toolType === "SERVER") {
+      return {
+        toolName,
+        toolType: "SERVER",
+        parameters: {},
+        action: "",
+      }
+    }
+
+    let action = (parsed.action ?? "").trim()
+    const isJustToolName = action && !action.includes("(")
+    if (!action || isJustToolName) {
+      if (toolName === "click" && parameters.elementId != null) {
+        action = `click(${parameters.elementId})`
+      } else if (toolName === "setValue" && parameters.elementId != null && parameters.text != null) {
+        action = `setValue(${parameters.elementId}, ${JSON.stringify(parameters.text)})`
+      } else if (toolName === "finish") {
+        action = "finish()"
+      } else if (toolName === "fail" && parameters.reason != null) {
+        action = `fail(${JSON.stringify(parameters.reason)})`
+      } else {
+        if (isJustToolName && action === toolName) {
+          console.error(`[Step Refinement] Action is just tool name "${action}" but missing required parameters`, {
+            toolName,
+            parameters,
+          })
+        }
+        return null
+      }
+    }
+
+    const validation = validateActionName(action)
+    if (!validation.valid) {
+      const errorMessage = `Invalid refined action generated: "${action}". ${validation.error}`
+      Sentry.captureException(new Error(errorMessage), {
+        tags: { component: "step-refinement-engine", action, toolName, toolType },
+        extra: { planStep: planStep ? { description: planStep.description, toolType: planStep.toolType, index: planStep.index } : undefined, parameters },
+      })
+      console.error(`[Step Refinement] ${errorMessage}`)
       return null
     }
 
-    return refinedAction
+    return {
+      toolName,
+      toolType: "DOM",
+      parameters,
+      action,
+    }
   } catch (error: unknown) {
     Sentry.captureException(error)
     throw error
   }
 }
 
-/**
- * Parse LLM response to extract refined tool action
- */
-function parseRefinementResponse(
-  content: string,
-  planToolType: "DOM" | "SERVER" | "MIXED",
-  planStep?: PlanStep
-): RefinedToolAction | null {
-  // Extract tool name
-  const toolNameMatch = content.match(/<ToolName>([\s\S]*?)<\/ToolName>/i)
-  const toolName = toolNameMatch?.[1]?.trim() || ""
-
-  if (!toolName) {
-    return null
-  }
-
-  // Extract tool type
-  const toolTypeMatch = content.match(/<ToolType>([\s\S]*?)<\/ToolType>/i)
-  const toolTypeStr = toolTypeMatch?.[1]?.trim()?.toUpperCase() || planToolType.toUpperCase()
-
-  // Validate tool type (must be DOM or SERVER)
-  const toolType: "DOM" | "SERVER" = toolTypeStr === "SERVER" ? "SERVER" : "DOM"
-
-  // For SERVER tools, we don't generate actions yet (Phase 3+)
-  if (toolType === "SERVER") {
-    // Return SERVER tool indication but action will be handled separately
-    return {
-      toolName,
-      toolType: "SERVER",
-      parameters: {},
-      action: "", // SERVER tools handled separately (Phase 3+)
-    }
-  }
-
-  // Extract parameters
-  const parametersMatch = content.match(/<Parameters>([\s\S]*?)<\/Parameters>/i)
-  let parameters: Record<string, unknown> = {}
-  if (parametersMatch?.[1]?.trim()) {
-    try {
-      const parsed = JSON.parse(parametersMatch[1].trim())
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        parameters = parsed as Record<string, unknown>
-      }
-    } catch {
-      // If JSON parse fails, try to extract parameters from action string
-      parameters = {}
-    }
-  }
-
-  // Extract action string
-  const actionMatch = content.match(/<Action>([\s\S]*?)<\/Action>/i)
-  let action = actionMatch?.[1]?.trim() || ""
-
-  // Check if action is empty or just a tool name without parameters
-  const isJustToolName = action && !action.includes("(")
-  
-  if (!action || isJustToolName) {
-    // If no action provided or action is just tool name, try to construct from toolName and parameters
-    if (toolName === "click" && parameters.elementId) {
-      action = `click(${parameters.elementId})`
-    } else if (toolName === "setValue" && parameters.elementId && parameters.text) {
-      action = `setValue(${parameters.elementId}, ${JSON.stringify(parameters.text)})`
-    } else if (toolName === "finish") {
-      action = "finish()"
-    } else if (toolName === "fail" && parameters.reason) {
-      action = `fail(${JSON.stringify(parameters.reason)})`
-    } else if (isJustToolName && action === toolName) {
-      // Action is just tool name but we can't construct it - invalid
-      console.error(`[Step Refinement] Action is just tool name "${action}" but missing required parameters`, {
-        toolName,
-        parameters,
-      })
-      return null
-    } else {
-      return null
-    }
-  }
-
-  // CRITICAL: Validate action against configuration
-  const validation = validateActionName(action)
-  if (!validation.valid) {
-    // Log error and reject invalid action
-    const errorMessage = `Invalid refined action generated: "${action}". ${validation.error}`
-    Sentry.captureException(new Error(errorMessage), {
-      tags: {
-        component: "step-refinement-engine",
-        action,
-        toolName,
-        toolType,
-      },
-      extra: {
-        planStep: planStep
-          ? {
-              description: planStep.description,
-              toolType: planStep.toolType,
-              index: planStep.index,
-            }
-          : undefined,
-        parameters,
-      },
-    })
-    console.error(`[Step Refinement] ${errorMessage}`)
-    // Return null to reject invalid action
-    return null
-  }
-
-  return {
-    toolName,
-    toolType: "DOM",
-    parameters,
-    action,
-  }
-}

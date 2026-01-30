@@ -60,6 +60,8 @@ export interface ITask extends mongoose.Document {
   // Task 8: Retry limits for self-correction
   maxRetriesPerStep?: number // Max retries per step (default: 3)
   consecutiveFailures?: number // Track consecutive failures (default: 0)
+  /** Semantic loop prevention: consecutive successful verifications without task_completed (default: 0). When >= 5, task is failed with reflection message. */
+  consecutiveSuccessWithoutTaskComplete?: number
   // Task 1 (Web Search): Web search results for task context
   webSearchResult?: {
     searchQuery: string // The query used for search
@@ -172,6 +174,11 @@ const TaskSchema = new Schema<ITask>(
       default: 3,
     },
     consecutiveFailures: {
+      type: Number,
+      required: false,
+      default: 0,
+    },
+    consecutiveSuccessWithoutTaskComplete: {
       type: Number,
       required: false,
       default: 0,

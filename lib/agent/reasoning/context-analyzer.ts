@@ -5,6 +5,7 @@ import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
+import { CONTEXT_ANALYSIS_SCHEMA } from "@/lib/llm/response-schemas"
 
 /**
  * Context Analyzer
@@ -197,6 +198,7 @@ Examples:
       temperature: 0.3,
       maxOutputTokens: 800,
       thinkingLevel: "low",
+      responseJsonSchema: CONTEXT_ANALYSIS_SCHEMA,
     })
 
     if (usageContext && result?.promptTokens != null) {

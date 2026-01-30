@@ -6,6 +6,14 @@
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 
 /**
+ * Phase 5: Verification tier used (for observability and cost tracking).
+ * - "deterministic": Tier 1 - zero LLM tokens
+ * - "lightweight": Tier 2 - ~100 tokens
+ * - "full": Tier 3 - ~400 tokens (current implementation)
+ */
+export type VerificationTier = "deterministic" | "lightweight" | "full"
+
+/**
  * Context for cost tracking and Langfuse trace linkage (optional)
  */
 export interface VerificationContext {
@@ -121,6 +129,21 @@ export interface VerificationResult {
    * Set by the engine from semantic verdict; do not parse reason text for display.
    */
   semanticSummary?: string
+  /**
+   * Phase 5: Which verification tier was used.
+   * Used for observability, cost tracking, and optimization metrics.
+   */
+  verificationTier?: VerificationTier
+  /**
+   * Phase 5: Estimated tokens saved by using tiered verification.
+   * Only set when tier !== "full".
+   */
+  tokensSaved?: number
+  /**
+   * Phase 5: When true, bypass Tier 2/3 and route directly to Correction.
+   * Set by Tier 1 Check 1.4 (look-ahead failure).
+   */
+  routeToCorrection?: boolean
 }
 
 /**

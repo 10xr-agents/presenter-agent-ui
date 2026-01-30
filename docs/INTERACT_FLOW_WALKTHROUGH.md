@@ -40,6 +40,7 @@
 | **Skills Library** | ✅ **COMPLETE** | 4 | `lib/models/skill.ts` + `lib/agent/skills-service.ts` - Tenant/domain scoped |
 | **Conditional Planning** | ✅ **COMPLETE** | 4 | `lib/agent/conditional-planning.ts`. See **PLANNER_PROCESS.md**. |
 | **Hierarchical Planning** | ✅ **COMPLETE** | 4 | `lib/agent/hierarchical-planning.ts`. **Wired in graph (Tasks 8 + 9):** planning node calls decomposePlan; hierarchicalPlan in state and persisted; verification node uses sub_task_completed to advance/fail sub-task. See **PLANNER_PROCESS.md** and **VERIFICATION_PROCESS.md** Task 5. |
+| **Tiered Verification** | ✅ **COMPLETE** | 5 | `lib/agent/verification/tiered-verification.ts`. **Token efficiency optimization:** Tier 1 (deterministic, 0 tokens), Tier 2 (lightweight LLM, ~100 tokens), Tier 3 (full LLM). Intermediate steps use Tier 1; final steps use Tier 2/3. See **VERIFICATION_PROCESS.md** Phase 5. |
 
 **Legend:** ✅ = Complete/Default | 🔄 = In Progress | 🔲 Planned
 
@@ -47,8 +48,17 @@
 
 **Implementation notes (regular improvements):**
 
-- **Verification:** The interact flow uses **observation-based verification only** (`verifyActionWithObservations`). We compare **beforeState** (url, domHash, optional semanticSkeleton) to current DOM/URL, build an observation list, and ask the semantic LLM for a verdict. **Prediction-based verification** (expectedOutcome + DOM checks via `verifyAction`) is **not** used for the primary verification path; it exists only for correction/legacy support. See **VERIFICATION_PROCESS.md** for goalAchieved, action_succeeded vs task_completed, step-level vs task-level, and sub-task verification.
+- **Verification:** The interact flow uses **observation-based verification only** (`verifyActionWithObservations`). We compare **beforeState** (url, domHash, optional semanticSkeleton) to current DOM/URL, build an observation list, and ask the semantic LLM for a verdict. **Prediction-based verification** (expectedOutcome + DOM checks via `verifyAction`) is **not** used for the primary verification path; it exists only for correction/legacy support. **Phase 5 Tiered Verification:** For token efficiency, verification now uses a 3-tier approach: Tier 1 (deterministic heuristics, 0 tokens) for intermediate steps; Tier 2 (lightweight LLM, ~100 tokens) for simple final steps; Tier 3 (full LLM) for complex cases. Results include `verificationTier` and `tokensSaved` for observability. See **VERIFICATION_PROCESS.md** for goalAchieved, action_succeeded vs task_completed, step-level vs task-level, sub-task verification, and Phase 5 tiered verification.
 - **Planner:** Verification outcome (action_succeeded, task_completed) is passed into planning and step_refinement; hierarchical planning is wired in the graph with sub-task-level verification. See **PLANNER_PROCESS.md** for planning engine, step refinement, replanning, conditional and hierarchical planning.
+
+**Logical improvements (process hardening):**
+
+| Area | Vulnerability | Fix | Status |
+|------|---------------|-----|--------|
+| **Planning** | Semantic loops (e.g. paging forever) | **Velocity check:** After 5 consecutive successful verifications without task_completed, route to finalize with reflection message. | ✅ Implemented (`consecutiveSuccessWithoutTaskComplete`, verification router, Task model) |
+| **Ops** | Zombie tasks (tab closed, no follow-up request) | **Lazy expiration:** When listing/loading active tasks, mark tasks untouched for >30 minutes as `interrupted`. | ✅ Implemented (GET `/api/session/[sessionId]/task/active` expires stale tasks) |
+| **Context** | Token overflow on long tasks | **Rolling summarization:** Keep only last 10 raw `previousActions`; prepend summary (e.g. "N earlier steps completed.") for step_refinement. | ✅ Implemented (`loadTaskContext` trim, `previousActionsSummary`, step-refinement engine) |
+| **RAG** | Conflicting chunks (Phase 1 vs Phase 2 UI state) | **Freshness bias:** At Phase 2 ingestion, soft-delete or down-rank overlapping Phase 1 chunks; at retrieval prefer fresh chunks. | 🔲 Spec only (see § Two-phase SPA ingestion → RAG Freshness) |
 
 ---
 
@@ -67,7 +77,18 @@
 
 ## Client Contract: State Persistence & Stability
 
-This section defines **mandatory client-side behaviors** to prevent common process failures. These are NOT suggestions — ignoring them causes flaky, hard-to-debug agent loops.
+This section defines **mandatory client-side behaviors** to prevent common process failures. These are NOT suggestions — ignoring them causes flaky, hard-to-debug agent loops. It also serves as the **Chrome extension requirements** reference (formerly a separate doc); checklist and implementation alignment are below.
+
+**Chrome extension checklist:**
+
+| # | Requirement | Status | Notes |
+|---|-------------|--------|-------|
+| 1 | Persist `taskId` in `chrome.storage.local` (keyed by tabId) | ✅ Implemented | `src/helpers/taskPersistence.ts` — see § 1 and § 4 Implementation alignment. |
+| 2 | Use task recovery endpoint when taskId is missing | ✅ Implemented | `api/client.ts`: `getActiveTask`; `currentTask.ts` uses it when no taskId. |
+| 3 | Wait for stability before capturing DOM (min 500ms) | ✅ Implemented | `domWaiting.ts`: `waitForDOMChangesAfterAction`; `currentTask.ts` calls it after action. |
+| 4 | Send `clientObservations` (didNetworkOccur, didDomMutate, didUrlChange) | ✅ Implemented | `currentTask.ts`: builds from `lastDOMChanges` + content script RPC; sent in `agentInteract`. |
+| 5 | Send `taskId` on every request after the first (continuation) | ✅ Implemented | Without it, every request is treated as a new task. |
+| 6 | Send updated `dom` and `url` after executing an action | ✅ Implemented | Required for verification. |
 
 ### 1. taskId Persistence (Prevents "Lost Task" Loop)
 
@@ -272,6 +293,60 @@ fetchObserver.disconnect()
 mutationObserver.disconnect()
 ```
 
+### 4. Client implementation alignment (Chrome extension)
+
+The Chrome extension implements the contract above. Mapping of server/doc requirements to extension code:
+
+| Server / doc requirement | Extension implementation | Location (extension repo) |
+|--------------------------|--------------------------|---------------------------|
+| **1. taskId persistence** | | |
+| Store `task_${tabId}` with `taskId`, `sessionId`, `url`, `timestamp` | Implemented | `src/helpers/taskPersistence.ts`: `persistTaskState(tabId, { taskId, sessionId, url, timestamp })` → `chrome.storage.local.set({ [\`task_${tabId}\`]: { ... } })` |
+| Recover taskId before sending request; expire after 30 min | Implemented | `taskPersistence.ts`: `getTaskIdForTab(tabId)` reads storage, returns `undefined` if `Date.now() - stored.timestamp > 30 * 60 * 1000` |
+| On interact response, persist taskId | Implemented | `currentTask.ts`: after storing `taskIdFromResponse` in state, calls `persistTaskState(tabId, { taskId, sessionId, url, timestamp })` |
+| Fallback: `GET /api/session/{sessionId}/task/active?url={currentTabUrl}` | Implemented | `api/client.ts`: `getActiveTask(sessionId, currentTabUrl)` → `GET /api/session/${sessionId}/task/active?url=...`; `currentTask.ts` uses it when `!currentTaskId && currentSessionId && currentUrl` |
+| **2. Stability wait** | | |
+| Wait before capturing DOM: networkIdle 500ms, domSettled 300ms, minimumWait 500ms, max 5000ms | Implemented | `domWaiting.ts`: `waitForDOMChangesAfterAction` uses `minWait: 500`, `stabilityThreshold: 300`, `maxWait: 5000` (10000 for default config); `currentTask.ts` uses `minWait: 500`, `stabilityThreshold: 300`, `maxWait: 5000` (dropdown: 1000/500/8000) |
+| Call stability wait after execute action, then capture DOM | Implemented | `currentTask.ts`: after `callDOMAction` / `executeAction`, calls `waitForDOMChangesAfterAction(beforeSnapshot, waitConfig)`; next loop iteration does `getSimplifiedDom()` (capture) |
+| **3. clientObservations** | | |
+| Report `didNetworkOccur`, `didDomMutate`, `didUrlChange` | Implemented | `currentTask.ts`: builds `clientObservations` from `lastDOMChanges` with `didUrlChange`, `didDomMutate` (addedCount + removedCount > 0), `didNetworkOccur` (from content script mark/since-mark RPC); sent in `apiClient.agentInteract(..., clientObservations)` |
+
+**Summary:**
+
+- **Lost task (Vulnerability #1):** Extension persists taskId in `chrome.storage.local` under `task_${tabId}` with 30 min expiry and recovers it before each interact request. If recovery from storage fails, it calls `GET /api/session/{sessionId}/task/active?url={currentTabUrl}` and uses the returned `taskId` when present.
+- **Snapshot race (Vulnerability #3):** Extension waits for stability (min 500ms, DOM settled 300ms, network idle) via `waitForDOMChangesAfterAction` after each action; the next request uses the DOM captured in the following loop iteration.
+- **clientObservations:** Extension sends `didNetworkOccur`, `didDomMutate`, and `didUrlChange` in the interact request body so the server can use them for verification.
+
+The client-side behavior required for the server-side recovery endpoint and the documented contract is implemented and wired up in the extension.
+
+### 5. Request shape (recap)
+
+**First request (new task):**
+
+- `POST /api/agent/interact` with `url`, `query`, `dom`. Optionally `sessionId`. **No** `taskId`.
+
+**After executing an action:**
+
+- `POST /api/agent/interact` with:
+  - **taskId** from the previous response (or from recovery endpoint).
+  - **sessionId** (same as before).
+  - **url** — current tab URL (may have changed).
+  - **dom** — DOM snapshot taken **after** the stability wait.
+  - **query** — can repeat the same or omit; server has context.
+  - **clientObservations** — as in § 3.
+
+Without `taskId`, the server starts a **new task** and you get Step 1 again.
+
+### 6. No additional extension changes for recent backend work
+
+The following backend changes **do not** require any new extension behavior:
+
+- **Velocity check (semantic loop prevention):** Server-side. When the agent does 5+ steps without completing the goal, the server returns a failure message. Extension just displays it.
+- **Zombie task expiration:** Server-side. Tasks untouched for >30 minutes are marked interrupted when someone calls the task/active endpoint. No extension change.
+- **Rolling summarization:** Server-side. Context is trimmed on the server. No extension change.
+- **RAG freshness:** Spec only; implementation is in the knowledge pipeline. No extension change.
+
+No new contract or API fields were added for the extension in the recent logical-improvements work.
+
 ---
 
 ## Phase 1: First Request (New Task)
@@ -329,11 +404,14 @@ Because there is **no `taskId`**, we run the **4-step reasoning pipeline** **bef
 - Otherwise, `webSearchResult` is stored on the task (injected into planning/action prompts).
 - **If source is MEMORY or PAGE:** web search is **skipped**; Tavily is **not** called here.
 
-**4. Create task**
+**4. Create task (Provisional ID Pattern)**
 
-- Generate `taskId` (UUID).
-- Create **Task** with `taskId`, `tenantId`, `userId`, `url`, `query`, `status: "active"`, optional `webSearchResult`.
+- **Provisional ID:** A `taskId` (UUID) is generated **at the start** of `runInteractGraph` for all new tasks. This ID is used for logging throughout the entire graph execution, ensuring full traceability from the first log line.
+- **Conditional persistence:** The task is only **persisted to the database** after successful action generation (not for `ASK_USER` or failures). This prevents orphan tasks while maintaining observability.
+- Create **Task** with the provisional `taskId`, `tenantId`, `userId`, `url`, `query`, `status: "active"`, optional `webSearchResult`.
 - Set `currentStepIndex = 0`.
+
+> **Why provisional IDs?** Previously, logs for new tasks showed `[task:]` (empty) until the task was persisted at the end. This made debugging failed requests difficult. Now all logs show `[task:UUID]` from the start, whether or not the task gets persisted.
 
 ### Step 1.6 — Planning (after reasoning)
 
@@ -1682,6 +1760,18 @@ async function ingestPostInteraction(
 |-------|-----------------|-------------|
 | **Initial** | Static page content, hidden elements | `phase: "initial"` |
 | **Post-Interaction** | New content after action | `phase: "post-interaction", triggerAction: "click(68)"` |
+
+**RAG Freshness (Conflicting Truth Prevention):**
+
+When Phase 2 chunks are ingested, the same UI area may have changed (e.g. Phase 1: "Status: Pending", Phase 2: "Status: Approved"). Both chunks can exist in the vector DB; at query time RAG may retrieve conflicting chunks and confuse the LLM.
+
+**Logical fix: Visual Area Invalidation / Freshness Bias**
+
+1. **At ingestion (Phase 2):** When ingesting post-interaction chunks, detect spatial or semantic overlap with Phase 1 chunks (e.g. same main content container, same selector scope). For overlapping Phase 1 chunks: **soft-delete** (mark as superseded) or **down-rank** (metadata flag `supersededBy: chunkId`).
+2. **At retrieval:** Prefer "fresh" chunks over "stale": in the RAG sort/score step, apply a **freshness bias** (e.g. prefer `phase: "post-interaction"` over `phase: "initial"` when both match the query; or exclude soft-deleted chunks from results).
+3. **Implementation options:** (a) Store `phase` and `ingestedAt` on chunks; at query time filter or boost by freshness. (b) When storing Phase 2 chunks, write a pass that finds Phase 1 chunks from the same URL/container and sets `supersededBy` or status; retrieval excludes superseded chunks.
+
+See knowledge extraction pipeline and RAG resolve/query for where to wire this. **Status:** Spec only; implementation is in the knowledge/RAG layer.
 
 ---
 

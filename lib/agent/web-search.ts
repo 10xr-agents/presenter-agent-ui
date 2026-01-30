@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs"
 import axios from "axios"
 import { recordUsage } from "@/lib/cost"
 import { DEFAULT_GEMINI_MODEL, generateWithGemini } from "@/lib/llm/gemini-client"
+import { WEB_SEARCH_SUMMARY_SCHEMA } from "@/lib/llm/response-schemas"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 
 /**
@@ -315,6 +316,7 @@ Provide a concise summary (2-3 sentences) of the key information from these resu
       temperature: 0.7,
       maxOutputTokens: 300,
       thinkingLevel: "low",
+      responseJsonSchema: WEB_SEARCH_SUMMARY_SCHEMA,
     })
 
     if (usageContext && result?.promptTokens != null) {
@@ -335,9 +337,17 @@ Provide a concise summary (2-3 sentences) of the key information from these resu
       })
     }
 
-    const summary = result?.content?.trim()
-
-    return summary || `Found ${results.length} relevant results about how to complete this task.`
+    const content = result?.content?.trim()
+    if (!content) {
+      return `Found ${results.length} relevant results about how to complete this task.`
+    }
+    try {
+      const parsed = JSON.parse(content) as { summary?: string }
+      const summary = (parsed.summary ?? "").trim()
+      return summary || `Found ${results.length} relevant results about how to complete this task.`
+    } catch {
+      return `Found ${results.length} relevant results about how to complete this task.`
+    }
   } catch (error: unknown) {
     Sentry.captureException(error, {
       tags: { component: "web-search", operation: "generateSearchSummary" },
