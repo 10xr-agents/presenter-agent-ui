@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { OrganizationMembersList } from "@/components/settings/organization/member-list"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 
 export default async function TenantMembersPage() {
@@ -13,7 +13,7 @@ export default async function TenantMembersPage() {
     redirect("/login")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   // Get active organization ID (if in organization mode)
   // In normal mode, we'll use the user's ID as the tenant identifier

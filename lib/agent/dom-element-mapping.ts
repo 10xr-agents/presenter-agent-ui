@@ -7,11 +7,16 @@
  * @see docs/ROBUST_ELEMENT_SELECTORS_SPEC.md
  */
 
+// NOTE: element-id parsing must support string ids (e.g., "f1_5") for iframe extraction.
+// Use deterministic parsers from action-parser (no regex scraping of IDs).
+import { extractActionName, extractClickElementId, extractSetValueParams } from "./action-parser"
+
 /**
  * Element mapping entry with selector path and metadata
  */
 export interface ElementMapping {
-  id: number
+  /** Element id as sent by the client (string in semantic protocols; may be numeric string or prefixed like "f1_5"). */
+  id: string
   selectorPath: string | null
   tag?: string
   name?: string
@@ -22,7 +27,80 @@ export interface ElementMapping {
 /**
  * Map of elementId to ElementMapping
  */
-export type ElementMap = Map<number, ElementMapping>
+export type ElementMap = Map<string, ElementMapping>
+
+/**
+ * Extract element mapping from semantic V3 interactiveTree.
+ *
+ * NOTE: V3 uses string IDs (field `i`) in the payload, but the action contract
+ * still uses numeric ids in click(123)/setValue(123,"...") in this backend.
+ * We therefore only include nodes whose `i` parses to a positive integer.
+ */
+export function extractElementMappingFromInteractiveTree(
+  interactiveTree: Array<{
+    i: string
+    r: string
+    n: string
+  }>
+): ElementMap {
+  const map: ElementMap = new Map()
+
+  if (!Array.isArray(interactiveTree) || interactiveTree.length === 0) {
+    return map
+  }
+
+  // Minimal role → tag mapping for debugging / selector fallback heuristics
+  const roleToTag: Record<string, string> = {
+    btn: "button",
+    button: "button",
+    inp: "input",
+    input: "input",
+    textbox: "input",
+    searchbox: "input",
+    textarea: "textarea",
+    link: "a",
+    chk: "input",
+    checkbox: "input",
+    radio: "input",
+    sel: "select",
+    select: "select",
+    opt: "option",
+    option: "option",
+    switch: "button",
+    tab: "button",
+    menu: "button",
+  }
+
+  for (const node of interactiveTree) {
+    const id = (node.i ?? "").trim()
+    if (!id) continue
+
+    const tag = roleToTag[node.r] ?? undefined
+    map.set(id, {
+      id,
+      selectorPath: null,
+      tag,
+      name: node.n ?? undefined,
+      ariaLabel: node.n ?? undefined,
+    })
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `[dom-element-mapping] extractElementMappingFromInteractiveTree: Extracted ${map.size} elements`
+    )
+    if (map.size > 0) {
+      const first5 = Array.from(map.entries()).slice(0, 5)
+      first5.forEach(([id, el]) => {
+        console.log(
+          `[dom-element-mapping] Element ${id}: tag=${el.tag}, name=${el.name ?? "null"}, selectorPath=${el.selectorPath ?? "null"}`
+        )
+      })
+    }
+  }
+
+  return map
+}
 
 /**
  * Extract element mapping from DOM string.
@@ -48,12 +126,11 @@ export function extractElementMapping(dom: string): ElementMap {
 
   let match: RegExpExecArray | null
   while ((match = templatizedPattern.exec(dom)) !== null) {
-    const idStr = match[1]
+    const idStr = match[1] ?? ""
     const tag = match[2]?.toLowerCase()
     const attrsStr = match[3] ?? ""
-    const id = parseInt(idStr ?? "", 10)
-
-    if (isNaN(id) || !tag) continue
+    const id = idStr.trim()
+    if (!id || !tag) continue
 
     // Extract attributes from the rest of the line
     const nameMatch = attrsStr.match(/\bname="([^"]+)"/)
@@ -89,14 +166,13 @@ export function extractElementMapping(dom: string): ElementMap {
 
   // Fallback: Also try HTML format with data-element-id (for compatibility)
   if (map.size === 0) {
-    const htmlPattern = /<([a-zA-Z][a-zA-Z0-9]*)[^>]*\bdata-element-id="(\d+)"[^>]*>/gi
+    const htmlPattern = /<([a-zA-Z][a-zA-Z0-9]*)[^>]*\bdata-element-id="([^"]+)"[^>]*>/gi
     while ((match = htmlPattern.exec(dom)) !== null) {
       const fullMatch = match[0]
       const tag = match[1]?.toLowerCase()
-      const idStr = match[2]
-      const id = parseInt(idStr ?? "", 10)
-
-      if (isNaN(id)) continue
+      const idStr = match[2] ?? ""
+      const id = idStr.trim()
+      if (!id) continue
 
       const selectorPathMatch = fullMatch.match(/data-selector-path="([^"]+)"/)
       const selectorPath = selectorPathMatch?.[1] ?? null
@@ -162,16 +238,15 @@ export function extractElementMappingFromSkeleton(skeletonDom: string): ElementM
   }
 
   // Pattern for skeleton DOM format: <tag id="N" ...>
-  const skeletonPattern = /<([a-zA-Z][a-zA-Z0-9]*)[^>]*\bid="(\d+)"[^>]*>/gi
+  const skeletonPattern = /<([a-zA-Z][a-zA-Z0-9]*)[^>]*\bid="([^"]+)"[^>]*>/gi
 
   let match: RegExpExecArray | null
   while ((match = skeletonPattern.exec(skeletonDom)) !== null) {
     const fullMatch = match[0]
     const tag = match[1]?.toLowerCase()
-    const idStr = match[2]
-    const id = parseInt(idStr ?? "", 10)
-
-    if (isNaN(id)) continue
+    const idStr = match[2] ?? ""
+    const id = idStr.trim()
+    if (!id) continue
 
     // Extract data-selector-path if present
     const selectorPathMatch = fullMatch.match(/data-selector-path="([^"]+)"/)
@@ -217,7 +292,7 @@ export function extractElementMappingFromSkeleton(skeletonDom: string): ElementM
  * @param elementMap - The element mapping
  * @returns selectorPath or null if not available
  */
-export function getSelectorPath(elementId: number, elementMap: ElementMap): string | null {
+export function getSelectorPath(elementId: string, elementMap: ElementMap): string | null {
   const element = elementMap.get(elementId)
   if (!element) return null
 
@@ -315,7 +390,7 @@ function decodeHtmlEntities(text: string): string {
  */
 export function parseActionForDetails(action: string): {
   name: string
-  elementId?: number
+  elementId?: string
   args?: Record<string, unknown>
 } | null {
   if (!action || typeof action !== "string") {
@@ -324,71 +399,26 @@ export function parseActionForDetails(action: string): {
 
   const trimmed = action.trim()
 
-  // Extract action name (before parenthesis)
-  const nameMatch = trimmed.match(/^([a-zA-Z]+)\(/)
-  if (!nameMatch) {
-    return null
+  // Extract action name using deterministic parsing
+  const name = extractActionName(trimmed)
+  if (!name) return null
+
+  // Element-id parsing: use deterministic helpers for click/setValue.
+  if (name === "click") {
+    const raw = extractClickElementId(trimmed)
+    const elementId = raw ? raw.replace(/^"(.+)"$/, "$1").trim() : undefined
+    return { name, ...(elementId ? { elementId } : {}) }
   }
 
-  const name = nameMatch[1] ?? ""
-
-  // Extract content inside parentheses
-  const paramsStart = trimmed.indexOf("(")
-  const paramsEnd = trimmed.lastIndexOf(")")
-  if (paramsStart === -1 || paramsEnd === -1) {
-    return { name }
+  if (name === "setValue") {
+    const parsed = extractSetValueParams(trimmed)
+    if (!parsed) return { name }
+    const elementId = parsed.elementId.replace(/^"(.+)"$/, "$1").trim()
+    const args: Record<string, unknown> = { value: parsed.text }
+    return { name, ...(elementId ? { elementId } : {}), args }
   }
 
-  const paramsContent = trimmed.slice(paramsStart + 1, paramsEnd).trim()
-  if (!paramsContent) {
-    return { name }
-  }
-
-  // Actions that take element ID as first parameter
-  const elementIdActions = [
-    "click",
-    "setValue",
-    "hover",
-    "doubleClick",
-    "rightClick",
-    "focus",
-    "blur",
-    "check",
-    "uncheck",
-    "getText",
-    "getAttribute",
-    "getBoundingBox",
-    "isVisible",
-    "isEnabled",
-    "dropdownOptions",
-    "selectDropdown",
-    "scroll",
-  ]
-
-  if (elementIdActions.includes(name)) {
-    // First parameter is element ID
-    const firstParamMatch = paramsContent.match(/^(\d+)/)
-    if (firstParamMatch) {
-      const elementId = parseInt(firstParamMatch[1] ?? "", 10)
-      const args: Record<string, unknown> = {}
-
-      // Extract additional args for setValue
-      if (name === "setValue") {
-        const valueMatch = paramsContent.match(/,\s*"([^"]*)"/)
-        if (valueMatch) {
-          args.value = valueMatch[1]
-        }
-      }
-
-      return {
-        name,
-        elementId: isNaN(elementId) ? undefined : elementId,
-        args: Object.keys(args).length > 0 ? args : undefined,
-      }
-    }
-  }
-
-  // Actions without element ID (navigate, press, etc.)
+  // Other actions: we do not reliably parse ids here (varied parameter shapes).
   return { name }
 }
 
@@ -404,7 +434,7 @@ export function buildActionDetails(
   elementMap: ElementMap
 ): {
   name: string
-  elementId?: number
+  elementId?: string
   selectorPath?: string
   args?: Record<string, unknown>
 } | undefined {

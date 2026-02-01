@@ -5,7 +5,7 @@ import { redirect } from "next/navigation"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function OrganizationBillingPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -14,7 +14,7 @@ export default async function OrganizationBillingPage() {
     redirect("/login")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   // Redirect to personal settings if not in organization mode
   if (tenantState === "normal") {

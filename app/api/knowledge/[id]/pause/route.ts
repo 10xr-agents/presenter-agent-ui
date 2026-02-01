@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { KnowledgeSource } from "@/lib/models/knowledge-source"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 // Note: Pause functionality will be implemented when the knowledge extraction API supports it
 // For now, this endpoint is a placeholder
 
@@ -27,7 +27,7 @@ export async function POST(
     await connectDB()
 
     // Get tenant state and organization ID
-    const tenantState = await getTenantState(session.user.id)
+    const tenantState = await getTenantOperatingMode(session.user.id)
     let organizationId: string | null = null
     if (tenantState === "organization") {
       organizationId = await getActiveOrganizationId()

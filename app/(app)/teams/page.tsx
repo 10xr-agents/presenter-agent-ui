@@ -2,7 +2,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
 
 interface TeamsPageProps {
   searchParams: Promise<{ organizationId?: string }>
@@ -22,7 +22,6 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
     redirect("/settings")
   }
 
-  const headersList = await headers()
   const params = await searchParams
   let organizationId = params.organizationId
 

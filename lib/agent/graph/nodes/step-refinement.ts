@@ -99,6 +99,19 @@ export async function stepRefinementNode(
         sessionId: state.sessionId,
         taskId: state.taskId,
         langfuseTraceId: state.langfuseTraceId,
+      },
+      {
+        domMode: state.domMode,
+        screenshot: state.screenshot,
+        skeletonDom: state.skeletonDom,
+        query: state.query,
+        interactiveTree: state.interactiveTree,
+        viewport: state.viewport,
+        pageTitle: state.pageTitle,
+        scrollPosition: state.scrollPosition,
+        recentEvents: state.recentEvents,
+        hasErrors: state.hasErrors,
+        hasSuccess: state.hasSuccess,
       }
     )
 

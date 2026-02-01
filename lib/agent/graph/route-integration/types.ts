@@ -4,7 +4,12 @@
  */
 
 import type { ElementMap } from "@/lib/agent/dom-element-mapping"
-import type { DomMode } from "@/lib/agent/schemas"
+import type {
+  DomMode,
+  ScrollableContainer,
+  SemanticNodeV2,
+  SemanticNodeV3,
+} from "@/lib/agent/schemas"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { TaskPlan } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
@@ -17,7 +22,8 @@ export interface RunGraphInput {
   userId: string
   url: string
   query: string
-  dom: string
+  /** Full DOM HTML (legacy / optional in semantic-first flow) */
+  dom?: string
   previousUrl?: string
   sessionId?: string
   taskId?: string
@@ -43,6 +49,24 @@ export interface RunGraphInput {
   skeletonDom?: string
   /** Hash of screenshot for deduplication */
   screenshotHash?: string
+  // Semantic-first V3 fields (PRIMARY)
+  /** Minified interactive element tree */
+  interactiveTree?: SemanticNodeV3[]
+  /** V2 semantic nodes (fallback format) */
+  semanticNodes?: SemanticNodeV2[]
+  /** Viewport dimensions (for spatial reasoning / click targeting) */
+  viewport?: { width: number; height: number }
+  /** Page title (small context hint) */
+  pageTitle?: string
+  /** Scroll depth percentage (e.g., "25%") */
+  scrollPosition?: string
+  /** Virtual list / scroll container summary */
+  scrollableContainers?: ScrollableContainer[]
+  /** Recent DOM mutation stream (compact strings) */
+  recentEvents?: string[]
+  /** Sentinel-style flags */
+  hasErrors?: boolean
+  hasSuccess?: boolean
   // Robust Element Selectors
   /** Element mapping for selectorPath fallbacks (parsed from DOM) */
   elementMap?: ElementMap
@@ -81,7 +105,7 @@ export interface ActionDetails {
   /** Action name: click, setValue, press, navigate, finish, fail, etc. */
   name: string
   /** Element ID for DOM actions */
-  elementId?: number
+  elementId?: string | number
   /** CSS selector path for robust re-finding (from DOM extraction) */
   selectorPath?: string
   /** Additional arguments (e.g., value for setValue) */
@@ -94,6 +118,11 @@ export interface RunGraphOutput {
   isNewTask: boolean
   thought?: string
   action?: string
+  // Backend-driven page-state negotiation
+  requestedDomMode?: "skeleton" | "hybrid" | "full"
+  needsSkeletonDom?: boolean
+  needsScreenshot?: boolean
+  needsContextReason?: string
   /** Structured action details with selectorPath for robust element finding */
   actionDetails?: ActionDetails
   chainedActions?: ChainedActionOutput[]

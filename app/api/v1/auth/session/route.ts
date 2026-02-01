@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * GET /api/v1/auth/session
@@ -57,12 +57,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve tenant (user or organization)
-    const tenantState = await getTenantState(userId)
+    const tenantState = await getTenantOperatingMode(userId, requestHeaders)
     let tenantId: string
     let tenantName: string
 
     if (tenantState === "organization") {
-      const organizationId = await getActiveOrganizationId()
+      const organizationId = await getActiveOrganizationId(requestHeaders)
       tenantId = organizationId || userId
 
       // Get organization name if available
@@ -71,9 +71,7 @@ export async function GET(req: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const authApi = auth.api as any
            
-          const orgResult = await authApi.organization?.getActive({
-            headers: await headers(),
-          })
+          const orgResult = await authApi.organization?.getActive({ headers: requestHeaders })
           tenantName = orgResult?.data?.name || session.user.name || "Organization"
         } catch {
           tenantName = session.user.name || "Organization"

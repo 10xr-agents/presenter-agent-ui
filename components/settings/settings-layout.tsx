@@ -3,11 +3,11 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import type { TenantState } from "@/lib/utils/tenant-state"
+import type { TenantOperatingMode } from "@/lib/utils/tenant-state"
 
 interface SettingsLayoutProps {
   children: React.ReactNode
-  tenantState?: TenantState
+  tenantState?: TenantOperatingMode
 }
 
 // Tenant-Level Settings Tabs (Resend style: horizontal tabs)

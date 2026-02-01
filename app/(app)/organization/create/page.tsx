@@ -2,7 +2,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { CreateOrgForm } from "@/components/organizations/create-org-form"
 import { auth } from "@/lib/auth"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function CreateOrganizationPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -12,7 +12,7 @@ export default async function CreateOrganizationPage() {
   }
 
   // If user already has an organization, redirect to dashboard
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
   if (tenantState === "organization") {
     redirect("/dashboard")
   }

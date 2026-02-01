@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { cancelJob } from "@/lib/browser-automation/client"
 import { connectDB } from "@/lib/db/mongoose"
 import { WebsiteKnowledge } from "@/lib/models/website-knowledge"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/website-knowledge/[id]/cancel
@@ -26,7 +26,7 @@ export async function POST(
     await connectDB()
 
     // Get tenant state and organization ID
-    const tenantState = await getTenantState(session.user.id)
+    const tenantState = await getTenantOperatingMode(session.user.id)
     let organizationId: string | null = null
     if (tenantState === "organization") {
       organizationId = await getActiveOrganizationId()

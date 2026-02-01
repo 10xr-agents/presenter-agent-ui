@@ -4,7 +4,6 @@ import { auth } from "@/lib/auth"
 import { getOrCreateBillingAccount } from "@/lib/billing/pay-as-you-go"
 import { connectDB } from "@/lib/db/mongoose"
 import { Subscription } from "@/lib/models/billing"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
 
 export async function GET(req: NextRequest) {
   try {

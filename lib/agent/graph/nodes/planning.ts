@@ -59,6 +59,18 @@ export async function planningNode(
         sessionId: state.sessionId,
         taskId: state.taskId,
         langfuseTraceId: state.langfuseTraceId,
+      },
+      {
+        domMode: state.domMode,
+        screenshot: state.screenshot,
+        skeletonDom: state.skeletonDom,
+        interactiveTree: state.interactiveTree,
+        viewport: state.viewport,
+        pageTitle: state.pageTitle,
+        scrollPosition: state.scrollPosition,
+        recentEvents: state.recentEvents,
+        hasErrors: state.hasErrors,
+        hasSuccess: state.hasSuccess,
       }
     )
 

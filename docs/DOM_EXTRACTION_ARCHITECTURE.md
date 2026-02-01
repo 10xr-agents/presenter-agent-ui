@@ -75,7 +75,7 @@ We use a multi-layered extraction system:
 
 ### Key Principle
 
-> **Semantic JSON is the ONLY source of truth. Full DOM should NEVER be sent proactively — only when the backend explicitly requests it via `needs_full_dom` response.**
+> **Semantic JSON is the ONLY source of truth. Full DOM should NEVER be sent proactively — only when the backend explicitly requests it via a negotiation response (`status: "needs_context"` or legacy `status: "needs_full_dom"`).**
 
 ### V3 Enhancements
 
@@ -99,7 +99,7 @@ We use a multi-layered extraction system:
 
 ```json
 {
-  "mode": "semantic_v3",
+  "mode": "semantic",
   "url": "https://google.com",
   "title": "Google",
   "viewport": { "width": 1280, "height": 800 },
@@ -394,7 +394,7 @@ async function findGhostMatch(config: GhostMatchConfig): Promise<GhostMatchResul
 
 ```json
 {
-  "mode": "semantic_v3",
+  "mode": "semantic",
   "url": "https://amazon.com/checkout",
   "title": "Checkout",
   "scroll_position": "25%",
@@ -1007,12 +1007,11 @@ To avoid ID collisions across frames, IDs are prefixed:
 
 ## 8. Extraction Modes
 
-The extension supports five extraction modes (V3 is PRIMARY):
+The extension supports multiple extraction modes (semantic is PRIMARY):
 
 | Mode | Primary Data | Token Cost | Use Case |
 |------|--------------|------------|----------|
-| **`semantic_v3`** | **Minified JSON + viewport pruning** | **~25-75 tokens** | **PRIMARY - Default** |
-| `semantic` | Full-key JSON array | ~50-200 tokens | V3 fails/fallback |
+| **`semantic`** | **Minified JSON + viewport pruning (`interactiveTree`)** | **~25-75 tokens** | **PRIMARY - Default** |
 | `skeleton` | Minimal HTML | ~500-1500 tokens | Semantic fails |
 | `hybrid` | Screenshot + skeleton | ~2000-3000 tokens | Visual/spatial queries |
 | `full` | Complete HTML | ~10000-50000 tokens | **ONLY on explicit backend request** |
@@ -1379,7 +1378,8 @@ interface AgentInteractRequest {
   // === REQUIRED FIELDS ===
   url: string;                    // Current page URL
   query: string;                  // User's task instruction
-  dom: string;                    // HTML (minimal fallback, ~10KB max)
+  // IMPORTANT (semantic-first): dom is optional. Only send full HTML when backend requests it.
+  dom?: string;
   
   // === SESSION TRACKING ===
   taskId?: string;                // Task identifier (after first request)
@@ -1417,8 +1417,8 @@ interface AgentInteractRequest {
     didUrlChange?: boolean;
   };
   
-  // === V3 DOM MODE (PRIMARY) ===
-  domMode?: 'semantic_v3' | 'semantic' | 'skeleton' | 'hybrid' | 'full';
+  // === DOM MODE (PRIMARY) ===
+  domMode?: 'semantic' | 'skeleton' | 'hybrid' | 'full';
   
   // V3 SEMANTIC MODE (recommended - PRIMARY)
   interactiveTree?: SemanticNodeV3[];  // Minified JSON array
@@ -1442,7 +1442,7 @@ interface AgentInteractRequest {
   "url": "https://www.google.com",
   "query": "Search for SpaceX",
   "dom": "<html>...</html>",
-  "domMode": "semantic_v3",
+  "domMode": "semantic",
   "viewport": { "width": 1280, "height": 800 },
   "interactiveTree": [
     { "i": "1", "r": "inp", "n": "Search", "v": "", "xy": [400, 300] },
@@ -1508,17 +1508,18 @@ interface AgentInteractRequest {
 
 **File:** `src/helpers/hybridCapture.ts` and `src/state/currentTask.ts`
 
-**Key Principle:** V3 Semantic is PRIMARY. Full DOM should NEVER be sent proactively.
+**Key Principle:** Semantic is PRIMARY. Full DOM should NEVER be sent proactively.
 
 ### Priority Order
 
 | Priority | Mode | Tokens | When Used |
 |----------|------|--------|-----------|
-| **1** | `semantic_v3` | 25-75 | Default (viewport pruning + minified keys) |
-| 2 | `semantic` | 50-125 | V3 fails or empty |
+| **1** | `semantic` | 25-75 | Default (viewport pruning + minified keys) |
 | 3 | `skeleton` | 500-1500 | Semantic fails |
 | 4 | `hybrid` | 2000-3000 | Visual/spatial query detected |
 | **5** | `full` | 10k-50k | **ONLY on explicit backend `needs_full_dom` request** |
+
+**Note:** This table describes what *artifacts* the extension captures/sends. The request field `domMode` may remain `"semantic"` for compatibility; the backend infers the effective mode from which artifacts are present.
 
 ### Decision Tree
 
@@ -1527,25 +1528,19 @@ interface AgentInteractRequest {
 │         V3 MODE SELECTION ALGORITHM                 │
 ├────────────────────────────────────────────────────┤
 │                                                     │
-│  1. USE_V3_EXTRACTION enabled? (default: true)     │
+│  1. USE_SEMANTIC_EXTRACTION enabled? (default: true)│
 │     │                                               │
-│     ├─ YES ─▶ Try V3 extraction (viewport pruning)│
+│     ├─ YES ─▶ Try semantic extraction (viewport pruning)│
 │     │         │                                     │
-│     │         ├─ Success? ─▶ MODE = "semantic_v3" │
+│     │         ├─ Success? ─▶ MODE = "semantic"    │
 │     │         │                                     │
 │     │         └─ Failure? ─▶ Step 2               │
 │     │                                               │
 │     └─ NO ──▶ Step 2                               │
 │                                                     │
-│  2. USE_SEMANTIC_EXTRACTION enabled?               │
+│  2. (Optional) Fallback extraction                  │
 │     │                                               │
-│     ├─ YES ─▶ Try V2 semantic extraction          │
-│     │         │                                     │
-│     │         ├─ Success? ─▶ MODE = "semantic"    │
-│     │         │                                     │
-│     │         └─ Failure? ─▶ Step 3               │
-│     │                                               │
-│     └─ NO ──▶ Step 3                               │
+│     └─ If semantic extraction fails/empty → Step 3  │
 │                                                     │
 │  3. Visual/spatial query detected?                 │
 │     │                                               │
@@ -1607,13 +1602,16 @@ If the backend can't process the semantic/skeleton data:
 
 ```json
 {
-  "status": "needs_full_dom",
-  "needsFullDomReason": "Element not found in skeleton",
-  "requestedElement": "submit button with text 'Confirm'"
+  "status": "needs_context",
+  "requestedDomMode": "full",
+  "needsSkeletonDom": true,
+  "needsScreenshot": false,
+  "reason": "Need full HTML to generate robust selectors for this page."
 }
 ```
 
-The extension automatically retries with `domMode: "full"`:
+The extension automatically retries and includes `interactiveTree` again plus the requested artifacts.  
+**Note:** The extension may keep `domMode: "semantic"` for all requests; the backend infers “full/skeleton/hybrid” capability from the presence of `dom` / `skeletonDom` / `screenshot`.
 
 ```typescript
 if (response.status === 'needs_full_dom') {
@@ -1625,7 +1623,7 @@ if (response.status === 'needs_full_dom') {
     currentDom,
     // ... other params
     {
-      domMode: 'full',  // Override to full mode
+      domMode: 'semantic',  // Extension keeps semantic; include requested artifacts
       // Still send skeleton as backup
       skeletonDom,
       screenshot: screenshotBase64,
@@ -1735,7 +1733,7 @@ interface SemanticNodeV3 {
 
 // V3 Advanced extraction result
 interface SemanticTreeResultV3 {
-  mode: 'semantic_v3';
+  mode: 'semantic';
   url: string;
   title: string;
   viewport: { width: number; height: number };

@@ -82,6 +82,23 @@ export function createInteractGraph(config: InteractGraphConfig = DEFAULT_GRAPH_
       dom: { value: (a: string, b?: string) => b ?? a, default: () => "" },
       previousUrl: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
 
+      // Semantic-first V3 fields (PRIMARY)
+      interactiveTree: { value: (a: any[] | undefined, b?: any[] | undefined) => b ?? a, default: () => undefined },
+      semanticNodes: { value: (a: any[] | undefined, b?: any[] | undefined) => b ?? a, default: () => undefined },
+      viewport: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
+      pageTitle: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
+      scrollPosition: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
+      scrollableContainers: { value: (a: any[] | undefined, b?: any[] | undefined) => b ?? a, default: () => undefined },
+      recentEvents: { value: (a: any[] | undefined, b?: any[] | undefined) => b ?? a, default: () => undefined },
+      hasErrors: { value: (a: boolean | undefined, b?: boolean | undefined) => b ?? a, default: () => undefined },
+      hasSuccess: { value: (a: boolean | undefined, b?: boolean | undefined) => b ?? a, default: () => undefined },
+
+      // Backend-driven page-state negotiation
+      requestedDomMode: { value: (a: any, b?: any) => b ?? a, default: () => undefined },
+      needsSkeletonDom: { value: (a: boolean | undefined, b?: boolean | undefined) => b ?? a, default: () => undefined },
+      needsScreenshot: { value: (a: boolean | undefined, b?: boolean | undefined) => b ?? a, default: () => undefined },
+      needsContextReason: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
+
       // Session context
       sessionId: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },
       taskId: { value: (a: string | undefined, b?: string | undefined) => b ?? a, default: () => undefined },

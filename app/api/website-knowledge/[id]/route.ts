@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { cancelJob, getJobResults, getJobStatus } from "@/lib/browser-automation/client"
 import { connectDB } from "@/lib/db/mongoose"
 import { type IWebsiteKnowledge, WebsiteKnowledge } from "@/lib/models/website-knowledge"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 // Serialize syncHistory to remove _id fields and convert dates
 function serializeSyncHistory(syncHistory: unknown) {
@@ -616,7 +616,7 @@ export async function PATCH(
   const { id } = await params
 
   // Get tenant state and organization ID for access verification
-  const tenantState = await getTenantState(session.user.id)
+    const tenantState = await getTenantOperatingMode(session.user.id)
   let organizationId: string | null = null
   if (tenantState === "organization") {
     organizationId = await getActiveOrganizationId()

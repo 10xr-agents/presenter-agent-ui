@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { OrgGeneralForm } from "@/components/settings/organization/org-general-form"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function OrganizationSettingsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -12,7 +12,7 @@ export default async function OrganizationSettingsPage() {
     redirect("/login")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   // Redirect to personal settings if not in organization mode
   if (tenantState === "normal") {

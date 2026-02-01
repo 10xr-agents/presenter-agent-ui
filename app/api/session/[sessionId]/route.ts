@@ -4,7 +4,7 @@ import { z } from "zod"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
-import { Session } from "@/lib/models"
+import { BrowserSession } from "@/lib/models"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
@@ -127,7 +127,7 @@ export async function PATCH(
     const { title } = validationResult.data
 
     // Find session and verify ownership
-    const targetSession = await (Session as any)
+    const targetSession = await (BrowserSession as any)
       .findOne({
         sessionId,
         tenantId,
@@ -168,7 +168,7 @@ export async function PATCH(
 
     Sentry.logger.info("Session update: renaming session")
     // Update session title and set isRenamed flag
-    const updatedSession = await (Session as any)
+    const updatedSession = await (BrowserSession as any)
       .findOneAndUpdate(
         { sessionId, tenantId },
         {
@@ -291,7 +291,7 @@ export async function GET(
     await connectDB()
 
     // Find session and verify ownership
-    const targetSession = await (Session as any)
+    const targetSession = await (BrowserSession as any)
       .findOne({
         sessionId,
         tenantId,

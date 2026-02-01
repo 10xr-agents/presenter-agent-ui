@@ -90,9 +90,9 @@ export function startInProcessWsServer(): void {
             return
           }
           const { connectDB } = await import("@/lib/db/mongoose")
-          const { Session } = await import("@/lib/models")
+          const { BrowserSession } = await import("@/lib/models")
           await connectDB()
-          const session = await (Session as any)
+          const session = await (BrowserSession as any)
             .findOne({ sessionId, tenantId })
             .select("userId")
             .lean()

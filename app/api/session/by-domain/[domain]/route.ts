@@ -4,7 +4,7 @@ import { z } from "zod"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
-import { Message, Session } from "@/lib/models"
+import { BrowserSession, Message } from "@/lib/models"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
@@ -39,7 +39,7 @@ export async function GET(
   req: NextRequest,
   context: { params: Promise<{ domain: string }> }
 ) {
-  const startTime = Date.now()
+  const _startTime = Date.now()
 
   try {
     // Apply rate limiting
@@ -130,7 +130,8 @@ export async function GET(
       status,
     }
 
-    const targetSession = await (Session as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mongoose safety rule: cast model methods
+    const targetSession = await (BrowserSession as any)
       .findOne(filter)
       .sort({ updatedAt: -1 }) // Most recently updated first
       .lean()
@@ -146,6 +147,7 @@ export async function GET(
     }
 
     // Get message count
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mongoose safety rule: cast model methods
     const messageCount = await (Message as any)
       .countDocuments({
         sessionId: targetSession.sessionId,
@@ -153,7 +155,6 @@ export async function GET(
       })
       .exec()
 
-    const duration = Date.now() - startTime
     const response = {
       session: {
         sessionId: targetSession.sessionId,

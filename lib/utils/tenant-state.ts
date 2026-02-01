@@ -12,12 +12,6 @@ import { auth } from "@/lib/auth"
 export type TenantOperatingMode = "normal" | "organization"
 
 /**
- * Legacy type for backward compatibility
- * @deprecated Use TenantOperatingMode internally, but maintain this for existing code
- */
-export type TenantState = "normal" | "organization"
-
-/**
  * Get the current tenant operating mode for a user (INTERNAL ONLY)
  * 
  * This function returns the internal operating mode. For feature gating,
@@ -61,21 +55,6 @@ export async function getTenantOperatingMode(
     }
     return "normal"
   }
-}
-
-/**
- * Get the current tenant state for a user (backward compatibility)
- * 
- * @deprecated Use getTenantOperatingMode() for new code
- * @param userId - The user ID to check
- * @param authHeaders - Optional headers to use for authentication (e.g., Bearer token)
- * @returns The tenant state ("normal" or "organization")
- */
-export async function getTenantState(
-  userId: string,
-  authHeaders?: Headers
-): Promise<TenantState> {
-  return getTenantOperatingMode(userId, authHeaders)
 }
 
 /**

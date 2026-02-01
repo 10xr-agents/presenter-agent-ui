@@ -7,6 +7,7 @@ import * as Sentry from "@sentry/nextjs"
 import {
   buildActionDetails,
   extractElementMapping,
+  extractElementMappingFromInteractiveTree,
   extractElementMappingFromSkeleton,
 } from "@/lib/agent/dom-element-mapping"
 import {
@@ -18,6 +19,7 @@ import {
   startInteractTrace,
 } from "@/lib/observability"
 import { logger } from "@/lib/utils/logger"
+import { renderInteractiveTreeAsHtml } from "@/lib/agent/semantic-v3"
 import { createTask, loadTaskContext } from "./context"
 import { saveGraphResults } from "./persistence"
 import type { RunGraphInput, RunGraphOutput } from "./types"
@@ -45,23 +47,43 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     domMode,
     skeletonDom,
     screenshotHash,
+    // Semantic-first V3
+    interactiveTree,
+    semanticNodes,
+    viewport,
+    pageTitle,
+    scrollPosition,
+    scrollableContainers,
+    recentEvents,
+    hasErrors,
+    hasSuccess,
   } = input
   const startTime = Date.now()
 
-  // Extract element mapping for robust selector fallbacks
-  // Try skeletonDom first (if it has IDs), then fall back to full dom
-  // Note: skeletonDom may be HTML without element IDs, so we need to check both
-  let elementMap = skeletonDom
-    ? extractElementMappingFromSkeleton(skeletonDom)
-    : extractElementMapping(dom)
+  const domStr = dom ?? ""
+
+  // Extract element mapping for robust selector fallbacks.
+  //
+  // Priority order (semantic-first negotiation):
+  // 1) interactiveTree (semantic) — stable IDs, canonical in new contract
+  // 2) skeletonDom (if it has numeric ids)
+  // 3) full dom (legacy)
+  let elementMap =
+    interactiveTree && interactiveTree.length > 0
+      ? extractElementMappingFromInteractiveTree(interactiveTree)
+      : skeletonDom
+        ? extractElementMappingFromSkeleton(skeletonDom)
+        : extractElementMapping(domStr)
 
   // If skeletonDom didn't yield any elements, fall back to dom
   // This handles the case where skeletonDom is HTML structure without element IDs
-  if (elementMap.size === 0 && skeletonDom && dom) {
-    elementMap = extractElementMapping(dom)
+  if (elementMap.size === 0 && skeletonDom && domStr) {
+    elementMap = extractElementMapping(domStr)
     if (process.env.NODE_ENV === "development") {
       if (elementMap.size > 0) {
-        console.log(`[run-graph] Fallback: skeletonDom had no IDs, extracted ${elementMap.size} elements from dom (${dom.length} chars)`)
+        console.log(
+          `[run-graph] Fallback: skeletonDom had no IDs, extracted ${elementMap.size} elements from dom (${domStr.length} chars)`
+        )
         // Log first few elements
         const first3 = Array.from(elementMap.entries()).slice(0, 3)
         first3.forEach(([id, el]) => {
@@ -69,7 +91,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
         })
       } else {
         console.log(`[run-graph] Fallback: dom also had no elements. DOM sample (first 500 chars):`)
-        console.log(dom.substring(0, 500))
+        console.log(domStr.substring(0, 500))
       }
     }
   }
@@ -90,25 +112,38 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       console.log(`========== END SKELETON DOM DUMP ==========\n`)
     }
     
-    if (dom) {
-      console.log(`\n========== FULL DOM DUMP (${dom.length} chars) - first 4000 chars ==========`)
-      console.log(dom.substring(0, 4000))
-      console.log(`... (truncated, total ${dom.length} chars)`)
+    if (domStr) {
+      console.log(`\n========== FULL DOM DUMP (${domStr.length} chars) - first 4000 chars ==========`)
+      console.log(domStr.substring(0, 4000))
+      console.log(`... (truncated, total ${domStr.length} chars)`)
       console.log(`========== END FULL DOM DUMP ==========\n`)
     }
   }
 
   // Debug: Log element map stats and DOM samples
   if (process.env.NODE_ENV === "development") {
-    const source = skeletonDom ? "skeletonDom" : "dom"
-    const sourceData = skeletonDom || dom
-    const sourceLen = sourceData?.length ?? 0
-    console.log(`[run-graph] Element map extraction: source=${source}, size=${elementMap.size}, sourceLen=${sourceLen}`)
+    const source = interactiveTree?.length
+      ? "interactiveTree"
+      : skeletonDom
+        ? "skeletonDom"
+        : "dom"
+    const sourceLen =
+      source === "interactiveTree"
+        ? interactiveTree?.length ?? 0
+        : (skeletonDom || domStr).length
+    console.log(
+      `[run-graph] Element map extraction: source=${source}, size=${elementMap.size}, sourceLen=${sourceLen}`
+    )
     
     // Log DOM sample to understand format (only if extraction failed)
     if (elementMap.size === 0 && sourceLen > 0) {
-      console.log(`[run-graph] DOM sample (first 800 chars):`)
-      console.log(sourceData.substring(0, 800))
+      console.log(`[run-graph] Source sample:`)
+      if (source === "interactiveTree") {
+        console.log(JSON.stringify(interactiveTree?.slice(0, 5) ?? [], null, 2))
+      } else {
+        const sourceData = skeletonDom || domStr
+        console.log(sourceData.substring(0, 800))
+      }
     }
   }
 
@@ -185,7 +220,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       userId,
       url,
       query,
-      dom,
+      dom: domStr,
       previousUrl,
       sessionId,
       taskId: currentTaskId,
@@ -214,6 +249,16 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       domMode,
       skeletonDom,
       screenshotHash,
+      // Semantic-first V3
+      interactiveTree,
+      semanticNodes,
+      viewport,
+      pageTitle,
+      scrollPosition,
+      scrollableContainers,
+      recentEvents,
+      hasErrors,
+      hasSuccess,
     })
 
     traceCtx = await startInteractTrace({
@@ -235,7 +280,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     if (traceCtx.enabled) {
       await recordNodeExecution(traceCtx, {
         name: "complexity_check",
-        input: { query, domLength: dom.length },
+        input: { query, domLength: domStr.length, interactiveCount: interactiveTree?.length ?? 0 },
         output: {
           complexity: graphResult.complexity,
           reason: graphResult.complexityReason,
@@ -306,6 +351,10 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     }
 
     if (currentTaskId) {
+      const domForPersistence =
+        domStr ||
+        skeletonDom ||
+        renderInteractiveTreeAsHtml(interactiveTree, recentEvents)
       await saveGraphResults(
         tenantId,
         currentTaskId,
@@ -313,7 +362,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
         sessionId,
         userId,
         url,
-        input.dom
+        domForPersistence
       )
     }
 
@@ -336,6 +385,11 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       isNewTask,
       thought: graphResult.actionResult?.thought,
       action: graphResult.actionResult?.action,
+      // Backend-driven page-state negotiation
+      requestedDomMode: graphResult.requestedDomMode,
+      needsSkeletonDom: graphResult.needsSkeletonDom,
+      needsScreenshot: graphResult.needsScreenshot,
+      needsContextReason: graphResult.needsContextReason,
       // Robust Element Selectors: Include structured action details with selectorPath
       actionDetails,
       chainedActions: graphResult.actionResult?.chainedActions?.map((a) => ({

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode, hasOrganizationFeatures } from "@/lib/utils/tenant-state"
 
 export default async function OrganizationTeamsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -18,7 +18,7 @@ export default async function OrganizationTeamsPage() {
     redirect("/settings")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   // Get active organization
   let organizationId: string | null = null

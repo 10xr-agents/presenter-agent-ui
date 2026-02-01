@@ -6,7 +6,7 @@ import { KnowledgeCreationWizard } from "@/components/knowledge/knowledge-creati
 import { PageShell } from "@/components/shell/page-shell"
 import { Button } from "@/components/ui/button"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function NewKnowledgePage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -16,7 +16,7 @@ export default async function NewKnowledgePage() {
   }
 
   // Get tenant state and organization ID
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
   let organizationId: string | null = null
   if (tenantState === "organization") {
     organizationId = await getActiveOrganizationId()

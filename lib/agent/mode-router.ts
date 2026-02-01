@@ -67,6 +67,18 @@ const VISUAL_KEYWORDS = [
   "colour",
   "shape",
   "size",
+  // Common colors (often used as disambiguators)
+  "blue",
+  "red",
+  "green",
+  "yellow",
+  "orange",
+  "purple",
+  "pink",
+  "black",
+  "white",
+  "gray",
+  "grey",
   // Visual identification
   "what is",
   "what does",

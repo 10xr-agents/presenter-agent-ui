@@ -4,12 +4,12 @@ import { Chrome } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import type { TenantState } from "@/lib/utils/tenant-state"
+import type { TenantOperatingMode } from "@/lib/utils/tenant-state"
 import { MobileSidebar } from "./mobile-sidebar"
 import { OrganizationSwitcher } from "./organization-switcher"
 
 interface AppHeaderProps {
-  tenantState?: TenantState
+  tenantState?: TenantOperatingMode
 }
 
 export function AppHeader({ tenantState = "normal" }: AppHeaderProps) {

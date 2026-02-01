@@ -8,7 +8,7 @@ import {
   uploadFileToS3,
   validateFileType,
 } from "@/lib/storage/s3-client"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/knowledge/upload-to-s3
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Get tenant state and organization ID
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
   let organizationId: string | null = null
   if (tenantState === "organization") {
     organizationId = await getActiveOrganizationId()

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { UsageSettings } from "@/components/settings/usage-settings"
 import { auth } from "@/lib/auth"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function SettingsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -12,7 +12,7 @@ export default async function SettingsPage() {
     redirect("/login")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   return (
     <div className="py-6">

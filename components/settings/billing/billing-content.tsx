@@ -6,11 +6,11 @@ import { BalanceCard } from "@/components/billing/balance-card"
 import { SubscriptionCard } from "@/components/billing/subscription-card"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
-import type { TenantState } from "@/lib/utils/tenant-state"
+import type { TenantOperatingMode } from "@/lib/utils/tenant-state"
 
 interface BillingContentProps {
   organizationId: string
-  tenantState: TenantState
+  tenantState: TenantOperatingMode
 }
 
 interface BillingData {

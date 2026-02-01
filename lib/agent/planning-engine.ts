@@ -13,7 +13,7 @@ import type { PlanStep, TaskPlan } from "@/lib/models/task"
 
 import { getOrCreateSkeleton } from "./dom-skeleton"
 import { shouldUseVisualMode } from "./mode-router"
-import type { DomMode } from "./schemas"
+import type { DomMode, SemanticNodeV3 } from "./schemas"
 import type { WebSearchResult } from "./web-search"
 
 /**
@@ -47,7 +47,26 @@ export interface PlanningHybridOptions {
   skeletonDom?: string
   /** DOM processing mode hint */
   domMode?: DomMode
+  // Semantic-first V3 (PRIMARY)
+  interactiveTree?: SemanticNodeV3[]
+  viewport?: { width: number; height: number }
+  pageTitle?: string
+  scrollPosition?: string
+  recentEvents?: string[]
+  hasErrors?: boolean
+  hasSuccess?: boolean
 }
+
+const SEMANTIC_LEGEND = `LEGEND for interactiveTree (semantic) format:
+- i: element id (use this in click(i) or setValue(i, "text"))
+- r: role (btn=button, inp=input, link=link, chk=checkbox, sel=select, etc.)
+- n: visible name/label
+- v: current value (inputs)
+- s: state (disabled/checked/expanded/etc.)
+- xy: [x, y] center point on screen (if provided)
+- box: [x, y, w, h] bounding box (if provided)
+- scr: { depth: string, h: boolean } scroll info (if provided)
+- occ: true if occluded/covered (avoid clicking)`
 
 /**
  * Generate action plan from user instructions.
@@ -167,12 +186,32 @@ Guidelines:
     })
   }
 
-  // Determine if we should use visual mode
+  // Determine if we should use visual mode (screenshot must be present to be useful)
   const useVisualMode =
-    hybridOptions?.domMode === "hybrid" ||
-    (hybridOptions?.screenshot && shouldUseVisualMode(query, true))
+    Boolean(hybridOptions?.screenshot) &&
+    (hybridOptions?.domMode === "hybrid" || shouldUseVisualMode(query, true))
 
   // Add page content based on mode
+  // 1) Prefer interactiveTree (semantic) when available (backend-driven contract)
+  if (hybridOptions?.interactiveTree && hybridOptions.interactiveTree.length > 0) {
+    const metaParts: string[] = []
+    if (hybridOptions.pageTitle) metaParts.push(`Title: ${hybridOptions.pageTitle}`)
+    if (hybridOptions.viewport) metaParts.push(`Viewport: ${hybridOptions.viewport.width}x${hybridOptions.viewport.height}`)
+    if (hybridOptions.scrollPosition) metaParts.push(`Scroll: ${hybridOptions.scrollPosition}`)
+    if (hybridOptions.hasErrors === true) metaParts.push(`Signals: hasErrors=true`)
+    if (hybridOptions.hasSuccess === true) metaParts.push(`Signals: hasSuccess=true`)
+    const metaLine = metaParts.length > 0 ? metaParts.join(" | ") : undefined
+
+    userParts.push(`\n## Interactive Elements (semantic)`)
+    if (metaLine) userParts.push(metaLine)
+    userParts.push(SEMANTIC_LEGEND)
+    userParts.push(JSON.stringify(hybridOptions.interactiveTree))
+    if (hybridOptions.recentEvents && hybridOptions.recentEvents.length > 0) {
+      userParts.push(`\nRecent events:`)
+      hybridOptions.recentEvents.slice(0, 10).forEach((e) => userParts.push(`- ${e}`))
+    }
+  }
+
   if (useVisualMode && hybridOptions?.screenshot) {
     // Hybrid mode: screenshot for visual context, skeleton for structure
     userParts.push(formatScreenshotContext(true))
@@ -184,9 +223,11 @@ Guidelines:
     userParts.push(skeletonDom)
   } else {
     // Full DOM mode (traditional)
-    const domPreview = dom.length > 10000 ? dom.substring(0, 10000) + "... [truncated]" : dom
-    userParts.push(`\n## Current Page Structure`)
-    userParts.push(domPreview)
+    if (dom && dom.length > 0) {
+      const domPreview = dom.length > 10000 ? dom.substring(0, 10000) + "... [truncated]" : dom
+      userParts.push(`\n## Current Page Structure`)
+      userParts.push(domPreview)
+    }
   }
 
   userParts.push(

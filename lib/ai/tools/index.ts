@@ -1,5 +1,5 @@
 import mongoose from "mongoose"
-import { connectDB } from "@/lib/db/mongodb"
+import { connectDB } from "@/lib/db/mongoose"
 import type { AgentTool } from "../types"
 
 export const databaseTool: AgentTool = {

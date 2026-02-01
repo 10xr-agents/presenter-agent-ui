@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { OrganizationMembersList } from "@/components/settings/organization/member-list"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function SettingsMembersPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -12,7 +12,7 @@ export default async function SettingsMembersPage() {
     redirect("/login")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   const headersList = await headers()
   let organizationId = session.user.id

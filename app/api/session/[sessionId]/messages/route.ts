@@ -5,7 +5,7 @@ import { sessionMessagesResponseSchema } from "@/lib/agent/schemas"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
-import { Message, Session } from "@/lib/models"
+import { BrowserSession, Message } from "@/lib/models"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
@@ -111,7 +111,7 @@ export async function GET(
     await connectDB()
 
     // Load session and verify ownership (exclude archived sessions - Chrome extension should not use archived)
-    const sessionDoc = await (Session as any)
+    const sessionDoc = await (BrowserSession as any)
       .findOne({
         sessionId,
         tenantId,

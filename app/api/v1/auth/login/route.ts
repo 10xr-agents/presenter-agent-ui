@@ -5,7 +5,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/v1/auth/login
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       // Resolve tenant (user or organization)
       // Use sessionHeaders (with Bearer token) instead of request headers
       // This ensures the organization API calls are authenticated
-      const tenantState = await getTenantState(userId, sessionHeaders)
+      const tenantState = await getTenantOperatingMode(userId, sessionHeaders)
       let tenantId: string
       let tenantName: string
 

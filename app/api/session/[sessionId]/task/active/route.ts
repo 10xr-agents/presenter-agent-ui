@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
-import { Session, Task } from "@/lib/models"
+import { BrowserSession, Task } from "@/lib/models"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
@@ -111,7 +111,7 @@ export async function GET(
     const urlFilter = searchParams.get("url")
 
     // Verify session exists and belongs to user
-    const targetSession = await (Session as any)
+    const targetSession = await (BrowserSession as any)
       .findOne({
         sessionId,
         tenantId,

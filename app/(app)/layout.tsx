@@ -6,7 +6,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { auth } from "@/lib/auth"
 import { isOnboardingComplete } from "@/lib/onboarding/flow"
 import { userHasPassword } from "@/lib/utils/password-check"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 // Force dynamic rendering - this layout uses headers() for session checking
 export const dynamic = "force-dynamic"
@@ -84,7 +84,7 @@ export default async function AppLayout({
   // Get tenant state for sidebar
   let tenantState: "normal" | "organization" = "normal"
   try {
-    tenantState = await getTenantState(session.user.id)
+    tenantState = await getTenantOperatingMode(session.user.id)
   } catch (error: unknown) {
     // If tenant state check fails, default to normal mode
     console.error("[AppLayout] Error getting tenant state:", error)

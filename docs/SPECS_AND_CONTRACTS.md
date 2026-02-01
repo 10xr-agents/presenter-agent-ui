@@ -22,14 +22,18 @@
 
 **Purpose:** Define what the Chrome extension sends on each `POST /api/agent/interact` call so the backend’s observation-based verification can run correctly.
 
-### Required (Verification Works With Only These)
+### Required (Semantic-First Negotiation)
 
 | Field | Sent by extension | Purpose |
 |------|-------------------|---------|
-| **dom** | ✅ Every call | Current page DOM snapshot (templatized). Backend uses it as “after” state and saves **beforeState** when generating the next action. |
+| **domMode** | ✅ Every call | Extension currently sends `"semantic"` for all requests. Backend treats `"semantic"` + `interactiveTree` as the V3 semantic-first contract. |
+| **interactiveTree** | ✅ Every call | Canonical page state: V3 minified semantic nodes (IDs, roles, labels, optional geometry). |
 | **url** | ✅ Every call | Current page URL captured just before sending the request. Used in before/after comparison. |
 | **query** | ✅ Every call | User instruction for this loop iteration. |
 | **taskId** | ✅ After first call | Backend loads previous action + beforeState to run observation-based verification. |
+
+**Important:** `dom` (full HTML) is **NOT** required in the semantic-first contract and should only be sent when the backend explicitly requests it.  
+Even if the extension keeps `domMode: "semantic"`, the backend will use `dom`/`skeletonDom`/`screenshot` when present.
 
 ### Optional (Improve Accuracy)
 
@@ -37,12 +41,15 @@ These are supported by the current request schema (`lib/agent/schemas.ts`):
 
 | Field | Sent by extension | Purpose |
 |------|-------------------|---------|
+| **tabId** | ✅ When available | Chrome tab ID (debug metadata only, not stable across restarts). Used for tab-scoped sessions. |
 | **previousUrl** | ✅ When available | URL before the last action. Helps URL-change verification when beforeState is missing or ambiguous. |
 | **clientObservations** | ✅ When available | `{ didNetworkOccur?, didDomMutate?, didUrlChange? }` — extension-witnessed facts. Helps reduce false “no change” failures. |
 | **clientVerification** | ✅ When available | `{ elementFound, selector?, urlChanged?, timestamp? }` — client-side selector check results (when an expected selector is known). |
 | **lastActionStatus** | ✅ When available | `success \| failure \| pending` — used for message/status bookkeeping. |
-| **lastActionError** | ✅ On failure | `{ message, code, action, elementId? }` — anti-hallucination / failure debugging. |
+| **lastActionError** | ✅ On failure | `{ message, code, action, elementId? }` — anti-hallucination / failure debugging. `elementId` may be a **number or string** (iframe-prefixed IDs). |
 | **lastActionResult** | ✅ When available | `{ success, actualState? }` — supports verification/debugging. |
+| **viewport / pageTitle / scrollPosition / recentEvents** | ✅ When available | Extra metadata for disambiguation and verification. |
+| **skeletonDom / screenshot** | ❌ By default | Only sent when the backend requests them (see negotiation response below). |
 
 ### Request Body Shape (Summary)
 
@@ -50,9 +57,11 @@ These are supported by the current request schema (`lib/agent/schemas.ts`):
 {
   url: string,           // required — current URL (captured just before send)
   query: string,         // required — user instruction
-  dom: string,           // required — current DOM (fallback, should be minimal)
+  // IMPORTANT: In semantic-first mode, `dom` is optional and SHOULD NOT be sent by default.
+  dom?: string,
   taskId?: string,       // required after first request
   sessionId?: string,
+  tabId?: number,        // Chrome tab ID (debug metadata only, not stable across restarts)
   domain?: string,
   title?: string,
   lastActionStatus?: 'success' | 'failure' | 'pending',
@@ -62,8 +71,8 @@ These are supported by the current request schema (`lib/agent/schemas.ts`):
   clientVerification?: { elementFound: boolean, selector?: string, urlChanged?: boolean, timestamp?: number },
   clientObservations?: { didNetworkOccur?: boolean, didDomMutate?: boolean, didUrlChange?: boolean },
 
-  // === V3 SEMANTIC FIELDS (PRIMARY - use these) ===
-  domMode?: "semantic_v3" | "semantic" | "skeleton" | "hybrid" | "full",
+  // === SEMANTIC FIELDS (PRIMARY - use these) ===
+  domMode?: "semantic" | "skeleton" | "hybrid" | "full",
   interactiveTree?: Array<{
     i: string,                              // Element ID
     r: string,                              // Role (minified: btn, inp, link, chk, etc.)
@@ -112,11 +121,30 @@ These are supported by the current request schema (`lib/agent/schemas.ts`):
 }
 ```
 
+### Negotiation Response (Backend → Extension)
+
+In the semantic-first contract, the backend may request heavier artifacts by returning:
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "needs_context",
+    "requestedDomMode": "hybrid",
+    "needsScreenshot": true,
+    "needsSkeletonDom": true,
+    "reason": "User asked about the blue button; semantic tree doesn't encode color reliably."
+  }
+}
+```
+
+The extension must retry the **same** `POST /api/agent/interact` call and include `interactiveTree` again plus **only** the requested artifacts.
+
 ---
 
 ## 2. Domain-Aware Sessions
 
-**Status:** ✅ Implemented (Backend)
+**Status:** ✅ Implemented (Backend + Extension)
 
 ### Overview
 
@@ -124,6 +152,29 @@ Domain-aware sessions let the extension reuse/switch sessions based on the activ
 
 - `{domain}: {task description}`
 - Examples: `google.com: Search for SpaceX`, `github.com: Review PR #123`
+
+### Tab-Scoped Sessions (Feb 2026)
+
+**Sessions are now tab-scoped** on the extension side: each Chrome tab has one active chat session (`tabId → sessionId`). This provides a more intuitive UX where:
+
+1. **Same tab = same session**: Navigation within a tab (including cross-domain) keeps the same `sessionId`
+2. **Different tabs = different sessions**: Switching tabs switches to that tab's session
+3. **Domain as metadata**: The session's `domain` and `url` fields are **updated** when navigation occurs (not fixed to the initial URL)
+
+### Session URL/Domain Updates
+
+When the interact route receives a request for an existing session with a different URL:
+
+1. **URL change**: Session's `url` field is updated to the current URL
+2. **Cross-domain navigation**: Session's `domain` field is updated; original URL/domain stored in `metadata.initialUrl` / `metadata.initialDomain`
+3. **Title unchanged**: Session title keeps the original domain (unless user manually renames)
+
+**Example flow:**
+```
+1. User starts on google.com → Session created: { domain: "google.com", url: "https://google.com" }
+2. User navigates to github.com (same tab) → Session updated: { domain: "github.com", url: "https://github.com", metadata: { initialDomain: "google.com", initialUrl: "https://google.com" } }
+3. Session title remains: "google.com: Search for SpaceX" (unless renamed)
+```
 
 ### Backend Endpoints
 
@@ -138,6 +189,15 @@ Domain-aware sessions let the extension reuse/switch sessions based on the activ
 - `lib/utils/domain.ts`
   - `extractDomain(url)` — extracts root domain (supports `co.uk`-style TLDs, `localhost`, IPs)
   - `generateSessionTitle(domain, taskDescription)` — `{domain}: {taskDescription}`
+
+### Session Model Fields
+
+| Field | Description |
+|-------|-------------|
+| `url` | Current URL (updated on navigation within the same tab session) |
+| `domain` | Current root domain (updated on cross-domain navigation) |
+| `metadata.initialUrl` | Original URL when session was created (preserved for history) |
+| `metadata.initialDomain` | Original domain when session was created (preserved for history) |
 
 ---
 
@@ -537,19 +597,20 @@ async function captureAndOptimizeScreenshot(): Promise<string | null> {
 
 **Status:** ✅ Implemented
 
-This section documents exactly what DOM data the Chrome extension currently sends to the backend on each `POST /api/agent/interact` call.
+This section documents the **semantic-first** contract the extension should follow in the new analysis framework.
 
 #### What's Sent in Each Request
 
-The extension sends **all three** data types, but with conditions:
+The extension sends **semantic JSON first**, and sends heavier artifacts only when explicitly requested by the backend:
 
 | Field | When Sent | Typical Size |
 |-------|-----------|--------------|
-| `dom` (full DOM) | **Always** | 50k-200k chars (truncated) |
-| `skeletonDom` | **Always** | ~500-2000 chars |
-| `screenshot` | **Only when `domMode === 'hybrid'`** | ~50-150KB base64 JPEG |
-| `domMode` | **Always** | `'skeleton'` \| `'hybrid'` \| `'full'` |
-| `screenshotHash` | **Only when screenshot captured** | 64-char perceptual hash |
+| `domMode` | **Always** | `"semantic"` |
+| `interactiveTree` | **Always** | ~100-300 bytes (minified) |
+| `dom` (full DOM) | **Only when requested** | 50k-200k chars |
+| `skeletonDom` | **Only when requested** | ~500-2000 chars |
+| `screenshot` | **Only when requested** | ~50-150KB base64 JPEG |
+| `screenshotHash` | **When screenshot is sent** | short hash string |
 
 #### Mode Selection Logic
 
@@ -569,7 +630,7 @@ The `selectDomMode()` function in `src/helpers/hybridCapture.ts` selects the mod
 
 #### Screenshot Capture Logic
 
-Screenshot is **only captured** when `domMode === 'hybrid'`:
+Screenshot is **only captured** when the backend requests it (i.e. when we’re in a “hybrid” retry that includes `screenshot` + `skeletonDom`), even if `domMode` remains `"semantic"`:
 
 ```typescript
 // From src/state/currentTask.ts
@@ -595,10 +656,10 @@ if (domMode === 'hybrid') {
 
 #### Full DOM as Fallback
 
-The full DOM is **always sent** in the `dom` field, even in `skeleton` or `hybrid` modes. This enables the server to:
+The full DOM is **not sent by default**. It is only sent when the backend explicitly requests it, which enables:
 
 1. Fall back to full DOM if skeleton is insufficient
-2. Request a retry with `status: 'needs_full_dom'`
+2. Request a retry with `status: 'needs_context'` (or legacy `status: 'needs_full_dom'`)
 
 **DOM truncation limits:**
 - Default: 50,000 chars
@@ -606,7 +667,7 @@ The full DOM is **always sent** in the `dom` field, even in `skeleton` or `hybri
 
 #### Fallback Handling
 
-When the server determines skeleton DOM is insufficient, it responds with `status: 'needs_full_dom'`. The extension automatically retries with `domMode: 'full'`:
+When the server determines semantic is insufficient, it responds with `status: 'needs_context'` / `requestedDomMode: 'full'` (or legacy `status: 'needs_full_dom'`). The extension automatically retries and includes the requested artifacts (it may keep `domMode: 'semantic'` for compatibility):
 
 ```typescript
 if (response.status === 'needs_full_dom') {
@@ -619,7 +680,7 @@ if (response.status === 'needs_full_dom') {
     {
       screenshot: screenshotBase64,
       skeletonDom,
-      domMode: 'full', // Override to full mode
+      domMode: 'semantic', // Keep semantic; include requested artifacts
       screenshotHash: screenshotHash || undefined,
     }
   );
@@ -680,7 +741,7 @@ V3 introduces three major optimizations on top of the V2 semantic protocol:
 
 ```json
 {
-  "mode": "semantic_v3",
+  "mode": "semantic",
   "url": "https://google.com",
   "title": "Google",
   "viewport": { "width": 1280, "height": 800 },
@@ -729,7 +790,7 @@ V3 Advanced adds production-grade reliability features:
 
 ```json
 {
-  "mode": "semantic_v3",
+  "mode": "semantic",
   "url": "https://amazon.com/checkout",
   "title": "Checkout",
   "viewport": { "width": 1280, "height": 800 },
@@ -807,11 +868,11 @@ Instead of calculating IDs during extraction, we "stamp" permanent IDs onto elem
 
 **V3 Format (PRIMARY - recommended):**
 
-When `domMode` is `"semantic_v3"`, the extension sends:
+When `domMode` is `"semantic"`, the extension sends:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `domMode` | `"semantic_v3"` | Indicates V3 ultra-light format |
+| `domMode` | `"semantic"` | Indicates semantic format |
 | `interactiveTree` | `SemanticNodeV3[]` | Minified array with viewport pruning |
 | `pageTitle` | `string` | Page title for context |
 | `viewport` | `{ width, height }` | Viewport dimensions |
@@ -888,7 +949,7 @@ interface SemanticNode {
 
 | Priority | Condition | Mode Selected | Payload | Tokens |
 |----------|-----------|---------------|---------|--------|
-| **1 (Default)** | V3 enabled | `semantic_v3` | Minified JSON + viewport pruning | 25-75 |
+| **1 (Default)** | Semantic enabled | `semantic` | Minified JSON + viewport pruning | 25-75 |
 | 2 | V3 fails/empty | `semantic` | Full-key JSON | 50-125 |
 | 3 | Semantic fails | `skeleton` | Skeleton HTML | 500-1500 |
 | 4 | Visual query | `hybrid` | Screenshot + skeleton | 2000-3000 |
@@ -899,7 +960,7 @@ interface SemanticNode {
 ```typescript
 // Decision flow in currentTask.ts
 const mode = 
-  USE_V3_EXTRACTION ? 'semantic_v3' :    // First choice
+  USE_SEMANTIC_EXTRACTION ? 'semantic' : // First choice
   USE_SEMANTIC_EXTRACTION ? 'semantic' : // Second choice
   selectDomMode(query, context);         // Fallback to hybrid/skeleton
 
@@ -969,7 +1030,8 @@ The semantic extraction is **enabled by default** (`USE_SEMANTIC_EXTRACTION = tr
 
 - **2026-02-01**: **PRODUCTION-GRADE FEATURES** - Added DOM RAG for handling massive pages (5000+ elements) with client-side chunking and relevance filtering. Added Sentinel Verification System for verifying action outcomes (catches silent failures like vanishing error toasts). New files: `domRag.ts`, `sentinelVerification.ts`. New request fields: `verification_passed`, `verification_message`, `errors_detected`.
 - **2026-02-01**: **V3 ADVANCED (PRODUCTION-GRADE)** - Added production-grade reliability features: True Visibility Raycasting (modal detection), Explicit Label Association (form fix), Mutation Stream (ghost state detection), Delta Hashing (bandwidth optimization), Virtual List Detection (infinite scroll), Self-Healing Recovery (stale ID fix), Bounding Box (Set-of-Mark multimodal). New files: `mutationLog.ts`, `deltaHash.ts`. New fields: `box`, `scr`, `occ`, `scrollPosition`, `scrollableContainers`, `recentEvents`, `hasErrors`, `hasSuccess`.
-- **2026-02-01**: **V3 ULTRA-LIGHT PROTOCOL** - Major upgrade to semantic extraction. New features: viewport pruning (~60% reduction), minified JSON keys (i/r/n/v/s/xy), coordinates included. New `domMode: "semantic_v3"`. Semantic is now PRIMARY; full DOM only on explicit backend request. New files: `axTreeExtractor.ts`. Token reduction: 99.8% (10k → 25-75 tokens).
+- **2026-02-01**: **V3 ULTRA-LIGHT PROTOCOL** - Major upgrade to semantic extraction. New features: viewport pruning (~60% reduction), minified JSON keys (i/r/n/v/s/xy), coordinates included. `interactiveTree` (V3) is PRIMARY; full DOM only on explicit backend request.  
+  **Note:** Extension may send `domMode: "semantic"` for all requests; backend treats `"semantic" + interactiveTree` as the semantic-first contract.
 - **2026-02-01**: **Shadow DOM & Iframe Support (V2)** - Added `query-selector-shadow-dom` library for piercing Shadow DOM. Added `domAggregator.ts` for multi-frame extraction. New fields: `isInShadow`, `frameId`, `bounds`.
 - **2026-02-01**: Added Semantic JSON Protocol (section 6). New DOM extraction approach with ~95% token reduction and stable IDs. New files: `tagger.ts`, `semanticTree.ts`, `domWait.ts`. New request fields: `semanticNodes`, `pageTitle`, `domMode: "semantic"`.
 - **2026-02-01**: Added Extension Implementation (Current Behavior) section (5.8). Documents exactly what DOM data is sent: full DOM always, skeleton DOM always, screenshot only in hybrid mode.

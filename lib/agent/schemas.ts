@@ -29,7 +29,7 @@ export const chainActionErrorSchema = z.object({
   /** Error code (e.g., 'ELEMENT_NOT_FOUND', 'TIMEOUT') */
   code: z.string(),
   /** Element ID that couldn't be found (if applicable) */
-  elementId: z.number().int().positive().optional(),
+  elementId: z.union([z.number().int().positive(), z.string().min(1)]).optional(),
   /** Index of the failed action in the chain */
   failedIndex: z.number().int().nonnegative(),
 })
@@ -38,9 +38,9 @@ export type ChainActionError = z.infer<typeof chainActionErrorSchema>
 
 /**
  * DOM processing mode for hybrid vision + skeleton pipeline
- * V3: semantic_v3 is PRIMARY mode with ultra-light extraction
+ * Semantic is PRIMARY mode with ultra-light extraction
  */
-export const domModeSchema = z.enum(["semantic_v3", "semantic", "skeleton", "full", "hybrid"])
+export const domModeSchema = z.enum(["semantic", "skeleton", "full", "hybrid"])
 export type DomMode = z.infer<typeof domModeSchema>
 
 // =============================================================================
@@ -132,7 +132,14 @@ export const interactRequestBodySchema = z.object({
     }
   }, "Invalid URL"),
   query: z.string().min(1).max(10000),
-  dom: z.string().min(1).max(1000000), // Increased from 500000 to 1000000 to handle large DOMs
+  /**
+   * Full DOM HTML (legacy / fallback).
+   *
+   * IMPORTANT (V3 semantic-first negotiation):
+    * - When domMode === "semantic", clients SHOULD NOT send full HTML by default.
+    * - Backend MUST tolerate dom being missing/empty in that case.
+   */
+  dom: z.string().max(1000000).optional(),
   // =========================================================================
   // Hybrid Vision + Skeleton Fields
   // =========================================================================
@@ -169,7 +176,7 @@ export const interactRequestBodySchema = z.object({
   // =========================================================================
   /**
    * V3 minified interactive element tree (PRIMARY extraction format).
-   * When domMode is "semantic_v3", this contains the viewport-pruned,
+   * When domMode is "semantic", this contains the viewport-pruned,
    * minified JSON array of interactive elements.
    */
   interactiveTree: z.array(semanticNodeV3Schema).optional(),
@@ -273,6 +280,11 @@ export const interactRequestBodySchema = z.object({
       return uuidRegex.test(val)
     }, "Invalid sessionId format")
     .optional(),
+  /**
+   * Chrome tab ID (debug metadata only, not stable across browser restarts).
+   * Used for tab-scoped sessions: one session per browser tab.
+   */
+  tabId: z.number().int().positive().optional(),
   // Domain-Aware Sessions: Domain for the session (e.g., "google.com")
   domain: z.string().max(255).optional(),
   // Domain-Aware Sessions: Custom title for the session
@@ -285,7 +297,7 @@ export const interactRequestBodySchema = z.object({
       message: z.string(),
       code: z.string(), // e.g., 'ELEMENT_NOT_FOUND', 'TIMEOUT', 'NETWORK_ERROR'
       action: z.string(), // The action that failed (e.g., "click(123)")
-      elementId: z.number().optional(), // Element ID that failed (if applicable)
+      elementId: z.union([z.number().int().positive(), z.string().min(1)]).optional(), // Element ID that failed (if applicable)
     })
     .optional(),
   lastActionResult: z
@@ -367,6 +379,54 @@ export const interactRequestBodySchema = z.object({
    */
   chainActionError: chainActionErrorSchema.optional(),
 })
+  .superRefine((val, ctx) => {
+    const hasSemanticV3 = !!val.interactiveTree && val.interactiveTree.length > 0
+    const hasSemanticV2 = !!val.semanticNodes && val.semanticNodes.length > 0
+    const hasSemantic = hasSemanticV3 || hasSemanticV2
+    const hasSkeleton = typeof val.skeletonDom === "string" && val.skeletonDom.length > 0
+    const hasDom = typeof val.dom === "string" && val.dom.length > 0
+
+    // Semantic mode: allow either V3 interactiveTree or V2 semanticNodes.
+    // NOTE: The extension may send domMode="semantic" even when providing interactiveTree (V3).
+    if (val.domMode === "semantic" && !hasSemantic) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["interactiveTree"],
+        message:
+          "interactiveTree or semanticNodes is required when domMode is semantic",
+      })
+    }
+
+    // Full mode explicitly requires full HTML
+    if (val.domMode === "full" && !hasDom) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["dom"],
+        message: "dom is required when domMode is full",
+      })
+    }
+
+    // Skeleton-only / Hybrid: skeletonDom required
+    if ((val.domMode === "skeleton" || val.domMode === "hybrid") && !hasSkeleton) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["skeletonDom"],
+        message: "skeletonDom is required when domMode is skeleton or hybrid",
+      })
+    }
+
+    // Compatibility: require at least one page artifact (semantic tree OR skeleton OR full DOM).
+    // This enables semantic-first negotiation: clients may omit full HTML as long as they provide
+    // semantic nodes (preferred) or skeletonDom (fallback).
+    if (!hasSemantic && !hasSkeleton && !hasDom) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["dom"],
+        message:
+          "At least one page artifact is required: interactiveTree, semanticNodes, skeletonDom, or dom",
+      })
+    }
+  })
 
 export type InteractRequestBody = z.infer<typeof interactRequestBodySchema>
 
@@ -487,7 +547,7 @@ export const actionDetailsSchema = z.object({
   /** Action name: click, setValue, press, navigate, finish, fail, etc. */
   name: z.string(),
   /** Element ID for DOM actions */
-  elementId: z.number().int().positive().optional(),
+  elementId: z.union([z.number().int().positive(), z.string().min(1)]).optional(),
   /** CSS selector path for robust re-finding (from DOM extraction) */
   selectorPath: z.string().optional(),
   /** Additional arguments (e.g., value for setValue) */
@@ -533,8 +593,21 @@ export const nextActionResponseSchema = z.object({
       "verifying",
       "correcting",
       "needs_user_input", // Chat UI: shows UserInputPrompt when this status is returned
+      // Backend-driven page-state negotiation (semantic-first)
+      "needs_context",
+      // Backward compatibility: legacy full DOM fallback request
+      "needs_full_dom",
     ])
     .optional(), // Task status
+  /**
+   * Backend-driven page-state negotiation (semantic-first contract).
+   * When status === "needs_context" (or legacy "needs_full_dom"), the client should retry
+   * the same POST /api/agent/interact request, adding ONLY the requested artifacts.
+   */
+  requestedDomMode: z.enum(["skeleton", "hybrid", "full"]).optional(),
+  needsSkeletonDom: z.boolean().optional(),
+  needsScreenshot: z.boolean().optional(),
+  reason: z.string().optional(),
   // Task 7: Verification result (if verification occurred)
   verification: z
     .object({
@@ -635,6 +708,7 @@ export type NeedsUserInputResponse = z.infer<typeof needsUserInputResponseSchema
  * List Sessions Response Schema
  *
  * Domain-Aware Sessions: Includes domain, title, and isRenamed fields.
+ * Tab-Scoped Sessions: Includes tabId for browser tab association.
  */
 export const listSessionsResponseSchema = z.object({
   success: z.literal(true),
@@ -644,6 +718,7 @@ export const listSessionsResponseSchema = z.object({
         sessionId: z.string().uuid(),
         title: z.string().optional(), // Domain-Aware: Session title with format "{domain}: {task}"
         domain: z.string().optional(), // Domain-Aware: Root domain (e.g., "google.com")
+        tabId: z.number().int().positive().optional(), // Tab-Scoped: Chrome tab ID (debug metadata)
         url: z.string(),
         status: z.enum(["active", "completed", "failed", "interrupted", "archived"]),
         isRenamed: z.boolean(), // Domain-Aware: Whether user manually renamed the session
@@ -718,6 +793,7 @@ export const sessionByDomainResponseSchema = z.object({
         sessionId: z.string().uuid(),
         title: z.string().optional(),
         domain: z.string().optional(),
+        tabId: z.number().int().positive().optional(), // Tab-Scoped: Chrome tab ID (debug metadata)
         url: z.string(),
         status: z.enum(["active", "completed", "failed", "interrupted", "archived"]),
         isRenamed: z.boolean(),
@@ -743,6 +819,7 @@ export const getSessionResponseSchema = z.object({
       sessionId: z.string().uuid(),
       title: z.string().optional(),
       domain: z.string().optional(),
+      tabId: z.number().int().positive().optional(), // Tab-Scoped: Chrome tab ID (debug metadata)
       url: z.string(),
       status: z.enum(["active", "completed", "failed", "interrupted", "archived"]),
       isRenamed: z.boolean(),
@@ -821,12 +898,14 @@ export type LatestSessionRequest = z.infer<typeof latestSessionRequestSchema>
  * Response schema for GET /api/session/latest
  *
  * Domain-Aware Sessions: Includes domain, title, and isRenamed fields.
+ * Tab-Scoped Sessions: Includes tabId for browser tab association.
  */
 export const latestSessionResponseSchema = z
   .object({
     sessionId: z.string().uuid(),
     title: z.string().optional(), // Domain-Aware: Session title
     domain: z.string().optional(), // Domain-Aware: Root domain
+    tabId: z.number().int().positive().optional(), // Tab-Scoped: Chrome tab ID (debug metadata)
     url: z.string().url(),
     status: z.enum(["active", "completed", "failed", "interrupted", "archived"]),
     isRenamed: z.boolean().optional(), // Domain-Aware: Whether user manually renamed

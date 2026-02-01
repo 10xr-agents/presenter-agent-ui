@@ -16,10 +16,10 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import type { TenantState } from "@/lib/utils/tenant-state"
+import type { TenantOperatingMode } from "@/lib/utils/tenant-state"
 
 interface MobileSidebarProps {
-  tenantState?: TenantState
+  tenantState?: TenantOperatingMode
 }
 
 const baseNavigation = [

@@ -18,6 +18,7 @@ import {
   identifyChainableGroups,
 } from "@/lib/agent/chaining"
 import { callActionLLM } from "@/lib/agent/llm-client"
+import { computeContextRequestForAction } from "@/lib/agent/page-state-negotiation"
 import { buildActionPrompt } from "@/lib/agent/prompt-builder"
 import { logger } from "@/lib/utils/logger"
 import type { ChainedActionResult, ChainMetadataResult, InteractGraphState } from "../types"
@@ -61,6 +62,29 @@ export async function actionGenerationNode(
   const startTime = Date.now()
 
   try {
+    // Backend-driven negotiation: request heavier artifacts only when needed.
+    const contextRequest = computeContextRequestForAction({
+      query,
+      dom: state.dom,
+      screenshot: state.screenshot,
+      skeletonDom: state.skeletonDom,
+      interactiveTree: state.interactiveTree,
+    })
+    if (contextRequest) {
+      log.info("Requesting additional page context (semantic-first)", {
+        requestedDomMode: contextRequest.requestedDomMode,
+        needsScreenshot: contextRequest.needsScreenshot ?? false,
+        needsSkeletonDom: contextRequest.needsSkeletonDom ?? false,
+      })
+      return {
+        status: contextRequest.requestedDomMode === "full" ? "needs_full_dom" : "needs_context",
+        requestedDomMode: contextRequest.requestedDomMode,
+        needsScreenshot: contextRequest.needsScreenshot,
+        needsSkeletonDom: contextRequest.needsSkeletonDom,
+        needsContextReason: contextRequest.reason,
+      }
+    }
+
     // Build system messages based on context
     const systemMessages: string[] = []
 
@@ -125,7 +149,7 @@ export async function actionGenerationNode(
     }
 
     // Build prompt (enhanced with chain instructions if opportunity detected)
-    const { system, user } = buildActionPrompt({
+    const { system, user, useVisualMode } = buildActionPrompt({
       query,
       currentTime: new Date().toISOString(),
       previousActions,
@@ -133,6 +157,18 @@ export async function actionGenerationNode(
       hasOrgKnowledge,
       dom,
       systemMessages,
+      hybridOptions: {
+        domMode: state.domMode,
+        screenshot: state.screenshot,
+        skeletonDom: state.skeletonDom,
+        interactiveTree: state.interactiveTree,
+        viewport: state.viewport,
+        pageTitle: state.pageTitle,
+        scrollPosition: state.scrollPosition,
+        recentEvents: state.recentEvents,
+        hasErrors: state.hasErrors,
+        hasSuccess: state.hasSuccess,
+      },
     })
 
     // Enhance prompt for chaining if opportunity detected
@@ -148,6 +184,10 @@ export async function actionGenerationNode(
       sessionId: state.sessionId,
       taskId: state.taskId,
       actionType: "ACTION_GENERATION",
+      images:
+        useVisualMode && state.screenshot
+          ? [{ data: state.screenshot, mimeType: "image/jpeg" }]
+          : undefined,
       metadata: {
         query,
         url,

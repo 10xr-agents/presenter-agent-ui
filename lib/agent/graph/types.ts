@@ -7,7 +7,12 @@
 
 import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
-import type { DomMode } from "@/lib/agent/schemas"
+import type {
+  DomMode,
+  ScrollableContainer,
+  SemanticNodeV2,
+  SemanticNodeV3,
+} from "@/lib/agent/schemas"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { PlanStep, TaskPlan } from "@/lib/models/task"
@@ -31,6 +36,10 @@ export type GraphTaskStatus =
   | "completed"
   | "failed"
   | "needs_user_input"
+  // Backend-driven page-state negotiation (semantic-first)
+  | "needs_context"
+  // Backward compatibility: legacy full DOM fallback request
+  | "needs_full_dom"
 
 /**
  * Chained action (for action chaining - Phase 2 Task 1)
@@ -191,6 +200,12 @@ export interface InteractGraphState {
   userId: string
   url: string
   query: string
+  /**
+   * Full DOM HTML (legacy / fallback).
+   *
+   * In the semantic-first negotiation flow this may be an empty string.
+   * Treat empty string as "not provided".
+   */
   dom: string
   previousUrl?: string
 
@@ -203,6 +218,31 @@ export interface InteractGraphState {
   skeletonDom?: string
   /** Hash of current screenshot for deduplication */
   screenshotHash?: string
+
+  // Semantic fields (PRIMARY)
+  /** Minified interactive element tree (semantic) */
+  interactiveTree?: SemanticNodeV3[]
+  /** V2 semantic nodes (fallback format) */
+  semanticNodes?: SemanticNodeV2[]
+  /** Viewport dimensions */
+  viewport?: { width: number; height: number }
+  /** Page title */
+  pageTitle?: string
+  /** Scroll depth percentage (e.g., "25%") */
+  scrollPosition?: string
+  /** Virtual list containers detected on the page */
+  scrollableContainers?: ScrollableContainer[]
+  /** Recent DOM mutation events */
+  recentEvents?: string[]
+  /** Flags derived from mutation/alert stream */
+  hasErrors?: boolean
+  hasSuccess?: boolean
+
+  // Backend-driven page-state negotiation response (semantic-first)
+  requestedDomMode?: "skeleton" | "hybrid" | "full"
+  needsSkeletonDom?: boolean
+  needsScreenshot?: boolean
+  needsContextReason?: string
 
   // Session context
   sessionId?: string

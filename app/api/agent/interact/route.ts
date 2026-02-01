@@ -12,7 +12,7 @@ import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
-import { Message, Session } from "@/lib/models"
+import { BrowserSession, Message } from "@/lib/models"
 import { triggerInteractResponse, triggerNewMessage } from "@/lib/pusher/server"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
@@ -164,6 +164,7 @@ export async function POST(req: NextRequest) {
       dom,
       taskId: requestTaskId,
       sessionId: requestSessionId,
+      tabId: requestTabId,
       lastActionStatus,
       lastActionError,
       lastActionResult,
@@ -184,6 +185,16 @@ export async function POST(req: NextRequest) {
       domMode: requestDomMode,
       skeletonDom: requestSkeletonDom,
       screenshotHash: requestScreenshotHash,
+      // Semantic-first V3
+      interactiveTree: requestInteractiveTree,
+      semanticNodes: requestSemanticNodes,
+      viewport: requestViewport,
+      pageTitle: requestPageTitle,
+      scrollPosition: requestScrollPosition,
+      scrollableContainers: requestScrollableContainers,
+      recentEvents: requestRecentEvents,
+      hasErrors: requestHasErrors,
+      hasSuccess: requestHasSuccess,
     } = validationResult.data
     taskId = requestTaskId
 
@@ -192,6 +203,7 @@ export async function POST(req: NextRequest) {
     Sentry.logger.info("Interact: client execution telemetry", {
       hasTaskId: !!requestTaskId,
       hasSessionId: !!requestSessionId,
+      tabId: requestTabId ?? null,
       url,
       previousUrl: requestPreviousUrl,
       lastActionStatus: lastActionStatus ?? null,
@@ -204,18 +216,23 @@ export async function POST(req: NextRequest) {
       clientVerificationUrlChanged: requestClientVerification?.urlChanged ?? null,
       clientVerificationElementFound: requestClientVerification?.elementFound ?? null,
       domChars: typeof dom === "string" ? dom.length : null,
+      domMode: requestDomMode ?? null,
+      interactiveCount: requestInteractiveTree?.length ?? null,
+      hasScreenshot: requestScreenshot ? true : null,
+      hasSkeletonDom: requestSkeletonDom ? true : null,
     })
 
     await connectDB()
 
     // Session Resolution - Create or load session
     let currentSessionId: string | undefined = undefined
+    let createdUserMessageThisRequest = false
 
     Sentry.logger.info("Interact: resolving session", { hasSessionId: !!requestSessionId })
 
     if (requestSessionId) {
       // Load existing session (exclude archived sessions)
-      const currentSession = await (Session as any)
+      const currentSession = await (BrowserSession as any)
         .findOne({
           sessionId: requestSessionId,
           tenantId,
@@ -232,16 +249,22 @@ export async function POST(req: NextRequest) {
           requestTitle ||
           (sessionDomain ? generateSessionTitle(sessionDomain, query) : query.substring(0, 200))
 
-        await (Session as any).create({
+        await (BrowserSession as any).create({
           sessionId: requestSessionId,
           userId,
           tenantId,
+          tabId: requestTabId,
           url,
           domain: sessionDomain,
           title: sessionTitle,
           isRenamed: false,
           status: "active",
-          metadata: { initialQuery: query },
+          metadata: {
+            initialQuery: query,
+            initialUrl: url,
+            initialDomain: sessionDomain,
+            initialTabId: requestTabId,
+          },
         })
 
         currentSessionId = requestSessionId
@@ -257,6 +280,7 @@ export async function POST(req: NextRequest) {
           sequenceNumber: 0,
           timestamp: new Date(),
         })
+        createdUserMessageThisRequest = true
         const msgPayload = {
           messageId: userMessageId,
           role: "user" as const,
@@ -283,6 +307,57 @@ export async function POST(req: NextRequest) {
         }
 
         currentSessionId = requestSessionId
+
+        // Tab-Scoped Sessions: Update session url/domain/tabId if changed
+        // Sessions persist across domain navigations within the same tab
+        const currentDomain = requestDomain || extractDomain(url) || undefined
+        const sessionUrlChanged = currentSession.url !== url
+        const sessionDomainChanged = currentSession.domain !== currentDomain
+        const sessionTabIdChanged = requestTabId && currentSession.tabId !== requestTabId
+
+        if (sessionUrlChanged || sessionDomainChanged || sessionTabIdChanged) {
+          const sessionUpdate: Record<string, unknown> = {}
+
+          if (sessionUrlChanged) {
+            sessionUpdate.url = url
+            Sentry.logger.info("Interact: session URL changed", {
+              sessionId: requestSessionId,
+              oldUrl: currentSession.url,
+              newUrl: url,
+            })
+          }
+
+          if (sessionDomainChanged) {
+            sessionUpdate.domain = currentDomain
+            Sentry.logger.info("Interact: session domain changed (cross-domain navigation)", {
+              sessionId: requestSessionId,
+              oldDomain: currentSession.domain,
+              newDomain: currentDomain,
+            })
+
+            // Store initial domain in metadata if not already stored (for history)
+            if (!currentSession.metadata?.initialDomain) {
+              sessionUpdate["metadata.initialDomain"] = currentSession.domain
+              sessionUpdate["metadata.initialUrl"] = currentSession.url
+            }
+          }
+
+          if (sessionTabIdChanged) {
+            sessionUpdate.tabId = requestTabId
+            Sentry.logger.info("Interact: session tabId updated", {
+              sessionId: requestSessionId,
+              oldTabId: currentSession.tabId,
+              newTabId: requestTabId,
+            })
+          }
+
+          await (BrowserSession as any)
+            .findOneAndUpdate(
+              { sessionId: requestSessionId, tenantId },
+              { $set: sessionUpdate }
+            )
+            .exec()
+        }
 
         // Update last message status if provided
         if (lastActionStatus) {
@@ -336,10 +411,11 @@ export async function POST(req: NextRequest) {
       const sessionTitle = requestTitle || 
         (sessionDomain ? generateSessionTitle(sessionDomain, query) : query.substring(0, 200))
       
-      await (Session as any).create({
+      await (BrowserSession as any).create({
         sessionId: newSessionId,
         userId,
         tenantId,
+        tabId: requestTabId,
         url,
         domain: sessionDomain,
         title: sessionTitle,
@@ -347,6 +423,9 @@ export async function POST(req: NextRequest) {
         status: "active",
         metadata: {
           initialQuery: query,
+          initialUrl: url,
+          initialDomain: sessionDomain,
+          initialTabId: requestTabId,
         },
       })
 
@@ -364,6 +443,7 @@ export async function POST(req: NextRequest) {
         sequenceNumber: 0,
         timestamp: new Date(),
       })
+      createdUserMessageThisRequest = true
       const msgPayload = {
         messageId: userMessageId,
         role: "user" as const,
@@ -372,6 +452,54 @@ export async function POST(req: NextRequest) {
         timestamp: new Date().toISOString(),
       }
       await triggerNewMessage(newSessionId, msgPayload)
+    }
+
+    // If this is a *new task* in an existing session (taskId omitted), persist the user message.
+    // This supports multi-turn chat within the same sessionId (e.g., tab-scoped sessions).
+    if (!requestTaskId && currentSessionId && !createdUserMessageThisRequest) {
+      try {
+        const last = await (Message as any)
+          .findOne({ sessionId: currentSessionId, tenantId })
+          .sort({ sequenceNumber: -1 })
+          .select("sequenceNumber role content")
+          .lean()
+          .exec()
+
+        // Idempotency for negotiation retries (needs_context / needs_full_dom): if the last message
+        // is already this same user query, don't create a duplicate.
+        if (last?.role === "user" && last?.content === query) {
+          Sentry.logger.info("Interact: skipping duplicate user message (new task retry)", {
+            sessionId: currentSessionId,
+          })
+        } else {
+          const nextSeq = (last?.sequenceNumber ?? -1) + 1
+          const userMessageId = randomUUID()
+          await (Message as any).create({
+            messageId: userMessageId,
+            sessionId: currentSessionId,
+            userId,
+            tenantId,
+            role: "user",
+            content: query,
+            sequenceNumber: nextSeq,
+            timestamp: new Date(),
+          })
+
+          await triggerNewMessage(currentSessionId, {
+            messageId: userMessageId,
+            role: "user",
+            content: query,
+            sequenceNumber: nextSeq,
+            timestamp: new Date().toISOString(),
+          })
+        }
+      } catch (error: unknown) {
+        Sentry.captureException(error)
+        Sentry.logger.warn("Interact: failed to persist/trigger user message for new task", {
+          sessionId: currentSessionId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
 
     // RAG: Fetch chunks early for use in graph execution
@@ -394,7 +522,7 @@ export async function POST(req: NextRequest) {
       userId,
       url,
       query,
-      dom,
+      dom: dom ?? "",
       previousUrl: requestPreviousUrl,
       sessionId: currentSessionId,
       taskId: requestTaskId,
@@ -407,6 +535,16 @@ export async function POST(req: NextRequest) {
       domMode: requestDomMode,
       skeletonDom: requestSkeletonDom,
       screenshotHash: requestScreenshotHash,
+      // Semantic-first V3
+      interactiveTree: requestInteractiveTree,
+      semanticNodes: requestSemanticNodes,
+      viewport: requestViewport,
+      pageTitle: requestPageTitle,
+      scrollPosition: requestScrollPosition,
+      scrollableContainers: requestScrollableContainers,
+      recentEvents: requestRecentEvents,
+      hasErrors: requestHasErrors,
+      hasSuccess: requestHasSuccess,
     })
 
     Sentry.logger.info("Interact: LangGraph run completed", {
@@ -491,11 +629,22 @@ export async function POST(req: NextRequest) {
     }
 
     const isTerminal = graphResult.status === "completed" || graphResult.status === "failed"
+    const isNeedsContext =
+      graphResult.status === "needs_context" || graphResult.status === "needs_full_dom"
     const response: NextActionResponse = {
-      thought: graphResult.thought || "",
+      thought:
+        graphResult.thought ||
+        (isNeedsContext
+          ? "I need a bit more context from the page to proceed."
+          : ""),
       action: graphResult.action || (isTerminal ? "finish()" : ""),
       // Robust Element Selectors: Include structured action details with selectorPath
       actionDetails: graphResult.actionDetails,
+      // Backend-driven page-state negotiation (semantic-first)
+      requestedDomMode: graphResult.requestedDomMode,
+      needsSkeletonDom: graphResult.needsSkeletonDom,
+      needsScreenshot: graphResult.needsScreenshot,
+      reason: graphResult.needsContextReason,
       usage: graphResult.llmUsage,
       taskId: graphResult.taskId || undefined,
       hasOrgKnowledge,
@@ -545,6 +694,68 @@ export async function POST(req: NextRequest) {
             containerSelector: graphResult.chainMetadata.containerSelector,
           }
         : undefined,
+    }
+
+    // Persist assistant message for chat history + realtime new_message event.
+    // We intentionally do NOT create a message for needs_context/needs_full_dom retries to avoid
+    // spamming the chat with negotiation scaffolding.
+    if (currentSessionId && !isNeedsContext) {
+      try {
+        // Compute next sequence number (0-indexed). Session creation already wrote sequence 0 for the user.
+        const last = await (Message as any)
+          .findOne({ sessionId: currentSessionId, tenantId })
+          .sort({ sequenceNumber: -1 })
+          .select("sequenceNumber")
+          .lean()
+          .exec()
+
+        const nextSeq = (last?.sequenceNumber ?? -1) + 1
+        const assistantMessageId = randomUUID()
+
+        // Action is "pending" until the extension reports lastActionStatus on the next request.
+        const statusForMessage =
+          response.action && (response.action.startsWith("finish(") || response.action.startsWith("fail("))
+            ? "success"
+            : "pending"
+
+        await (Message as any).create({
+          messageId: assistantMessageId,
+          sessionId: currentSessionId,
+          userId,
+          tenantId,
+          role: "assistant",
+          content: response.thought || "",
+          actionString: response.action || undefined,
+          status: statusForMessage,
+          sequenceNumber: nextSeq,
+          timestamp: new Date(),
+          metadata: {
+            tokens_used: response.usage,
+            latency: duration,
+          },
+        })
+
+        await triggerNewMessage(currentSessionId, {
+          messageId: assistantMessageId,
+          role: "assistant",
+          content: response.thought || "",
+          actionString: response.action || undefined,
+          status: statusForMessage,
+          sequenceNumber: nextSeq,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            tokens_used: response.usage,
+            latency: duration,
+          },
+        })
+      } catch (error: unknown) {
+        Sentry.captureException(error)
+        Sentry.logger.warn("Interact: failed to persist/trigger assistant message", {
+          sessionId: currentSessionId,
+          taskId: graphResult.taskId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
 
     // Debug: log actionDetails (avoid logging full typed values)

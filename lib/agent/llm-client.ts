@@ -5,6 +5,7 @@ import {
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
 import { ACTION_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
+import type { ImageInput } from "@/lib/llm/multimodal-helpers"
 import type { LLMActionType } from "@/lib/models/token-usage-log"
 
 /**
@@ -49,6 +50,8 @@ export interface LLMCallOptions {
   tags?: string[]
   /** Custom metadata */
   metadata?: Record<string, unknown>
+  /** Optional multimodal images (e.g., screenshot for hybrid mode) */
+  images?: ImageInput[]
 }
 
 /**
@@ -79,6 +82,7 @@ export async function callActionLLM(
     generationName: options?.generationName || "action_generation",
     sessionId: options?.sessionId,
     userId: options?.userId,
+    images: options?.images,
     tags: options?.tags,
     metadata: options?.metadata,
     responseJsonSchema: ACTION_RESPONSE_SCHEMA,

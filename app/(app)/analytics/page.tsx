@@ -2,7 +2,7 @@ import { headers } from "next/headers"
 import { Dashboard } from "@/components/analytics/dashboard"
 import { PageShell } from "@/components/shell/page-shell"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function AnalyticsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -11,7 +11,7 @@ export default async function AnalyticsPage() {
     return null
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   let organizationId: string | null = null
   if (tenantState === "organization") {

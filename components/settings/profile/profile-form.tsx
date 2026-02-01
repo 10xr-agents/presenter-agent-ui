@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { useSession } from "@/lib/auth/client"
-import { getTenantState } from "@/lib/utils/tenant-state"
 import { toast } from "@/lib/utils/toast"
 
 interface ConnectedAccount {

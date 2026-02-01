@@ -12,7 +12,7 @@ import {
   uploadFileToS3,
   validateFileType,
 } from "@/lib/storage/s3-client"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * POST /api/knowledge - Create and start a knowledge extraction workflow
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Get tenant state and organization ID
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
   let organizationId: string | null = null
   if (tenantState === "organization") {
     organizationId = await getActiveOrganizationId()
@@ -149,23 +149,13 @@ export async function POST(req: NextRequest) {
             bucket: s3Reference.bucket,
           })
 
-          // DEPRECATED: Multipart/form-data handler is deprecated
-          // New two-phase format requires website_url in JSON request body
-          // This handler now requires website_url to be provided in form data
-          const websiteUrl = formData.get("website_url") as string | null
-          if (!websiteUrl || !websiteUrl.trim()) {
-            return NextResponse.json(
-              { error: "Multipart file upload now requires website_url. Please use the new two-phase JSON format with website_url in the request body." },
-              { status: 400 }
-            )
-          }
-
           // Generate presigned URL for browser automation service
           const { url: presignedUrl, expiresAt } = await generatePresignedUrl(s3Key, 3600)
 
           // Transform to new two-phase format
           const ingestionRequest = {
-            website_url: websiteUrl.trim(), // REQUIRED in new format
+            // REQUIRED in new format. For file uploads, use a stable sentinel URL.
+            website_url: "https://file.local",
             ...(sourceName ? { website_name: sourceName } : {}),
             s3_references: [
               {
@@ -263,6 +253,7 @@ export async function POST(req: NextRequest) {
 
         // Create knowledge source with the pre-generated ID
         // Use the same ObjectId instance we created earlier
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mongoose safety rule: cast model methods
         const knowledgeSource = await (KnowledgeSource as any).create({
           ...knowledgeSourceData,
           _id: knowledgeIdObj,
@@ -433,9 +424,7 @@ export async function POST(req: NextRequest) {
             warnings: [],
           }
 
-          // Determine sourceType for database (use "website" as primary, "file" if only files provided)
-          const sourceType: KnowledgeSourceType = (s3_references && s3_references.length > 0) || (documentation_urls && documentation_urls.length > 0) ? "file" : "website"
-
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mongoose safety rule: cast model methods
           const knowledgeSource = await (KnowledgeSource as any).create({
             _id: knowledgeIdObj,
             organizationId: knowledgeOrgId,
@@ -542,7 +531,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Get tenant state and organization ID
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
   let organizationId: string | null = null
   if (tenantState === "organization") {
     organizationId = await getActiveOrganizationId()
@@ -577,12 +566,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Get total count for pagination
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mongoose safety rule: cast model methods
     const totalCount = await (KnowledgeSource as any).countDocuments(query)
 
     // Calculate pagination
     const skip = (page - 1) * limit
     const totalPages = Math.ceil(totalCount / limit)
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mongoose safety rule: cast model methods
     const knowledgeList = await (KnowledgeSource as any)
       .find(query)
       .sort({ createdAt: -1 })

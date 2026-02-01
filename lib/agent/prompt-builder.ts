@@ -8,7 +8,8 @@ import {
 import { getAvailableActionsPrompt } from "./action-config"
 import { getOrCreateSkeleton } from "./dom-skeleton"
 import { shouldUseVisualMode } from "./mode-router"
-import type { DomMode } from "./schemas"
+import { looksLikeTextExtractionQuery } from "./page-state-negotiation"
+import type { DomMode, SemanticNodeV3 } from "./schemas"
 
 /**
  * Previous action from task history.
@@ -29,6 +30,61 @@ export interface ActionPromptHybridOptions {
   skeletonDom?: string
   /** DOM processing mode hint */
   domMode?: DomMode
+  // Semantic-first V3 (PRIMARY)
+  interactiveTree?: SemanticNodeV3[]
+  viewport?: { width: number; height: number }
+  pageTitle?: string
+  scrollPosition?: string
+  recentEvents?: string[]
+  hasErrors?: boolean
+  hasSuccess?: boolean
+}
+
+const SEMANTIC_LEGEND = `LEGEND for interactiveTree (semantic) format:
+- i: element id (use this in click(i) or setValue(i, "text"))
+- r: role (btn=button, inp=input, link=link, chk=checkbox, sel=select, etc.)
+- n: visible name/label
+- v: current value (inputs)
+- s: state (disabled/checked/expanded/etc.)
+- xy: [x, y] center point on screen (if provided)
+- box: [x, y, w, h] bounding box (if provided)
+- scr: { depth: string, h: boolean } scroll info (if provided)
+- occ: true if occluded/covered (avoid clicking)`
+
+function truncateForPrompt(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value
+  return `${value.substring(0, maxChars)}\n... [truncated, total ${value.length} chars]`
+}
+
+function formatInteractiveTreeForPrompt(options: ActionPromptHybridOptions | undefined): string | null {
+  const tree = options?.interactiveTree
+  if (!tree || tree.length === 0) return null
+
+  const metaParts: string[] = []
+  if (options?.pageTitle) metaParts.push(`Title: ${options.pageTitle}`)
+  if (options?.viewport) metaParts.push(`Viewport: ${options.viewport.width}x${options.viewport.height}`)
+  if (options?.scrollPosition) metaParts.push(`Scroll: ${options.scrollPosition}`)
+  if (options?.hasErrors === true) metaParts.push(`Signals: hasErrors=true`)
+  if (options?.hasSuccess === true) metaParts.push(`Signals: hasSuccess=true`)
+
+  const metaLine = metaParts.length > 0 ? metaParts.join(" | ") : undefined
+
+  // Keep JSON compact but readable (minified keys already).
+  const json = JSON.stringify(tree)
+
+  const recent =
+    options?.recentEvents && options.recentEvents.length > 0
+      ? `\nRecent events:\n${options.recentEvents.slice(0, 10).map((e) => `- ${e}`).join("\n")}`
+      : ""
+
+  return `\n## Interactive Elements (semantic)
+${metaLine ? `${metaLine}\n` : ""}${SEMANTIC_LEGEND}
+
+\`\`\`json
+${json}
+\`\`\`${recent}
+
+Use ONLY ids from the "i" field above when generating actions like click(id) or setValue(id, "text").`
 }
 
 /**
@@ -54,8 +110,8 @@ export function buildActionPrompt(params: {
 
   // Determine if we should use visual mode
   const useVisualMode: boolean =
-    hybridOptions?.domMode === "hybrid" ||
-    Boolean(hybridOptions?.screenshot && shouldUseVisualMode(query, true))
+    Boolean(hybridOptions?.screenshot) &&
+    (hybridOptions?.domMode === "hybrid" || shouldUseVisualMode(query, true))
 
   // Visual bridge section for hybrid mode
   const visualBridgeSection = useVisualMode
@@ -272,17 +328,47 @@ Remember: The "thought" is for the end user, not for developers. Write it as if 
   }
 
   // Add current page content based on mode
+  // 1) Always prefer interactiveTree (semantic) when available (backend-driven contract)
+  const semanticSection = formatInteractiveTreeForPrompt(hybridOptions)
+  if (semanticSection) {
+    userParts.push(semanticSection)
+  }
+
+  const hasDom = typeof dom === "string" && dom.length > 0
+  const hasSkeletonDom =
+    typeof hybridOptions?.skeletonDom === "string" && hybridOptions.skeletonDom.length > 0
+
+  // If the query requires reading non-interactive page text, include full DOM excerpt even if we have semantic.
+  // This is the key reason the backend may request full DOM via negotiation.
+  if (hasDom && looksLikeTextExtractionQuery(query)) {
+    userParts.push(`\n## Full Page Structure (excerpt)`)
+    userParts.push(truncateForPrompt(dom, 30000))
+  }
+
+  // 2) If screenshot is available and the query benefits from visual grounding, include screenshot context + skeleton.
   if (useVisualMode && hybridOptions?.screenshot) {
-    // Hybrid mode: screenshot for visual context, skeleton for structure
     userParts.push(formatScreenshotContext(true))
-    
-    // Use skeleton DOM for page structure
     const skeletonDom = getOrCreateSkeleton(dom, hybridOptions?.skeletonDom)
     userParts.push(`\n${formatSkeletonForPrompt(skeletonDom)}`)
-  } else {
-    // Full DOM mode (traditional)
-    userParts.push(`\n## Current Page Structure`)
-    userParts.push(dom)
+  } else if (hasSkeletonDom) {
+    // 3) Skeleton supplement (semantic-first negotiation):
+    // Even when semantic is present, the backend may request skeletonDom to disambiguate duplicates.
+    // Include it as an additional, more structured view of clickable elements.
+    const skeleton = hybridOptions?.skeletonDom
+    if (typeof skeleton === "string") {
+      userParts.push(`\n${formatSkeletonForPrompt(truncateForPrompt(skeleton, 30000))}`)
+    }
+  } else if (!semanticSection) {
+    // 4) Non-visual fallback (legacy):
+    // - If we have full DOM, include a safe excerpt
+    // - Else, include whatever we have (should be prevented by negotiation)
+    if (hasDom) {
+      userParts.push(`\n## Current Page Structure`)
+      userParts.push(truncateForPrompt(dom, 30000))
+    } else {
+      userParts.push(`\n## Current Page Structure`)
+      userParts.push(dom)
+    }
   }
 
   userParts.push(

@@ -1,7 +1,7 @@
 import { headers } from "next/headers"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export async function GET() {
   try {
@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const tenantState = await getTenantState(session.user.id)
+    const tenantState = await getTenantOperatingMode(session.user.id)
 
     return NextResponse.json({ state: tenantState })
   } catch (error: unknown) {

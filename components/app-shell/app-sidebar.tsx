@@ -13,12 +13,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
-import type { TenantState } from "@/lib/utils/tenant-state"
+import type { TenantOperatingMode } from "@/lib/utils/tenant-state"
 import { NavUser } from "./nav-user"
 import { TeamSwitcher } from "./team-switcher"
 
 interface AppSidebarProps {
-  tenantState?: TenantState
+  tenantState?: TenantOperatingMode
 }
 
 const baseNavigation = [

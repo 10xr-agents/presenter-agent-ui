@@ -30,6 +30,7 @@ import {
   type TieredVerificationExtras,
   verifyActionWithObservations,
 } from "@/lib/agent/verification-engine"
+import { renderInteractiveTreeAsHtml } from "@/lib/agent/semantic-v3"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, VerificationResult } from "../types"
 
@@ -88,13 +89,28 @@ export async function verificationNode(
   )
 
   try {
+    // Use the best available "DOM-like" snapshot for verification:
+    // - full dom if provided
+    // - else skeletonDom if provided
+    // - else render a compact synthetic HTML from semantic interactiveTree
+    const domForVerification =
+      dom && dom.length > 0
+        ? dom
+        : state.skeletonDom && state.skeletonDom.length > 0
+          ? state.skeletonDom
+          : renderInteractiveTreeAsHtml(state.interactiveTree, state.recentEvents)
+
     // Phase 5: Classify action type for tiered verification
-    const actionType = classifyActionType(lastAction, dom)
+    const actionType = classifyActionType(lastAction, domForVerification)
 
     // Phase 5: Build next goal check if we have expected outcome
     let nextGoalCheck: { available: boolean; reason: string; required: boolean } | undefined
-    if (state.lastActionExpectedOutcome?.nextGoal) {
-      const actualState = extractActualState(dom, url)
+    // NOTE: Only run selector-based next-goal checks when we have real HTML (full or skeleton),
+    // otherwise the synthetic semantic HTML can create false negatives.
+    const hasRealHtmlSnapshot =
+      (dom && dom.length > 0) || (state.skeletonDom && state.skeletonDom.length > 0)
+    if (state.lastActionExpectedOutcome?.nextGoal && hasRealHtmlSnapshot) {
+      const actualState = extractActualState(domForVerification, url)
       nextGoalCheck = checkNextGoalAvailability(
         state.lastActionExpectedOutcome.nextGoal,
         actualState.domSnapshot
@@ -113,7 +129,7 @@ export async function verificationNode(
 
     const result = await verifyActionWithObservations(
       lastActionBeforeState,
-      dom,
+      domForVerification,
       url,
       lastAction,
       query || "",
@@ -147,7 +163,7 @@ export async function verificationNode(
           currentSubTask.outputs.length > 0
             ? extractSubTaskOutputs(
                 currentSubTask,
-                dom,
+                domForVerification,
                 result.semanticSummary ?? result.reason
               )
             : {}

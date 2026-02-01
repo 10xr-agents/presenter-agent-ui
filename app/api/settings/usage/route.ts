@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { PresentationSession } from "@/lib/models/presentation-session"
 import { ScreenAgent } from "@/lib/models/screen-agent"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export async function GET() {
   try {
@@ -15,7 +15,7 @@ export async function GET() {
 
     await connectDB()
 
-    const tenantState = await getTenantState(session.user.id)
+    const tenantState = await getTenantOperatingMode(session.user.id)
     let organizationId: string | null = null
 
     if (tenantState === "organization") {

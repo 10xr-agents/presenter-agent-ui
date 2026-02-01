@@ -4,7 +4,7 @@ import { z } from "zod"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
-import { Message, Session } from "@/lib/models"
+import { BrowserSession, Message } from "@/lib/models"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
@@ -147,14 +147,14 @@ export async function GET(req: NextRequest) {
 
     // Query sessions with pagination
     const [sessions, total] = await Promise.all([
-      (Session as any)
+      (BrowserSession as any)
         .find(filter)
         .sort({ updatedAt: -1 }) // Most recently updated first
         .skip(offset)
         .limit(limit)
         .lean()
         .exec(),
-      (Session as any).countDocuments(filter).exec(),
+      (BrowserSession as any).countDocuments(filter).exec(),
     ])
 
     // Get message counts for each session
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
     const { sessionId } = validationResult.data
 
     // Find session and verify ownership
-    const targetSession = await (Session as any)
+    const targetSession = await (BrowserSession as any)
       .findOne({
         sessionId,
         tenantId,
@@ -312,7 +312,7 @@ export async function POST(req: NextRequest) {
 
     Sentry.logger.info("Session archive: archiving session")
     // Archive the session (update status to 'archived')
-    await (Session as any)
+    await (BrowserSession as any)
       .findOneAndUpdate(
         { sessionId, tenantId },
         {

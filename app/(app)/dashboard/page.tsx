@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { OverviewDashboard } from "@/components/dashboard/overview-dashboard"
 import { PageShell } from "@/components/shell/page-shell"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * Dashboard Page - Browser Copilot Home
@@ -30,7 +30,7 @@ export default async function DashboardPage() {
   }
 
   // Get tenant state
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   // Get active organization ID (if in organization mode)
   let organizationId: string | null = null

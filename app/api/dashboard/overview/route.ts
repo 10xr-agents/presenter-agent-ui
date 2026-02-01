@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { connectDB } from "@/lib/db/mongoose"
 import { PresentationSession } from "@/lib/models/presentation-session"
 import { ScreenAgent } from "@/lib/models/screen-agent"
-import { getTenantState } from "@/lib/utils/tenant-state"
+import { getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * GET /api/dashboard/overview
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     await connectDB()
 
     // Determine if this is normal mode (userId) or organization mode
-    const tenantState = await getTenantState(session.user.id)
+    const tenantState = await getTenantOperatingMode(session.user.id)
     const isNormalMode = tenantState === "normal"
 
     // Get agent counts

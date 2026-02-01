@@ -8,7 +8,12 @@
 import * as Sentry from "@sentry/nextjs"
 import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
-import type { DomMode } from "@/lib/agent/schemas"
+import type {
+  DomMode,
+  ScrollableContainer,
+  SemanticNodeV2,
+  SemanticNodeV3,
+} from "@/lib/agent/schemas"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { TaskPlan } from "@/lib/models/task"
@@ -34,6 +39,7 @@ export interface ExecuteGraphParams {
   userId: string
   url: string
   query: string
+  /** Full DOM HTML (legacy / may be empty string in semantic-first flow) */
   dom: string
   previousUrl?: string
 
@@ -105,6 +111,17 @@ export interface ExecuteGraphParams {
   skeletonDom?: string
   /** Hash of screenshot for deduplication */
   screenshotHash?: string
+
+  // Semantic-first V3 fields (PRIMARY)
+  interactiveTree?: SemanticNodeV3[]
+  semanticNodes?: SemanticNodeV2[]
+  viewport?: { width: number; height: number }
+  pageTitle?: string
+  scrollPosition?: string
+  scrollableContainers?: ScrollableContainer[]
+  recentEvents?: string[]
+  hasErrors?: boolean
+  hasSuccess?: boolean
 }
 
 /**
@@ -157,6 +174,12 @@ export interface ExecuteGraphResult {
   status: string
   error?: string
 
+  // Backend-driven page-state negotiation
+  requestedDomMode?: "skeleton" | "hybrid" | "full"
+  needsSkeletonDom?: boolean
+  needsScreenshot?: boolean
+  needsContextReason?: string
+
   // Timing
   graphDuration: number
 }
@@ -199,6 +222,17 @@ export async function executeInteractGraph(
       query: params.query,
       dom: params.dom,
       previousUrl: params.previousUrl,
+
+      // Semantic-first V3
+      interactiveTree: params.interactiveTree,
+      semanticNodes: params.semanticNodes,
+      viewport: params.viewport,
+      pageTitle: params.pageTitle,
+      scrollPosition: params.scrollPosition,
+      scrollableContainers: params.scrollableContainers,
+      recentEvents: params.recentEvents,
+      hasErrors: params.hasErrors,
+      hasSuccess: params.hasSuccess,
 
       // Session context
       sessionId: params.sessionId,
@@ -293,6 +327,12 @@ export async function executeInteractGraph(
       // Status
       status: result.status || "unknown",
       error: result.error,
+
+      // Backend-driven page-state negotiation
+      requestedDomMode: result.requestedDomMode,
+      needsSkeletonDom: result.needsSkeletonDom,
+      needsScreenshot: result.needsScreenshot,
+      needsContextReason: result.needsContextReason,
 
       // Timing
       graphDuration,

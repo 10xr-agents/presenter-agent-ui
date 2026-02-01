@@ -1,11 +1,13 @@
 # Real-Time Message Sync Roadmap (WebSocket Push-Based Retrieval)
 
-**Document Version:** 1.11  
-**Last Updated:** January 30, 2026  
+**Document Version:** 1.12  
+**Last Updated:** February 1, 2026  
 **Status:** Backend and client integration complete (Sockudo/Pusher); Manual QA pending  
 **Purpose:** Roadmap for migrating from poll-based to push-based message retrieval using Pusher/Sockudo
 
 **Sync with backend:** The backend repo may keep a separate copy of this roadmap (e.g. v1.5, "client integration pending"). **This doc is the extension-side source of truth:** client implementation is complete (Pusher transport, connection reuse, auth); backend is **Sockudo** on port **3005**, main server (Next.js) on **3000**; auth flow and 403 troubleshooting are in §11.11.
+
+**Changelog (1.12):** **Tab-Scoped Sessions.** Added §3.2.1 Session Selection Model (Tab → Session): sessions are now tab-scoped (`tabId → sessionId`); same tab = same session even across domain navigations; backend updates session `url`/`domain` when navigation occurs. Reference to SPECS_AND_CONTRACTS.md § 2.
 
 **Changelog (1.11):** **Chat UI Contract reference.** Added reference to SPECS_AND_CONTRACTS.md §3.5 in §11.11 Server events table. Emphasized that `new_message` payload **must** include `role` for Chat UI alignment (user messages right/blue, agent messages left/gray).
 
@@ -241,6 +243,31 @@ This state includes rate limiting and deduplication, which will be preserved and
 │           └─────────────────┘                               │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### 3.2.1 Session Selection Model (Tab → Session)
+
+**Status:** ✅ Implemented (Feb 2026)
+
+Real-time messaging is **session-scoped** (channels are `private-session-<sessionId>`), but **which `sessionId` is active** in the extension is determined by a **tab-scoped mapping**:
+
+- **Each Chrome tab** has **one active chat session**: `tabId → sessionId`
+- Navigations **within the same tab** (including cross-domain) keep the **same `sessionId`**; only session metadata (`url`, `domain`) updates
+- Switching tabs changes the active `sessionId` (and therefore the subscribed Pusher channel)
+
+This decouples real-time messaging from domain-based session selection and provides a more intuitive UX:
+
+| Scenario | Extension Behavior | Backend Behavior |
+|----------|-------------------|------------------|
+| User navigates within same tab | Same `sessionId`, channel unchanged | Session `url`/`domain` updated |
+| User switches tabs | Different `sessionId`, unsubscribe old channel, subscribe new | No change (backend is stateless) |
+| Cross-domain navigation in same tab | Same `sessionId`, channel unchanged | Session `url`/`domain` updated, `metadata.initialDomain` preserved |
+
+**Client-side state:**
+- `tabSessionMap`: `Record<number, string>` — maps tabId → sessionId
+- `currentTabId`: Active tab ID
+- `switchToTabSession(tabId, url?)`: Primary session switching action
+
+**Reference:** See `SPECS_AND_CONTRACTS.md` § 2 (Domain-Aware Sessions → Tab-Scoped Sessions).
 
 ### 3.3 WebSocket Message Types
 

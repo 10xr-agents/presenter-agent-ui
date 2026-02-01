@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db/mongoose"
-import { Message, Session, Snapshot, Task, TaskAction } from "@/lib/models"
+import { BrowserSession, Message, Snapshot, Task, TaskAction } from "@/lib/models"
 import { CorrectionRecord } from "@/lib/models/correction-record"
 import { DebugLog } from "@/lib/models/debug-log"
 import { VerificationRecord } from "@/lib/models/verification-record"
@@ -34,13 +34,13 @@ export const cleanupJobs: CleanupJob[] = [
     batchSize: 100,
   },
   {
-    collection: "sessions",
+    collection: "browser_sessions",
     retentionDays: 90,
     filter: (session) => session.status === "completed" || session.status === "failed",
     batchSize: 100,
   },
   {
-    collection: "sessions",
+    collection: "browser_sessions",
     retentionDays: 30,
     filter: (session) => session.status === "interrupted",
     batchSize: 100,
@@ -107,8 +107,8 @@ export async function runCleanupJob(job: CleanupJob): Promise<CleanupStats> {
       case "tasks":
         Model = Task
         break
-      case "sessions":
-        Model = Session
+      case "browser_sessions":
+        Model = BrowserSession
         break
       case "snapshots":
         Model = Snapshot
@@ -159,8 +159,8 @@ export async function runCleanupJob(job: CleanupJob): Promise<CleanupStats> {
             await (TaskAction as any).deleteMany({ taskId: { $in: taskIds } }).exec()
           }
 
-          // For sessions, also delete related messages
-          if (job.collection === "sessions") {
+          // For browser_sessions, also delete related messages
+          if (job.collection === "browser_sessions") {
             const sessionIds = toDelete.map((s: any) => s.sessionId || s._id)
             await (Message as any).deleteMany({ sessionId: { $in: sessionIds } }).exec()
           }

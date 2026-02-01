@@ -12,6 +12,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { callActionLLM } from "@/lib/agent/llm-client"
+import { computeContextRequestForAction } from "@/lib/agent/page-state-negotiation"
 import { buildActionPrompt } from "@/lib/agent/prompt-builder"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
@@ -37,9 +38,32 @@ export async function directActionNode(
   const startTime = Date.now()
 
   try {
+    // Backend-driven negotiation: request heavier artifacts only when needed.
+    const contextRequest = computeContextRequestForAction({
+      query,
+      dom: state.dom,
+      screenshot: state.screenshot,
+      skeletonDom: state.skeletonDom,
+      interactiveTree: state.interactiveTree,
+    })
+    if (contextRequest) {
+      log.info("Requesting additional page context (semantic-first)", {
+        requestedDomMode: contextRequest.requestedDomMode,
+        needsScreenshot: contextRequest.needsScreenshot ?? false,
+        needsSkeletonDom: contextRequest.needsSkeletonDom ?? false,
+      })
+      return {
+        status: contextRequest.requestedDomMode === "full" ? "needs_full_dom" : "needs_context",
+        requestedDomMode: contextRequest.requestedDomMode,
+        needsScreenshot: contextRequest.needsScreenshot,
+        needsSkeletonDom: contextRequest.needsSkeletonDom,
+        needsContextReason: contextRequest.reason,
+      }
+    }
+
     // Build a simplified prompt for direct action
     // No system messages about failures since this is a new simple task
-    const { system, user } = buildActionPrompt({
+    const { system, user, useVisualMode } = buildActionPrompt({
       query,
       currentTime: new Date().toISOString(),
       previousActions,
@@ -47,6 +71,18 @@ export async function directActionNode(
       hasOrgKnowledge,
       dom,
       systemMessages: [],
+      hybridOptions: {
+        domMode: state.domMode,
+        screenshot: state.screenshot,
+        skeletonDom: state.skeletonDom,
+        interactiveTree: state.interactiveTree,
+        viewport: state.viewport,
+        pageTitle: state.pageTitle,
+        scrollPosition: state.scrollPosition,
+        recentEvents: state.recentEvents,
+        hasErrors: state.hasErrors,
+        hasSuccess: state.hasSuccess,
+      },
     })
 
     // Call LLM with cost tracking context (fast path)
@@ -57,6 +93,10 @@ export async function directActionNode(
       sessionId: state.sessionId,
       taskId: state.taskId,
       actionType: "DIRECT_ACTION",
+      images:
+        useVisualMode && state.screenshot
+          ? [{ data: state.screenshot, mimeType: "image/jpeg" }]
+          : undefined,
       metadata: {
         query,
         url,

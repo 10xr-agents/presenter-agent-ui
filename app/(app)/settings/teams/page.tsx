@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { SettingsLayout } from "@/components/settings/settings-layout"
 import { TeamList } from "@/components/teams/team-list"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 export default async function SettingsTeamsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
@@ -12,7 +12,7 @@ export default async function SettingsTeamsPage() {
     redirect("/login")
   }
 
-  const tenantState = await getTenantState(session.user.id)
+  const tenantState = await getTenantOperatingMode(session.user.id)
 
   if (tenantState === "normal") {
     redirect("/settings")

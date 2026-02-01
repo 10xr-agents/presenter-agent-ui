@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
-import { getActiveOrganizationId, getTenantState } from "@/lib/utils/tenant-state"
+import { getActiveOrganizationId, getTenantOperatingMode } from "@/lib/utils/tenant-state"
 
 /**
  * Get session from Bearer token
@@ -44,11 +44,11 @@ export async function getSessionFromToken(
     const userId = session.user.id
 
     // Resolve tenant: user (normal) or organization (org mode)
-    const tenantState = await getTenantState(userId)
+    const tenantState = await getTenantOperatingMode(userId, headersObj)
     let tenantId: string
 
     if (tenantState === "organization") {
-      const organizationId = await getActiveOrganizationId()
+      const organizationId = await getActiveOrganizationId(headersObj)
       tenantId = organizationId || userId // Fallback to userId if no active org
     } else {
       tenantId = userId

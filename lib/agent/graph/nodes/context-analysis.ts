@@ -20,9 +20,25 @@ import type { InteractGraphState } from "../types"
 /**
  * Extract page summary from DOM for context analysis
  */
-function extractPageSummary(url: string, dom: string): string {
+function extractPageSummary(
+  url: string,
+  dom: string,
+  interactiveTree?: Array<{ n: string; r: string }>
+): string {
   let pageSummary = `Current page: ${url}`
   try {
+    // Semantic-first fallback: build a compact summary from interactiveTree
+    if ((!dom || dom.length === 0) && interactiveTree && interactiveTree.length > 0) {
+      const sample = interactiveTree
+        .slice(0, 25)
+        .map((n) => `${n.r}:${n.n}`)
+        .join(", ")
+        .substring(0, 500)
+      if (sample) {
+        return `Current page: ${url}\nInteractive elements (sample): ${sample}`
+      }
+    }
+
     // Extract visible text from DOM (first 500 chars)
     const textMatch = dom.match(/<[^>]*>([^<]+)<\/[^>]*>/g)
     if (textMatch) {
@@ -69,7 +85,7 @@ export async function contextAnalysisNode(
   }))
 
   // Extract page summary
-  const pageSummary = extractPageSummary(url, dom)
+  const pageSummary = extractPageSummary(url, dom, state.interactiveTree)
 
   let contextAnalysis: ContextAnalysisResult
   try {

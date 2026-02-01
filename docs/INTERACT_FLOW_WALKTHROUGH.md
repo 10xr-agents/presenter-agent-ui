@@ -67,7 +67,8 @@
 ## High-Level Loop
 
 1. **Extension** sends `POST /api/agent/interact` with:
-   - **V3 Semantic (PRIMARY):** `{ url, query, dom, domMode: "semantic_v3", interactiveTree, viewport, pageTitle, taskId?, sessionId? }`
+   - **V3 Semantic (PRIMARY):** `{ url, query, dom?, domMode: "semantic", interactiveTree, viewport?, pageTitle?, taskId?, sessionId?, tabId? }`  
+     *(Backend treats `domMode: "semantic"` + `interactiveTree` as V3 semantic-first; `dom` is only sent when explicitly requested.)*
    - **Legacy/Fallback:** `{ url, query, dom, domMode?, skeletonDom?, screenshot?, taskId?, sessionId? }`
 2. **Backend** authenticates, fetches RAG, runs reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action, returns `{ thought, action, actionDetails, taskId, sessionId, ... }`. All LLM calls that expect JSON (verification verdict, action thought+action) use **structured output** (Gemini `responseJsonSchema`) so responses are valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
 3. **Extension** executes the action (e.g. `click("14")`, `setValue("14", "Jas")`) on the page using element ID from `interactiveTree`, then sends the **next** request with **updated state** and **the same `taskId`** from the response.
@@ -372,7 +373,7 @@ V3 Semantic Extraction is now the **PRIMARY** DOM extraction mode, providing 99%
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `domMode` | `"semantic_v3"` | Indicates V3 ultra-light format (PRIMARY) |
+| `domMode` | `"semantic"` | Indicates semantic format (PRIMARY) |
 | `interactiveTree` | `SemanticNodeV3[]` | Minified JSON array with viewport pruning |
 | `viewport` | `{ width, height }` | Viewport dimensions for coordinate actions |
 | `pageTitle` | `string` | Page title for context |
@@ -407,7 +408,7 @@ V3 Semantic Extraction is now the **PRIMARY** DOM extraction mode, providing 99%
 
 ```json
 {
-  "domMode": "semantic_v3",
+  "domMode": "semantic",
   "pageTitle": "Google",
   "viewport": { "width": 1280, "height": 800 },
   "interactiveTree": [
@@ -422,8 +423,7 @@ V3 Semantic Extraction is now the **PRIMARY** DOM extraction mode, providing 99%
 
 | Priority | Mode | Tokens | When Used |
 |----------|------|--------|-----------|
-| **1** | `semantic_v3` | 25-75 | DEFAULT - viewport pruning + minified keys |
-| 2 | `semantic` | 50-125 | V3 fails or empty |
+| **1** | `semantic` | 25-75 | DEFAULT - viewport pruning + minified keys |
 | 3 | `skeleton` | 500-1500 | Semantic fails |
 | 4 | `hybrid` | 2000-3000 | Visual/spatial query detected |
 | **5** | `full` | 10k-50k | **ONLY on explicit backend `needs_full_dom` request** |
