@@ -19,12 +19,12 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
-import type { PlanStep, TaskPlan } from "@/lib/models/task"
 import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
 import { CONTINGENCY_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
+import type { PlanStep, TaskPlan } from "@/lib/models/task"
 
 /**
  * Internal Plan type that extends TaskPlan for consistency

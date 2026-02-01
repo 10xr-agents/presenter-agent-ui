@@ -15,17 +15,17 @@ export const STEP_TASK_LEVEL_EXAMPLE =
   'Example: user goal "Add a patient named Jas" → Step 1 (form opened): action_succeeded = true, task_completed = false. Final step (Save clicked, success): action_succeeded = true, task_completed = true.'
 
 import { recordUsage } from "@/lib/cost"
-import type { ExpectedOutcome } from "@/lib/models/task-action"
 import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
 import {
-  parseStructuredResponse,
-  isParseSuccess,
   getField,
+  isParseSuccess,
+  parseStructuredResponse,
 } from "@/lib/llm/parse-structured-response"
 import { VERIFICATION_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
+import type { ExpectedOutcome } from "@/lib/models/task-action"
 import {
   extractTextContent,
   getSmartDomContext,

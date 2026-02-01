@@ -1,12 +1,12 @@
 import * as Sentry from "@sentry/nextjs"
 import { performWebSearch, type WebSearchResult } from "@/lib/agent/web-search"
 import { recordUsage } from "@/lib/cost"
+import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
 import { SEARCH_EVALUATION_SCHEMA } from "@/lib/llm/response-schemas"
-import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 
 /**
  * Search Manager

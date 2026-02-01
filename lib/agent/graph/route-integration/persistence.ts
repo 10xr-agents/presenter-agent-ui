@@ -28,11 +28,12 @@ export async function saveGraphResults(
     const log = logger.child({ process: "RouteIntegration", sessionId, taskId })
     const action = result.actionResult.action
     const isFinish = action.startsWith("finish(")
+    const isFail = action.startsWith("fail(")
 
-    // finish() is a sentinel meaning "task completed" — no new step. Only persist real actions (click, setValue, etc.).
-    if (isFinish) {
+    // finish()/fail() are terminal sentinels — no new step. Only persist real actions (click, setValue, etc.).
+    if (isFinish || isFail) {
       log.info(
-        `saveGraphResults: task completed (finish) — no new TaskAction; existing step(s) represent the only action(s)`
+        `saveGraphResults: terminal action (${isFinish ? "finish" : "fail"}) — no new TaskAction; existing step(s) represent the only action(s)`
       )
     } else {
       log.info(

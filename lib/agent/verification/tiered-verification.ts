@@ -13,27 +13,27 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
+import type { ActionType } from "@/lib/agent/action-type"
+import type { ComplexityLevel } from "@/lib/agent/graph/types"
+import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
+import { getCurrentSubTask } from "@/lib/agent/hierarchical-planning"
 import { recordUsage } from "@/lib/cost"
 import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
 import {
-  parseStructuredResponse,
-  isParseSuccess,
   getField,
+  isParseSuccess,
+  parseStructuredResponse,
 } from "@/lib/llm/parse-structured-response"
 import { VERIFICATION_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
-import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
-import { getCurrentSubTask } from "@/lib/agent/hierarchical-planning"
-import type { ActionType } from "@/lib/agent/action-type"
-import type { ComplexityLevel } from "@/lib/agent/graph/types"
 import type { TaskPlan } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import {
+  getHostname,
   hasSignificantUrlChange,
   isCrossDomainNavigation,
-  getHostname,
 } from "@/lib/utils/dom-helpers"
 import { logger } from "@/lib/utils/logger"
 import type { BeforeState, NextGoalCheckResult, VerificationContext } from "./types"
@@ -239,15 +239,26 @@ export function tryDeterministicVerification(
   // CHECK 1.4: Look-Ahead Failure (Fast Fail → DIRECT to Correction)
   // If we expected an element for the next step and it's missing, fail fast
   // This is a HARD FAILURE that bypasses Tier 2/3
+  // EXCEPTION: If URL changed, navigation succeeded - don't fail hard on incorrect nextGoal prediction
+  // The prediction may be wrong (e.g., LLM predicted a table but page uses cards)
   if (nextGoalCheck && !nextGoalCheck.available && nextGoalCheck.required) {
-    log.info(`Tier 1 Check 1.4: Look-ahead failure - ${nextGoalCheck.reason}`)
-    return {
-      action_succeeded: false,
-      task_completed: false,
-      confidence: 0.8,
-      reason: `Deterministic failure: Expected element for next step not found. ${nextGoalCheck.reason}`,
-      tier: "deterministic",
-      routeToCorrection: true, // Bypass Tier 2/3, go direct to Correction
+    if (urlChanged) {
+      // URL changed = navigation succeeded, but predicted nextGoal is missing
+      // This indicates the prediction was incorrect, not the action
+      // Fall through to Tier 2/3 for semantic verification instead of hard failing
+      log.info(
+        `Tier 1 Check 1.4: Look-ahead failure bypassed - URL changed (navigation succeeded despite missing nextGoal)`
+      )
+    } else {
+      log.info(`Tier 1 Check 1.4: Look-ahead failure - ${nextGoalCheck.reason}`)
+      return {
+        action_succeeded: false,
+        task_completed: false,
+        confidence: 0.8,
+        reason: `Deterministic failure: Expected element for next step not found. ${nextGoalCheck.reason}`,
+        tier: "deterministic",
+        routeToCorrection: true, // Bypass Tier 2/3, go direct to Correction
+      }
     }
   }
 

@@ -19,6 +19,71 @@
 
 ---
 
+## V3 Semantic Extraction (DOM Input Format)
+
+**Status:** ✅ Supported (February 2026)
+
+The Chrome extension now sends DOM content in **V3 Semantic JSON format** (PRIMARY) instead of raw HTML. This provides 99%+ token reduction and eliminates "element not found" errors through stable element IDs.
+
+### What the Planner Receives
+
+| Field | Description | Used By |
+|-------|-------------|---------|
+| `interactiveTree` | V3 minified JSON array of interactive elements | Step refinement, action generation |
+| `viewport` | `{ width, height }` viewport dimensions | Coordinate-based actions |
+| `pageTitle` | Page title for context | Planning prompts |
+| `scrollPosition` | Scroll depth (e.g., "50%") | Scroll-related planning |
+| `scrollableContainers` | Virtual list containers | Infinite scroll handling |
+| `recentEvents` | Recent DOM mutations | State change detection |
+
+### V3 Minified Keys
+
+The planner must understand the minified key format:
+
+```
+- i: element ID (use this in click(i) or setValue(i, text))
+- r: role (btn=button, inp=input, link=link, chk=checkbox, sel=select)
+- n: name/label visible to user
+- v: current value (for inputs)
+- s: state (disabled, checked, expanded)
+- xy: [x, y] coordinates on screen
+- f: frame ID (0 = main frame, omitted if 0)
+```
+
+### Step Refinement with V3
+
+When refining a step to a DOM action, the step refinement engine:
+
+1. Receives `interactiveTree` (V3 JSON) instead of raw DOM
+2. Uses element IDs (`i` field) directly in actions: `click("12")`, `setValue("14", "text")`
+3. Can use coordinates (`xy`) for coordinate-based actions
+4. Respects `occ: true` (occluded elements) — don't target elements behind modals
+
+**Example V3 Input:**
+
+```json
+{
+  "interactiveTree": [
+    { "i": "12", "r": "link", "n": "Gmail", "xy": [900, 20] },
+    { "i": "14", "r": "inp", "n": "Search", "v": "", "xy": [400, 300] },
+    { "i": "15", "r": "btn", "n": "Google Search", "xy": [400, 350] }
+  ]
+}
+```
+
+**Example Refined Action:** `setValue("14", "space x")` → types "space x" into element 14 (the Search input)
+
+### Fallback Handling
+
+If V3 extraction fails or is empty, the extension falls back to:
+1. V2 Semantic (`semanticNodes` with full keys)
+2. Skeleton DOM (`skeletonDom`)
+3. Full DOM (`dom`) — only on explicit backend request
+
+**Reference:** See `docs/DOM_EXTRACTION_ARCHITECTURE.md` and `docs/SPECS_AND_CONTRACTS.md` § Semantic JSON Protocol for complete V3 specification.
+
+---
+
 ## Production Readiness Status
 
 | Component | Status | Phase | Notes |

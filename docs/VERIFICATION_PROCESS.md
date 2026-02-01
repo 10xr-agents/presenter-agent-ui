@@ -54,6 +54,7 @@
 | **Observation-Based Verification** | ✅ Implemented | 3.0 | DOM diff + observation list + semantic verdict |
 | **beforeState on TaskAction** | ✅ Implemented | 3.0 | URL + domHash (+ optional semanticSkeleton) when action generated |
 | **clientObservations in request** | ✅ Implemented | 3.0 | Extension witnessed: didNetworkOccur, didDomMutate, didUrlChange |
+| **Sentinel Verification feedback** | ✅ Schema Ready | 3.5 | Extension sends `verification_passed`, `errors_detected`, `success_messages` for client-side verification (see V3 Advanced) |
 | **goalAchieved (deterministic)** | ✅ Implemented | 3.0.2 | Set from LLM `match` + confidence; router uses only this (no reason parsing) |
 | **goal_achieved node** | ✅ Implemented | 3.0.2 | When goalAchieved=true → sets actionResult=finish() → finalize → status completed |
 
@@ -86,6 +87,79 @@ Tasks below are ordered by importance (1 = highest). Same status legend: ✅ = C
 
 **Progress (Verification + Planner):** Task 7 implemented. `VerificationSummary` type added; step-refinement and planning engines accept it and inject the continuation sentence into the LLM prompt when `action_succeeded === true` and `task_completed === false`. Step-refinement and replanning nodes pass summary from `state.verificationResult`. Task 8 (velocity check) implemented: prevents semantic loops by failing the task with a reflection message after 5 steps without sub-goal completion. Tests: `lib/agent/__tests__/step-refinement-engine.test.ts`, `lib/agent/__tests__/planning-engine.test.ts`. See PLANNER_PROCESS.md Changelog.
 **Progress (Task 9 — Sub-task-level verification):** When hierarchicalPlan is present, verification node passes current sub-task objective (subTaskObjective) to verifyActionWithObservations. Semantic verification prompt and parser support sub_task_completed; engine returns sub_task_completed when subTaskObjective was provided. Verification node advances sub-task (completeSubTask with success: true) when sub_task_completed && confidence ≥ 0.7, fails sub-task (completeSubTask with success: false) when sub_task_completed === false && !success; goalAchieved set when all sub-tasks complete (isHierarchicalPlanComplete). Files: verification/types.ts, semantic-verification.ts, verification-engine.ts, graph/nodes/verification.ts.
+
+---
+
+## V3 Advanced: Sentinel Verification (Client-Side)
+
+**Status:** ✅ Schema Ready | **Phase:** 3.5
+
+The Chrome extension (V3 Advanced) now includes a **Sentinel Verification System** that verifies action outcomes on the client before reporting back to the server. This provides faster feedback and catches silent failures.
+
+### What the Extension Sends
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `verification_passed` | `boolean` | Result of client-side verification (did the expected outcome occur?) |
+| `verification_message` | `string` | Human-readable feedback (e.g., "URL unchanged. Error: 'Invalid email'") |
+| `errors_detected` | `string[]` | Errors caught during verification (e.g., `["Invalid email format"]`) |
+| `success_messages` | `string[]` | Success messages detected (e.g., `["Saved Successfully"]`) |
+
+### How the Backend Should Use It
+
+1. **Early Failure Detection:** If `verification_passed === false` and `errors_detected` contains items, the server can skip the full LLM verification and proceed directly to correction.
+
+2. **Observation Enhancement:** Add `errors_detected` and `success_messages` to the observation list for semantic verification, providing richer context.
+
+3. **Confidence Boost:** If `verification_passed === true` and `success_messages` contains confirmation text, increase verification confidence.
+
+### Example Request with Sentinel Data
+
+```json
+{
+  "url": "https://example.com/form",
+  "dom": "...",
+  "taskId": "abc-123",
+  "verification_passed": false,
+  "verification_message": "URL unchanged. Error: 'Invalid email'",
+  "errors_detected": ["Invalid email format"],
+  "success_messages": []
+}
+```
+
+### Integration with Observation-Based Verification
+
+When Sentinel data is present, `buildObservationList` should:
+
+1. Add errors to observations: `"Error detected: 'Invalid email format'"`
+2. Add success messages: `"Success message appeared: 'Saved Successfully'"`
+3. Use `verification_passed` to short-circuit if clearly failed
+
+**Reference:** See `docs/SPECS_AND_CONTRACTS.md` § 1 (Verification Contract) and `docs/DOM_EXTRACTION_ARCHITECTURE.md` § 2.6.3 (Sentinel Verification System) for the full specification.
+
+---
+
+## V3 Advanced: Mutation Stream (Ghost State Detection)
+
+**Status:** ✅ Schema Ready | **Phase:** 3.5
+
+The extension tracks DOM changes between snapshots and reports them as `recentEvents`. This helps catch transient states (toasts, loading spinners) that would otherwise be missed.
+
+### What the Extension Sends
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `recentEvents` | `string[]` | Recent DOM mutations (e.g., `["[2s ago] Added: 'Saved Successfully'"]`) |
+| `hasErrors` | `boolean` | True if recent error messages were detected |
+| `hasSuccess` | `boolean` | True if recent success messages were detected |
+
+### How the Backend Should Use It
+
+1. **Enhanced Observations:** Add `recentEvents` to the observation list for semantic verification.
+2. **Quick Success Check:** If `hasSuccess === true`, check for task completion.
+3. **Quick Failure Check:** If `hasErrors === true`, likely need correction.
+
+**Reference:** See `docs/DOM_EXTRACTION_ARCHITECTURE.md` § 2.5.3 (Mutation Stream).
 
 ---
 

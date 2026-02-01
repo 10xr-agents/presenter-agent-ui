@@ -8,6 +8,8 @@
  * Based on: docs/CHROME_TAB_ACTIONS.md - All implemented Chrome extension actions
  */
 
+import { extractActionName } from "./action-parser"
+
 /**
  * Action definition with validation rules
  */
@@ -513,7 +515,8 @@ export const AVAILABLE_ACTIONS: readonly ActionDefinition[] = [
       { name: "text", type: "string", required: false },
       { name: "success", type: "boolean", required: false },
     ],
-    pattern: /^finish\([^)]*\)$/,
+    // Pattern allows: finish(), finish("text with (parentheses) inside"), finish("text", true)
+    pattern: /^finish\(\s*(?:"(?:[^"\\]|\\.)*"(?:\s*,\s*(?:true|false))?)?\s*\)$/,
     example: 'finish("Task completed")',
   },
   {
@@ -522,7 +525,8 @@ export const AVAILABLE_ACTIONS: readonly ActionDefinition[] = [
     parameters: [
       { name: "reason", type: "string", required: false },
     ],
-    pattern: /^fail\([^)]*\)$/,
+    // Pattern allows: fail(), fail("text with (parentheses) inside")
+    pattern: /^fail\(\s*(?:"(?:[^"\\]|\\.)*")?\s*\)$/,
     example: 'fail("Element not found")',
   },
   // Improvement 1: Dynamic web search tool (SERVER tool)
@@ -576,21 +580,20 @@ export function validateActionFormat(action: string): boolean {
 }
 
 /**
- * Validate action name matches configuration
+ * Validate action name matches configuration.
+ * Uses deterministic string parsing from action-parser.
  */
 export function validateActionName(action: string): { valid: boolean; actionName?: string; error?: string } {
   const trimmed = action.trim()
 
-  // Extract action name (everything before the first parenthesis)
-  const nameMatch = trimmed.match(/^([a-zA-Z]+)\(/)
-  if (!nameMatch || !nameMatch[1]) {
+  // Extract action name using deterministic parsing (no regex)
+  const actionName = extractActionName(trimmed)
+  if (!actionName) {
     return {
       valid: false,
       error: "Action must be in format: actionName(params)",
     }
   }
-
-  const actionName = nameMatch[1]
 
   // Check if action name exists in configuration
   if (!isValidActionName(actionName)) {
@@ -727,23 +730,13 @@ Total Actions Available: ${AVAILABLE_ACTIONS.length}`
 }
 
 /**
- * Extract element ID from click action
+ * Extract element ID from click action.
+ * Uses deterministic string parsing from action-parser.
  */
-export function extractElementIdFromClick(action: string): string | null {
-  const match = action.match(/^click\(([^)]+)\)$/)
-  return match && match[1] ? match[1] : null
-}
+export { extractClickElementId as extractElementIdFromClick } from "./action-parser"
 
 /**
- * Extract element ID and text from setValue action
+ * Extract element ID and text from setValue action.
+ * Uses deterministic string parsing from action-parser.
  */
-export function extractSetValueParams(action: string): { elementId: string; text: string } | null {
-  const match = action.match(/^setValue\(([^,]+),\s*"([^"]+)"\)$/)
-  if (!match || !match[1] || !match[2]) {
-    return null
-  }
-  return {
-    elementId: match[1].trim(),
-    text: match[2],
-  }
-}
+export { extractSetValueParams } from "./action-parser"

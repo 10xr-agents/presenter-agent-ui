@@ -3,6 +3,7 @@
  *
  * Final node in the graph. Prepares the response based on the current state.
  * When status is failed, sets a user-facing actionResult.thought so the UI can show a message.
+ * When status is completed with finish("message"), displays the finishMessage.
  */
 
 import { logger } from "@/lib/utils/logger"
@@ -73,6 +74,20 @@ export async function finalizeNode(
       actionResult: {
         thought,
         action: "fail()",
+      },
+    }
+  }
+
+  // When completed with finish("message"), display the finishMessage to the user
+  // finishMessage is set by action-generation/step-refinement using deterministic parsing
+  if (finalStatus === "completed" && actionResult?.finishMessage) {
+    log.info("Using finishMessage for display", { messageLength: actionResult.finishMessage.length })
+    return {
+      status: finalStatus,
+      actionResult: {
+        thought: actionResult.finishMessage,
+        action: actionResult.action,
+        finishMessage: actionResult.finishMessage,
       },
     }
   }

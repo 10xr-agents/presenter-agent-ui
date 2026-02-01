@@ -8,6 +8,7 @@
 import * as Sentry from "@sentry/nextjs"
 import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
+import type { DomMode } from "@/lib/agent/schemas"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { TaskPlan } from "@/lib/models/task"
@@ -94,6 +95,16 @@ export interface ExecuteGraphParams {
 
   // Existing web search result
   webSearchResult?: WebSearchResult | null
+
+  // Hybrid Vision + Skeleton fields
+  /** Base64-encoded JPEG screenshot for visual context */
+  screenshot?: string | null
+  /** DOM processing mode: skeleton, full, or hybrid */
+  domMode?: DomMode
+  /** Pre-extracted skeleton DOM containing only interactive elements */
+  skeletonDom?: string
+  /** Hash of screenshot for deduplication */
+  screenshotHash?: string
 }
 
 /**
@@ -221,6 +232,12 @@ export async function executeInteractGraph(
 
       // Web search
       webSearchResult: params.webSearchResult,
+
+      // Hybrid Vision + Skeleton
+      screenshot: params.screenshot,
+      domMode: params.domMode,
+      skeletonDom: params.skeletonDom,
+      screenshotHash: params.screenshotHash,
 
       // Initial status
       status: "pending",

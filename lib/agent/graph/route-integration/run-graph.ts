@@ -5,6 +5,11 @@
 
 import * as Sentry from "@sentry/nextjs"
 import {
+  buildActionDetails,
+  extractElementMapping,
+  extractElementMappingFromSkeleton,
+} from "@/lib/agent/dom-element-mapping"
+import {
   finalizeInteractTrace,
   type InteractTraceContext,
   recordCorrectionAttempt,
@@ -35,8 +40,77 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     ragChunks,
     hasOrgKnowledge,
     clientVerification,
+    // Hybrid Vision + Skeleton
+    screenshot,
+    domMode,
+    skeletonDom,
+    screenshotHash,
   } = input
   const startTime = Date.now()
+
+  // Extract element mapping for robust selector fallbacks
+  // Try skeletonDom first (if it has IDs), then fall back to full dom
+  // Note: skeletonDom may be HTML without element IDs, so we need to check both
+  let elementMap = skeletonDom
+    ? extractElementMappingFromSkeleton(skeletonDom)
+    : extractElementMapping(dom)
+
+  // If skeletonDom didn't yield any elements, fall back to dom
+  // This handles the case where skeletonDom is HTML structure without element IDs
+  if (elementMap.size === 0 && skeletonDom && dom) {
+    elementMap = extractElementMapping(dom)
+    if (process.env.NODE_ENV === "development") {
+      if (elementMap.size > 0) {
+        console.log(`[run-graph] Fallback: skeletonDom had no IDs, extracted ${elementMap.size} elements from dom (${dom.length} chars)`)
+        // Log first few elements
+        const first3 = Array.from(elementMap.entries()).slice(0, 3)
+        first3.forEach(([id, el]) => {
+          console.log(`[run-graph] Fallback element ${id}: tag=${el.tag}, name=${el.name ?? "null"}, ariaLabel=${el.ariaLabel ?? "null"}`)
+        })
+      } else {
+        console.log(`[run-graph] Fallback: dom also had no elements. DOM sample (first 500 chars):`)
+        console.log(dom.substring(0, 500))
+      }
+    }
+  }
+  
+  // CRITICAL DEBUG: Print BOTH DOMs to understand what the LLM sees vs what we extract
+  if (process.env.NODE_ENV === "development") {
+    if (skeletonDom) {
+      console.log(`\n========== SKELETON DOM DUMP (${skeletonDom.length} chars) ==========`)
+      // Print the skeletonDom which the LLM might be using
+      const chunkSize = 2000
+      for (let i = 0; i < Math.min(skeletonDom.length, 8000); i += chunkSize) {
+        console.log(`[SkeletonDOM chunk ${i}-${Math.min(i + chunkSize, skeletonDom.length)}]:`)
+        console.log(skeletonDom.substring(i, i + chunkSize))
+      }
+      if (skeletonDom.length > 8000) {
+        console.log(`... (truncated, total ${skeletonDom.length} chars)`)
+      }
+      console.log(`========== END SKELETON DOM DUMP ==========\n`)
+    }
+    
+    if (dom) {
+      console.log(`\n========== FULL DOM DUMP (${dom.length} chars) - first 4000 chars ==========`)
+      console.log(dom.substring(0, 4000))
+      console.log(`... (truncated, total ${dom.length} chars)`)
+      console.log(`========== END FULL DOM DUMP ==========\n`)
+    }
+  }
+
+  // Debug: Log element map stats and DOM samples
+  if (process.env.NODE_ENV === "development") {
+    const source = skeletonDom ? "skeletonDom" : "dom"
+    const sourceData = skeletonDom || dom
+    const sourceLen = sourceData?.length ?? 0
+    console.log(`[run-graph] Element map extraction: source=${source}, size=${elementMap.size}, sourceLen=${sourceLen}`)
+    
+    // Log DOM sample to understand format (only if extraction failed)
+    if (elementMap.size === 0 && sourceLen > 0) {
+      console.log(`[run-graph] DOM sample (first 800 chars):`)
+      console.log(sourceData.substring(0, 800))
+    }
+  }
 
   // Provisional ID Pattern: Generate taskId upfront for new tasks (logging traceability)
   // The ID is used for all logging but only persisted to DB on successful action generation
@@ -135,6 +209,11 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       consecutiveSuccessWithoutTaskComplete:
         taskContext?.consecutiveSuccessWithoutTaskComplete ?? 0,
       webSearchResult: taskContext?.webSearchResult,
+      // Hybrid Vision + Skeleton
+      screenshot,
+      domMode,
+      skeletonDom,
+      screenshotHash,
     })
 
     traceCtx = await startInteractTrace({
@@ -249,12 +328,16 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     })
 
     const missingInfo = graphResult.contextAnalysis?.missingInfo
+    // Build actionDetails with selectorPath for robust element finding
+    const actionDetails = buildActionDetails(graphResult.actionResult?.action, elementMap)
     return {
       success: graphResult.success,
       taskId: currentTaskId || "",
       isNewTask,
       thought: graphResult.actionResult?.thought,
       action: graphResult.actionResult?.action,
+      // Robust Element Selectors: Include structured action details with selectorPath
+      actionDetails,
       chainedActions: graphResult.actionResult?.chainedActions?.map((a) => ({
         action: a.action,
         description: a.description,

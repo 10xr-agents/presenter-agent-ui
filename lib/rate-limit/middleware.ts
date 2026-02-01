@@ -57,34 +57,48 @@ export async function rateLimit(
   const now = new Date()
   const resetAt = new Date(now.getTime() + options.windowMs)
 
-  // Get or create rate limit record
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let rateLimit = await (RateLimit as any).findOne({ key })
+  // Atomic upsert to avoid duplicate key errors under concurrency.
+  // If the window is expired, reset count to 1 and set a new resetAt.
+  // Otherwise, increment count by 1.
+  const rateLimit = await (RateLimit as any)
+    .findOneAndUpdate(
+      { key },
+      [
+        {
+          $set: {
+            key,
+            resetAt: { $ifNull: ["$resetAt", resetAt] },
+            count: { $ifNull: ["$count", 0] },
+          },
+        },
+        {
+          $set: {
+            isExpired: { $lt: ["$resetAt", now] },
+          },
+        },
+        {
+          $set: {
+            count: {
+              $cond: [{ $eq: ["$isExpired", true] }, 1, { $add: ["$count", 1] }],
+            },
+            resetAt: {
+              $cond: [{ $eq: ["$isExpired", true] }, resetAt, "$resetAt"],
+            },
+          },
+        },
+        { $unset: "isExpired" },
+      ],
+      { upsert: true, new: true }
+    )
+    .lean()
+    .exec()
 
-  if (!rateLimit) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    rateLimit = await (RateLimit as any).create({
-      key,
-      count: 1,
-      resetAt,
-    })
-  } else if (rateLimit.resetAt < now) {
-    // Reset window
-    rateLimit.count = 1
-    rateLimit.resetAt = resetAt
-    await rateLimit.save()
-  } else {
-    // Increment count
-    rateLimit.count += 1
-    await rateLimit.save()
-  }
-
-  const remaining = Math.max(0, options.maxRequests - rateLimit.count)
+  const remaining = Math.max(0, options.maxRequests - (rateLimit.count as number))
 
   return {
-    success: rateLimit.count <= options.maxRequests,
+    success: (rateLimit.count as number) <= options.maxRequests,
     remaining,
-    resetAt: rateLimit.resetAt,
+    resetAt: rateLimit.resetAt as Date,
   }
 }
 

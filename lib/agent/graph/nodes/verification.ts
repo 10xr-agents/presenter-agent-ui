@@ -24,12 +24,12 @@ import {
   getCurrentSubTask,
   isHierarchicalPlanComplete,
 } from "@/lib/agent/hierarchical-planning"
-import {
-  verifyActionWithObservations,
-  type TieredVerificationExtras,
-} from "@/lib/agent/verification-engine"
 import { checkNextGoalAvailability } from "@/lib/agent/verification/confidence"
 import { extractActualState } from "@/lib/agent/verification/dom-checks"
+import {
+  type TieredVerificationExtras,
+  verifyActionWithObservations,
+} from "@/lib/agent/verification-engine"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, VerificationResult } from "../types"
 

@@ -78,8 +78,10 @@ export async function POST(req: NextRequest) {
     }
 
     await connectDB()
+    // Query by sessionId only - tenantId can vary between extension (Bearer) and browser (cookie) contexts.
+    // Security is enforced via userId ownership check below.
     const doc = await (Session as any)
-      .findOne({ sessionId, tenantId: session.tenantId })
+      .findOne({ sessionId })
       .select("userId")
       .lean()
       .exec()
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
     if (!doc) {
       return forbidden(
         "SESSION_NOT_FOUND",
-        `No session for sessionId=${sessionId} and tenantId=${session.tenantId}. Session may not exist yet or tenantId mismatch.`
+        `No session found for sessionId=${sessionId}. Session may not exist yet.`
       )
     }
 

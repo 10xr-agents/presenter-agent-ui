@@ -1,5 +1,14 @@
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
+import {
+  formatScreenshotContext,
+  formatSkeletonForPrompt,
+  VISUAL_BRIDGE_PROMPT,
+} from "@/lib/llm/multimodal-helpers"
+
 import { getAvailableActionsPrompt } from "./action-config"
+import { getOrCreateSkeleton } from "./dom-skeleton"
+import { shouldUseVisualMode } from "./mode-router"
+import type { DomMode } from "./schemas"
 
 /**
  * Previous action from task history.
@@ -11,10 +20,25 @@ export interface PreviousAction {
 }
 
 /**
+ * Hybrid vision + skeleton options for action prompts
+ */
+export interface ActionPromptHybridOptions {
+  /** Base64-encoded JPEG screenshot for visual context */
+  screenshot?: string | null
+  /** Pre-extracted skeleton DOM (if not provided, extracted from full DOM) */
+  skeletonDom?: string
+  /** DOM processing mode hint */
+  domMode?: DomMode
+}
+
+/**
  * Build LLM prompt for action loop.
  *
  * System message: role, available actions, format
  * User message: query, current time, action history, RAG context, DOM
+ *
+ * @param params - Prompt parameters
+ * @returns System and user prompts, plus whether visual mode is enabled
  */
 export function buildActionPrompt(params: {
   query: string
@@ -24,18 +48,30 @@ export function buildActionPrompt(params: {
   hasOrgKnowledge: boolean
   dom: string
   systemMessages?: string[] // Task 4: Error context messages
-}): { system: string; user: string } {
-  const { query, currentTime, previousActions, ragChunks, hasOrgKnowledge, dom, systemMessages } = params
+  hybridOptions?: ActionPromptHybridOptions // Hybrid vision + skeleton options
+}): { system: string; user: string; useVisualMode: boolean } {
+  const { query, currentTime, previousActions, ragChunks, hasOrgKnowledge, dom, systemMessages, hybridOptions } = params
+
+  // Determine if we should use visual mode
+  const useVisualMode: boolean =
+    hybridOptions?.domMode === "hybrid" ||
+    Boolean(hybridOptions?.screenshot && shouldUseVisualMode(query, true))
+
+  // Visual bridge section for hybrid mode
+  const visualBridgeSection = useVisualMode
+    ? `\n\n## Visual Context Mode\n\n${VISUAL_BRIDGE_PROMPT}\n`
+    : ""
 
   // System message: role and format (Task 2: User-friendly language, Task 4: Failure handling)
   const systemPrompt = `You are an AI assistant that helps users complete tasks on web pages through browser automation.
+${visualBridgeSection}
 
 ## Failure Handling Rules
 
 **CRITICAL: You must strictly follow these rules when handling failures:**
 
 1. **Acknowledge Failures:** If you receive a system error message indicating a previous action failed, you MUST:
-   - Acknowledge the failure in your <Thought>
+   - Acknowledge the failure in your thought
    - Explain why it might have failed in user-friendly terms
    - Propose a different strategy (e.g., "The button wasn't found. Let me try searching for the text instead.")
    - NEVER try the exact same action again
@@ -60,9 +96,9 @@ export function buildActionPrompt(params: {
 
 ## Communication Style
 
-**CRITICAL: Always use user-friendly, non-technical language in your <Thought> responses.**
+**CRITICAL: Always use user-friendly, non-technical language in your "thought" responses.**
 
-Your <Thought> messages will be displayed directly to end users. They should:
+Your "thought" messages will be displayed directly to end users. They should:
 - Use plain, conversational language
 - Avoid technical jargon (DOM, element IDs, verification, etc.)
 - Explain actions in terms of what the user sees and understands
@@ -94,16 +130,16 @@ Your <Thought> messages will be displayed directly to end users. They should:
 ### Examples
 
 **Bad (Technical):**
-<Thought>To register a new patient named 'Jaswanth' in an OpenEMR system, the first step is to navigate to the patient registration section. Given the DOM structure, the 'Patient' button with id='68' seems to be the right starting point. I will click on element ID 68 to navigate to the patient management area.</Thought>
+thought: "To register a new patient named 'Jaswanth' in an OpenEMR system, the first step is to navigate to the patient registration section. Given the DOM structure, the 'Patient' button with id='68' seems to be the right starting point. I will click on element ID 68 to navigate to the patient management area."
 
 **Good (User-friendly):**
-<Thought>I'll help you register a new patient named 'Jaswanth'. First, I need to go to the patient registration section. I can see a 'Patient' button on the page, so I'll click on that to get started.</Thought>
+thought: "I'll help you register a new patient named 'Jaswanth'. First, I need to go to the patient registration section. I can see a 'Patient' button on the page, so I'll click on that to get started."
 
 **Bad (Technical):**
-<Thought>Previous action failed verification. Since the original element ID '68' is not valid for navigating to the patient management area, I will try using a different element. In this case, ID '79' corresponds to 'Visits,' which may lead to the intended area. Retrying with corrected approach.</Thought>
+thought: "Previous action failed verification. Since the original element ID '68' is not valid for navigating to the patient management area, I will try using a different element. In this case, ID '79' corresponds to 'Visits,' which may lead to the intended area. Retrying with corrected approach."
 
 **Good (User-friendly):**
-<Thought>The dropdown opened but we haven't chosen an option yet. I'll select 'New/Search' from the Patient menu to add a new patient.</Thought>
+thought: "The dropdown opened but we haven't chosen an option yet. I'll select 'New/Search' from the Patient menu to add a new patient."
 
 ### Action Descriptions
 
@@ -155,13 +191,42 @@ Common patterns:
 
 **Important:** If you click a button with a popup and the dropdown appears, that's success! Don't mark it as a failure just because the URL didn't change. The next step is to wait briefly, then select an option from the dropdown.
 
+## Answering Questions from Page Content (CRITICAL)
+
+When the user asks a question or wants to find/figure out information (e.g., "figure out which...", "find out...", "what is the...", "which user spent the most..."):
+
+1. **Analyze the page content directly** - The page structure contains all the text data you need
+2. **DO NOT use screenshot()** - Screenshots are for visual capture, not data analysis
+3. **Extract the answer from the page** and use finish(answer) to respond
+4. Look at the visible text, numbers, tables, lists on the page to find the information
+
+**Example: "Figure out which user spent the most"**
+- Look at the page structure for user names and spending amounts
+- Find the relevant data (names, values, etc.)
+- Use: finish("Based on the members list, John Smith spent the most with $1,234.56")
+
+**Example: "What is the total balance?"**
+- Look for balance-related text on the page
+- Extract the value
+- Use: finish("The total balance shown is $5,678.90")
+
+**DO NOT:**
+- ❌ Use screenshot() to "review" or "look at" data
+- ❌ Generate vague "I need to look at the page" responses
+- ❌ Defer answering when the data is visible in the page structure
+
+**DO:**
+- ✅ Read the page structure directly
+- ✅ Extract specific values, names, amounts from the page content
+- ✅ Provide the answer using finish("The answer is...")
+
 ## Response Format
 
-You must respond with exactly this format:
-<Thought>Your user-friendly explanation of what you're doing and why</Thought>
-<Action>actionName(arg1, arg2, ...)</Action>
+You must respond with a JSON object containing:
+- "thought": Your user-friendly explanation of what you're doing and why
+- "action": The action to perform (e.g., click(123), setValue(456, "text"), finish("Done"))
 
-Remember: The <Thought> is for the end user, not for developers. Write it as if you're explaining to someone who has no technical knowledge of how web pages work.`
+Remember: The "thought" is for the end user, not for developers. Write it as if you're explaining to someone who has no technical knowledge of how web pages work.`
 
   // Build user message with context
   const userParts: string[] = []
@@ -206,52 +271,71 @@ Remember: The <Thought> is for the end user, not for developers. Write it as if 
     })
   }
 
-  // Add current DOM (Task 2: Don't mention "DOM" - use "page structure")
-  userParts.push(`\n## Current Page Structure`)
-  userParts.push(dom)
+  // Add current page content based on mode
+  if (useVisualMode && hybridOptions?.screenshot) {
+    // Hybrid mode: screenshot for visual context, skeleton for structure
+    userParts.push(formatScreenshotContext(true))
+    
+    // Use skeleton DOM for page structure
+    const skeletonDom = getOrCreateSkeleton(dom, hybridOptions?.skeletonDom)
+    userParts.push(`\n${formatSkeletonForPrompt(skeletonDom)}`)
+  } else {
+    // Full DOM mode (traditional)
+    userParts.push(`\n## Current Page Structure`)
+    userParts.push(dom)
+  }
 
   userParts.push(
     `\n## Instructions
 1. Analyze the page structure and user task
 2. Decide on the next action to take
-3. Write a user-friendly <Thought> explaining what you're doing and why
-4. Provide the <Action> in the correct format
+3. Provide a user-friendly "thought" explaining what you're doing and why
+4. Provide the "action" in the correct format
 
-Remember: Write your <Thought> as if explaining to a non-technical user. Avoid mentioning technical details like element IDs, DOM structure, or verification processes.`
+Remember: Write your "thought" as if explaining to a non-technical user. Avoid mentioning technical details like element IDs, DOM structure, or verification processes.`
   )
 
   return {
     system: systemPrompt,
     user: userParts.join("\n"),
+    useVisualMode,
   }
 }
 
 /**
- * Parse LLM response to extract <Thought> and <Action>.
+ * Build a prompt for hybrid mode with visual context.
+ * Convenience function that ensures visual mode is used.
  *
- * @param content - LLM response content
- * @returns { thought, action } or null if parse fails
+ * @param params - Prompt parameters (must include screenshot)
+ * @returns System and user prompts for hybrid mode
  */
-export function parseActionResponse(content: string): {
-  thought: string
-  action: string
-} | null {
-  const thoughtMatch = content.match(/<Thought>([\s\S]*?)<\/Thought>/i)
-  const actionMatch = content.match(/<Action>([\s\S]*?)<\/Action>/i)
-
-  if (!thoughtMatch || !actionMatch) {
-    return null
-  }
-
-  const thought = thoughtMatch[1]?.trim() || ""
-  const action = actionMatch[1]?.trim() || ""
-
-  if (!thought || !action) {
-    return null
-  }
-
-  return { thought, action }
+export function buildHybridActionPrompt(params: {
+  query: string
+  currentTime: string
+  previousActions: PreviousAction[]
+  ragChunks: ResolveKnowledgeChunk[]
+  hasOrgKnowledge: boolean
+  dom: string
+  systemMessages?: string[]
+  screenshot: string
+  skeletonDom?: string
+}): { system: string; user: string } {
+  const result = buildActionPrompt({
+    ...params,
+    hybridOptions: {
+      screenshot: params.screenshot,
+      skeletonDom: params.skeletonDom,
+      domMode: "hybrid",
+    },
+  })
+  return { system: result.system, user: result.user }
 }
+
+// NOTE: parseActionResponse has been removed.
+// The codebase uses Gemini's structured output with responseJsonSchema (ACTION_RESPONSE_SCHEMA)
+// which returns JSON directly: { thought, action }. No XML parsing is needed.
+// See: lib/llm/response-schemas.ts for schema definitions.
+// See: docs/GEMINI_USAGE.md for structured output documentation.
 
 /**
  * Validate action format.

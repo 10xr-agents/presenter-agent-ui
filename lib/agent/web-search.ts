@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/nextjs"
 import axios from "axios"
 import { recordUsage } from "@/lib/cost"
+import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { DEFAULT_GEMINI_MODEL, generateWithGemini } from "@/lib/llm/gemini-client"
 import { WEB_SEARCH_SUMMARY_SCHEMA } from "@/lib/llm/response-schemas"
-import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 
 /**
  * Web Search Module (Task 1)

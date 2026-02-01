@@ -3,7 +3,7 @@
 **Purpose:** Explain how the backend processes a command from the Chrome extension from first request to completion. This document is the **canonical** flow description and **implementation roadmap** for the interact flow.  
 **Example prompt:** *"Add a new patient with name 'Jas'"*
 
-**Focus:** **DOM-based only** for now. Visual/screenshot-based features (OCR, screenshot verification, Session Replay screenshot scrubber) are **deferred to end of roadmap** — see § Deferred: Visual / Non-DOM Features.
+**Focus:** Primary mode is **DOM-based**. Visual support via **Hybrid Vision + Skeleton** mode is available for spatial/visual queries — see § Hybrid Vision + Skeleton Mode. Other visual features (OCR, Session Replay screenshot scrubber) remain **deferred** — see § Deferred: Visual / Non-DOM Features.
 
 **Related docs (canonical details):**
 
@@ -41,6 +41,8 @@
 | **Conditional Planning** | ✅ **COMPLETE** | 4 | `lib/agent/conditional-planning.ts`. See **PLANNER_PROCESS.md**. |
 | **Hierarchical Planning** | ✅ **COMPLETE** | 4 | `lib/agent/hierarchical-planning.ts`. **Wired in graph (Tasks 8 + 9):** planning node calls decomposePlan; hierarchicalPlan in state and persisted; verification node uses sub_task_completed to advance/fail sub-task. See **PLANNER_PROCESS.md** and **VERIFICATION_PROCESS.md** Task 5. |
 | **Tiered Verification** | ✅ **COMPLETE** | 5 | `lib/agent/verification/tiered-verification.ts`. **Token efficiency optimization:** Tier 1 (deterministic, 0 tokens), Tier 2 (lightweight LLM, ~100 tokens), Tier 3 (full LLM). Intermediate steps use Tier 1; final steps use Tier 2/3. See **VERIFICATION_PROCESS.md** Phase 5. |
+| **V3 Semantic Extraction** | ✅ **SCHEMA READY** | 5 | `lib/agent/schemas.ts`. **PRIMARY DOM mode:** 99%+ token reduction with minified JSON (`interactiveTree`). V3 Advanced fields: `recentEvents`, `hasErrors`, `scrollableContainers`. See **DOM_EXTRACTION_ARCHITECTURE.md**. |
+| **Sentinel Verification** | ✅ **SCHEMA READY** | 5 | `lib/agent/schemas.ts`. **Client-side verification:** `verification_passed`, `errors_detected`, `success_messages`. See **VERIFICATION_PROCESS.md** § V3 Advanced. |
 
 **Legend:** ✅ = Complete/Default | 🔄 = In Progress | 🔲 Planned
 
@@ -64,10 +66,12 @@
 
 ## High-Level Loop
 
-1. **Extension** sends `POST /api/agent/interact` with `{ url, query, dom, taskId?, sessionId? }`.
-2. **Backend** authenticates, fetches RAG, runs reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action, returns `{ thought, action, taskId, sessionId, ... }`. All LLM calls that expect JSON (verification verdict, action thought+action) use **structured output** (Gemini `responseJsonSchema`) so responses are valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
-3. **Extension** executes the action (e.g. `click(68)`, `setValue(42, "Jas")`) on the page, then sends the **next** request with **updated `url` and `dom`** and **the same `taskId`** from the response.
-4. **Backend** verifies the **previous** action against the new DOM/URL, then produces the **next** action. Repeat until `finish()` or `fail()` or max steps/retries.
+1. **Extension** sends `POST /api/agent/interact` with:
+   - **V3 Semantic (PRIMARY):** `{ url, query, dom, domMode: "semantic_v3", interactiveTree, viewport, pageTitle, taskId?, sessionId? }`
+   - **Legacy/Fallback:** `{ url, query, dom, domMode?, skeletonDom?, screenshot?, taskId?, sessionId? }`
+2. **Backend** authenticates, fetches RAG, runs reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action, returns `{ thought, action, actionDetails, taskId, sessionId, ... }`. All LLM calls that expect JSON (verification verdict, action thought+action) use **structured output** (Gemini `responseJsonSchema`) so responses are valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
+3. **Extension** executes the action (e.g. `click("14")`, `setValue("14", "Jas")`) on the page using element ID from `interactiveTree`, then sends the **next** request with **updated state** and **the same `taskId`** from the response.
+4. **Backend** verifies the **previous** action against the new state, then produces the **next** action. Repeat until `finish()` or `fail()` or max steps/retries.
 
 ### Client contract and troubleshooting (verification continuation)
 
@@ -346,6 +350,138 @@ The following backend changes **do not** require any new extension behavior:
 - **RAG freshness:** Spec only; implementation is in the knowledge pipeline. No extension change.
 
 No new contract or API fields were added for the extension in the recent logical-improvements work.
+
+---
+
+## V3 Semantic Extraction (PRIMARY Mode)
+
+**Status:** ✅ Schema Ready (February 2026)
+
+V3 Semantic Extraction is now the **PRIMARY** DOM extraction mode, providing 99%+ token reduction compared to full DOM. The extension sends a minified JSON array of interactive elements instead of HTML.
+
+### Why V3?
+
+| Problem | V3 Solution |
+|---------|-------------|
+| Full DOM is 50-200KB (~15-20k tokens) | V3 JSON is 100-300 bytes (~25-75 tokens) |
+| Element IDs drift on re-renders | Stable `data-llm-id` persists across renders |
+| Need to parse complex HTML | Clean JSON with semantic roles |
+| Expensive LLM calls for simple actions | Deterministic element lookup by ID |
+
+### V3 Request Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `domMode` | `"semantic_v3"` | Indicates V3 ultra-light format (PRIMARY) |
+| `interactiveTree` | `SemanticNodeV3[]` | Minified JSON array with viewport pruning |
+| `viewport` | `{ width, height }` | Viewport dimensions for coordinate actions |
+| `pageTitle` | `string` | Page title for context |
+
+### V3 Advanced Fields (Production-Grade)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scrollPosition` | `string` | Scroll depth (e.g., "50%") |
+| `scrollableContainers` | `array` | Virtual list containers for infinite scroll |
+| `recentEvents` | `string[]` | Mutation stream for ghost state detection |
+| `hasErrors` / `hasSuccess` | `boolean` | Error/success message detection |
+| `verification_passed` | `boolean` | Sentinel verification result |
+| `errors_detected` | `string[]` | Errors caught by Sentinel |
+
+### V3 Minified Keys Legend
+
+```
+- i: element ID (use this in click(i) or setValue(i, text))
+- r: role (btn=button, inp=input, link=link, chk=checkbox, sel=select)
+- n: name/label visible to user
+- v: current value (for inputs)
+- s: state (disabled, checked, expanded)
+- xy: [x, y] coordinates on screen
+- f: frame ID (0 = main frame, omitted if 0)
+- box: [x, y, w, h] bounding box (V3 Advanced)
+- scr: { depth, h } scrollable container info (V3 Advanced)
+- occ: true if element is occluded by modal (V3 Advanced)
+```
+
+### Example V3 Payload
+
+```json
+{
+  "domMode": "semantic_v3",
+  "pageTitle": "Google",
+  "viewport": { "width": 1280, "height": 800 },
+  "interactiveTree": [
+    { "i": "12", "r": "link", "n": "Gmail", "xy": [900, 20] },
+    { "i": "14", "r": "inp", "n": "Search", "v": "", "xy": [400, 300] },
+    { "i": "15", "r": "btn", "n": "Google Search", "xy": [400, 350] }
+  ]
+}
+```
+
+### Mode Priority (Fallback Chain)
+
+| Priority | Mode | Tokens | When Used |
+|----------|------|--------|-----------|
+| **1** | `semantic_v3` | 25-75 | DEFAULT - viewport pruning + minified keys |
+| 2 | `semantic` | 50-125 | V3 fails or empty |
+| 3 | `skeleton` | 500-1500 | Semantic fails |
+| 4 | `hybrid` | 2000-3000 | Visual/spatial query detected |
+| **5** | `full` | 10k-50k | **ONLY on explicit backend `needs_full_dom` request** |
+
+**Key Principle:** Full DOM should NEVER be sent proactively. Only send it when the backend explicitly requests it via a `needs_full_dom` response.
+
+### Server Behavior with V3
+
+1. **Parse `interactiveTree`**: Extract element info directly from JSON (no HTML parsing needed).
+2. **Step Refinement**: Use element IDs (`i` field) directly in actions: `click("14")`, `setValue("14", "text")`.
+3. **Coordinate Actions**: Use `xy` for coordinate-based clicks when element targeting fails.
+4. **Respect Occlusion**: Don't target elements with `occ: true` (behind modals).
+5. **Sentinel Integration**: Use `verification_passed`, `errors_detected` for faster verification.
+
+**Reference:** See `docs/DOM_EXTRACTION_ARCHITECTURE.md` for the complete V3 specification and `docs/SPECS_AND_CONTRACTS.md` § Semantic JSON Protocol.
+
+---
+
+## Hybrid Vision + Skeleton Mode (Legacy/Fallback)
+
+The hybrid vision + skeleton mode reduces token usage by ~80% while improving accuracy for visual/spatial tasks. This is used when **V3 Semantic extraction fails** or for **visual/spatial queries**.
+
+1. **Visual Stream (Screenshot)**: JPEG screenshot for layout/spatial context (~1k tokens)
+2. **Action Stream (Skeleton DOM)**: Hyper-compressed DOM with only interactive elements (~1-2k tokens)
+
+### Request Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `screenshot` | `string \| null` | Base64-encoded JPEG screenshot (1024px width, 0.7 quality). `null` if unchanged. |
+| `domMode` | `"skeleton" \| "full" \| "hybrid"` | Processing mode hint for server. |
+| `skeletonDom` | `string` | Skeleton DOM with only interactive elements. Server can extract if not provided. |
+| `screenshotHash` | `string` | Perceptual hash for deduplication. |
+
+### Mode Selection (When NOT using V3)
+
+| Mode | When Used | Token Cost |
+|------|-----------|------------|
+| `skeleton` | Simple text-based actions ("click Search button") | ~500-1.5k |
+| `hybrid` | Visual/spatial queries ("click the gear icon", "what's the price") | ~2-3k |
+| `full` | Fallback when skeleton is insufficient | ~15-20k |
+
+Visual queries are detected by keywords like: "icon", "image", "looks like", "top", "bottom", "left", "right", "corner", "next to".
+
+### Server Behavior
+
+1. **Mode Router** (`lib/agent/mode-router.ts`): Analyzes query to recommend mode.
+2. **DOM Skeleton** (`lib/agent/dom-skeleton.ts`): Server-side extraction if client doesn't send `skeletonDom`.
+3. **Multimodal LLM** (`lib/llm/gemini-client.ts`): Accepts text + images for hybrid mode.
+4. **Fallback**: If skeleton is insufficient, server can request full DOM retry.
+
+### Extension Specification
+
+See `docs/DOM_EXTRACTION_ARCHITECTURE.md` and `docs/SPECS_AND_CONTRACTS.md` for:
+- V3 Semantic extraction (PRIMARY)
+- Screenshot capture implementation
+- Skeleton DOM extraction algorithm
+- Payload contract details
 
 ---
 

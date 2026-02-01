@@ -77,6 +77,30 @@ const response = await ai.models.generateContent({
 
 **Grounding with Google Search:** For planning and verification we pass `useGoogleSearchGrounding: true`, which adds `tools: [{ googleSearch: {} }]` to the config. The model can then search the web when it improves the answer (e.g. current procedures, factual checks). Responses may include `groundingMetadata` (webSearchQueries, groundingChunks, groundingSupports) for citations. Billing: per search query when the tool is used (see [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)). Reference: [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search).
 
+**Multimodal (Vision) Input:** For the hybrid vision + skeleton pipeline, we support image inputs alongside text. The `generateWithGemini` function accepts an optional `images` parameter:
+
+```typescript
+// Multimodal input with screenshot
+const result = await generateWithGemini(systemPrompt, userPrompt, {
+  model: "gemini-3-flash-preview",
+  images: [{ data: screenshotBase64, mimeType: "image/jpeg" }],
+  responseJsonSchema: MY_SCHEMA,
+})
+```
+
+When images are provided, the client builds multimodal content with images placed before the text prompt (visual context first). This is used in:
+
+- **Planning** (when query has visual/spatial references)
+- **Step refinement** (when task requires visual understanding)
+- **Action generation** (for visual element identification)
+
+**Image token costs** (from Gemini docs):
+- Low detail mode (≤768x768): ~258 tokens fixed
+- High detail mode: 85 base + 170 per 512x512 tile
+- 1024px wide screenshot: ~1,000-1,100 tokens
+
+Reference: [Gemini Vision](https://ai.google.dev/gemini-api/docs/vision), [Image tokens](https://ai.google.dev/gemini-api/docs/tokens#image-tokens).
+
 **Thinking (Gemini 3 / 2.5):** Gemini 3 and 2.5 series use an internal reasoning process that improves multi-step planning, coding, and analysis. We pass `thinkingLevel` via `generateWithGemini` where relevant: **`thinkingLevel: "high"`** for planning, verification, critic, replanning, self-correction, outcome prediction, hierarchical and conditional planning (maximize reasoning depth); **`thinkingLevel: "low"`** for step refinement, context analysis, search manager, reasoning (analyzeTaskContext, verifyInformationCompleteness), action generation, and web search synthesis (minimize latency). When omitted, the model uses its default (e.g. `high` for Gemini 3). Reference: [Thinking](https://ai.google.dev/gemini-api/docs/thinking), [Gemini 3 thinking level](https://ai.google.dev/gemini-api/docs/gemini-3#thinking-level).
 
 | Component | thinkingLevel | Purpose |
@@ -333,5 +357,7 @@ if (isParseSuccess(result)) {
 
 - `INTERACT_FLOW_WALKTHROUGH.md` — End-to-end interact flow, observability, cost tracking.
 - `ARCHITECTURE.md` — System architecture and intelligence layer (agent, LLM integration).
-- `lib/llm/gemini-client.ts` — Implementation of `generateWithGemini`.
+- `HYBRID_VISION_SKELETON_EXTENSION_SPEC.md` — Extension specification for hybrid vision + skeleton mode.
+- `lib/llm/gemini-client.ts` — Implementation of `generateWithGemini` (including multimodal support).
+- `lib/llm/multimodal-helpers.ts` — Multimodal content builders for vision input.
 - `lib/ai/agent-runner.ts` — Multi-turn agent and function calling.

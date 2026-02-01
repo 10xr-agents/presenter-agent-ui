@@ -13,12 +13,13 @@ import { connectDB } from "@/lib/db/mongoose"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
 import { Message, Session } from "@/lib/models"
+import { triggerInteractResponse, triggerNewMessage } from "@/lib/pusher/server"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
 import { createDebugLog, extractHeaders } from "@/lib/utils/debug-logger"
 import { extractDomain, generateSessionTitle } from "@/lib/utils/domain"
 import { buildErrorDebugInfo } from "@/lib/utils/error-debug"
-import { triggerInteractResponse, triggerNewMessage } from "@/lib/pusher/server"
+import { logger } from "@/lib/utils/logger"
 
 /**
  * POST /api/agent/interact
@@ -178,8 +179,32 @@ export async function POST(req: NextRequest) {
       // Domain-Aware Sessions
       domain: requestDomain,
       title: requestTitle,
+      // Hybrid Vision + Skeleton (new)
+      screenshot: requestScreenshot,
+      domMode: requestDomMode,
+      skeletonDom: requestSkeletonDom,
+      screenshotHash: requestScreenshotHash,
     } = validationResult.data
     taskId = requestTaskId
+
+    // High-signal client execution telemetry (helps diagnose "action not executed" vs "verification mismatch").
+    // Keep this small; never log full DOM.
+    Sentry.logger.info("Interact: client execution telemetry", {
+      hasTaskId: !!requestTaskId,
+      hasSessionId: !!requestSessionId,
+      url,
+      previousUrl: requestPreviousUrl,
+      lastActionStatus: lastActionStatus ?? null,
+      lastActionErrorCode: lastActionError?.code ?? null,
+      lastActionErrorMessage: lastActionError?.message ? lastActionError.message.slice(0, 120) : null,
+      lastActionResultSuccess: lastActionResult?.success ?? null,
+      clientDidUrlChange: requestClientObservations?.didUrlChange ?? null,
+      clientDidDomMutate: requestClientObservations?.didDomMutate ?? null,
+      clientDidNetworkOccur: requestClientObservations?.didNetworkOccur ?? null,
+      clientVerificationUrlChanged: requestClientVerification?.urlChanged ?? null,
+      clientVerificationElementFound: requestClientVerification?.elementFound ?? null,
+      domChars: typeof dom === "string" ? dom.length : null,
+    })
 
     await connectDB()
 
@@ -377,6 +402,11 @@ export async function POST(req: NextRequest) {
       hasOrgKnowledge,
       clientVerification: requestClientVerification,
       clientObservations: requestClientObservations,
+      // Hybrid Vision + Skeleton
+      screenshot: requestScreenshot,
+      domMode: requestDomMode,
+      skeletonDom: requestSkeletonDom,
+      screenshotHash: requestScreenshotHash,
     })
 
     Sentry.logger.info("Interact: LangGraph run completed", {
@@ -464,6 +494,8 @@ export async function POST(req: NextRequest) {
     const response: NextActionResponse = {
       thought: graphResult.thought || "",
       action: graphResult.action || (isTerminal ? "finish()" : ""),
+      // Robust Element Selectors: Include structured action details with selectorPath
+      actionDetails: graphResult.actionDetails,
       usage: graphResult.llmUsage,
       taskId: graphResult.taskId || undefined,
       hasOrgKnowledge,
@@ -513,6 +545,34 @@ export async function POST(req: NextRequest) {
             containerSelector: graphResult.chainMetadata.containerSelector,
           }
         : undefined,
+    }
+
+    // Debug: log actionDetails (avoid logging full typed values)
+    if (response.actionDetails) {
+      const args = response.actionDetails.args
+      const argsKeys = args ? Object.keys(args) : []
+      const valueLen =
+        typeof args?.value === "string" ? (args.value as string).length : undefined
+
+      logger.info("Interact: actionDetails", {
+        process: "RouteIntegration",
+        sessionId: currentSessionId ?? undefined,
+        taskId: graphResult.taskId ?? undefined,
+        action: response.action,
+        name: response.actionDetails.name,
+        elementId: response.actionDetails.elementId,
+        hasSelectorPath: !!response.actionDetails.selectorPath,
+        selectorPath: response.actionDetails.selectorPath,
+        argsKeys,
+        valueLength: valueLen,
+      })
+    } else {
+      logger.info("Interact: actionDetails missing", {
+        process: "RouteIntegration",
+        sessionId: currentSessionId ?? undefined,
+        taskId: graphResult.taskId ?? undefined,
+        action: response.action,
+      })
     }
 
     Sentry.logger.info("Interact: returning next action response", {

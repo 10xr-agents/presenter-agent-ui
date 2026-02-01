@@ -8,12 +8,12 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
-import type { PlanStep, TaskPlan } from "@/lib/models/task"
 import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
 } from "@/lib/llm/gemini-client"
 import { PLAN_VALIDATOR_SCHEMA } from "@/lib/llm/response-schemas"
+import type { PlanStep, TaskPlan } from "@/lib/models/task"
 import { type DomSimilarityResult, shouldTriggerReplanning } from "./dom-similarity"
 
 /**

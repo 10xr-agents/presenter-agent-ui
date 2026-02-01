@@ -176,6 +176,7 @@ const TokenUsageLogSchema = new Schema<ITokenUsageLog>(
         "PLAN_VALIDATION",
         "REFINEMENT",
         "VERIFICATION",
+        "VERIFICATION_LIGHTWEIGHT", // Phase 5: Tier 2 lightweight verification
         "CONTEXT_ANALYSIS",
         "SELF_CORRECTION",
         "ACTION_GENERATION",

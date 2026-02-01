@@ -18,6 +18,11 @@ This document is the **single source of truth** for system architecture, the int
 | **COST_TRACKING_AUDIT.md** | Cost tracking: all Gemini call sites, action types, token breakdown per step, Tavily/AgentRunner notes. |
 | **REALTIME_MESSAGE_SYNC_ROADMAP.md** | Real-time messaging (Sockudo/Pusher), message sync roadmap. |
 | **CHROME_TAB_ACTIONS.md** | Chrome extension tab actions and integration. |
+| **HYBRID_VISION_SKELETON_EXTENSION_SPEC.md** | Hybrid vision + skeleton mode: screenshot capture, skeleton DOM extraction, payload contract for ~80% token reduction. |
+| **SPECS_AND_CONTRACTS.md** | API contracts between backend and extension, including Chat UI contract and hybrid mode fields. |
+| **MANUAL_QA_EFFECTIVE_AGENT.md** | QA certification tests (Levels 1-5): Basic Interaction, Dynamic State, Cross-Tab Memory, Reasoning, Enterprise Workflow. |
+| **CLIENT_QA_IMPLEMENTATION_ROADMAP.md** | Chrome extension implementation roadmap for QA test support (extractedVariables, step progress). |
+| **SERVER_QA_IMPLEMENTATION_ROADMAP.md** | Backend implementation roadmap for QA test support (extractedVariables, login-failure detection, branching). |
 | **RULESETS.md** | Mandatory code patterns (Mongoose, Zod, file extensions, etc.) — prevents build errors. |
 
 **Quick start:** New to the project → read this doc (System Overview, Architecture Patterns, Intelligence Layer). Working on the interact loop → **INTERACT_FLOW_WALKTHROUGH.md**. Working on verification → **VERIFICATION_PROCESS.md**. Working on planning → **PLANNER_PROCESS.md**. Working on LLM/cost → **GEMINI_USAGE.md**, **COST_TRACKING_AUDIT.md**.

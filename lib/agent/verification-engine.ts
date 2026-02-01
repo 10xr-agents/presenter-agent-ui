@@ -14,7 +14,7 @@ import type { TaskPlan } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import { computeDomHash, hasSignificantUrlChange } from "@/lib/utils/dom-helpers"
 import { logger } from "@/lib/utils/logger"
-import { classifyActionType, type ActionType } from "./action-type"
+import { type ActionType, classifyActionType } from "./action-type"
 import type { ComplexityLevel } from "./graph/types"
 import {
   type BeforeState,
@@ -23,18 +23,18 @@ import {
   checkNextGoalAvailability,
   type ClientObservations,
   type ClientVerification,
+  computeIsLastStep,
+  estimateTokensSaved,
   extractActualState,
   isPopupExpectation,
   performDOMChecks,
   performSemanticVerification,
   performSemanticVerificationOnObservations,
+  runTieredVerification,
   type SemanticVerificationResult,
   type VerificationContext,
   type VerificationResult,
   type VerificationTier,
-  runTieredVerification,
-  computeIsLastStep,
-  estimateTokensSaved,
 } from "./verification"
 
 // Re-export types and entry points for backward compatibility

@@ -16,6 +16,36 @@ vi.mock("@/lib/db/mongoose", () => ({
   connectDB: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock("@/lib/utils/debug-logger", () => ({
+  createDebugLog: vi.fn().mockResolvedValue(undefined),
+  extractHeaders: vi.fn().mockReturnValue({}),
+}))
+
+vi.mock("@/lib/pusher/server", () => ({
+  triggerInteractResponse: vi.fn().mockResolvedValue(undefined),
+  triggerNewMessage: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock("@/lib/knowledge-extraction/rag-helper", () => ({
+  getRAGChunks: vi.fn().mockResolvedValue({ chunks: [], hasOrgKnowledge: false, duration: 0 }),
+}))
+
+vi.mock("@/lib/agent/graph/route-integration", () => ({
+  runInteractGraph: vi.fn().mockResolvedValue({
+    success: true,
+    taskId: "test-task-id",
+    isNewTask: true,
+    thought: "Test thought",
+    action: "click(1)",
+    currentStepIndex: 0,
+    webSearchPerformed: false,
+    complexity: "simple",
+    complexityReason: "test",
+    status: "executing",
+    graphDuration: 100,
+  }),
+}))
+
 vi.mock("@/lib/models", () => ({
   Task: {
     findOne: vi.fn(),
@@ -25,11 +55,21 @@ vi.mock("@/lib/models", () => ({
     create: vi.fn(),
   },
   Session: {
-    findOne: vi.fn(),
+    findOne: vi.fn().mockReturnValue({
+      lean: vi.fn().mockResolvedValue(null),
+    }),
+    findOneAndUpdate: vi.fn().mockResolvedValue({
+      sessionId: "test-session-id",
+      userId: "user-123",
+      tenantId: "tenant-123",
+    }),
     create: vi.fn(),
   },
   Message: {
-    create: vi.fn(),
+    create: vi.fn().mockResolvedValue({
+      _id: "msg-1",
+      messageId: "msg-1",
+    }),
     find: vi.fn().mockReturnValue({
       sort: vi.fn().mockReturnValue({
         limit: vi.fn().mockReturnValue({

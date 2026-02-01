@@ -1,7 +1,6 @@
 import * as Sentry from "@sentry/nextjs"
 import { recordUsage } from "@/lib/cost"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import type { WebSearchResult } from "./web-search"
 import {
   DEFAULT_PLANNING_MODEL,
   generateWithGemini,
@@ -10,6 +9,7 @@ import {
   INFORMATION_COMPLETENESS_SCHEMA,
   TASK_CONTEXT_ANALYSIS_SCHEMA,
 } from "@/lib/llm/response-schemas"
+import type { WebSearchResult } from "./web-search"
 
 /**
  * Reasoning Engine

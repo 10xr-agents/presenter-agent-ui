@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { GET } from "../latest/route"
@@ -16,14 +16,37 @@ vi.mock("@/lib/db/mongoose", () => ({
   connectDB: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock("@/lib/models", () => ({
-  Session: {
-    findOne: vi.fn(),
-  },
-  Message: {
-    countDocuments: vi.fn().mockResolvedValue(0),
-  },
+vi.mock("@/lib/utils/cors", () => ({
+  addCorsHeaders: vi.fn((_req, res) => res),
+  handleCorsPreflight: vi.fn().mockReturnValue(null),
 }))
+
+vi.mock("@/lib/utils/error-debug", () => ({
+  buildErrorDebugInfo: vi.fn().mockReturnValue({ timestamp: Date.now() }),
+}))
+
+vi.mock("@/lib/models", () => {
+  // Helper to create chainable mock (defined inside factory to avoid hoisting issues)
+  const createChainableMock = (returnValue: unknown) => {
+    const chainable = {
+      sort: vi.fn().mockReturnThis(),
+      lean: vi.fn().mockReturnThis(),
+      exec: vi.fn().mockResolvedValue(returnValue),
+    }
+    return vi.fn().mockReturnValue(chainable)
+  }
+
+  return {
+    Session: {
+      findOne: createChainableMock(null),
+    },
+    Message: {
+      countDocuments: vi.fn().mockReturnValue({
+        exec: vi.fn().mockResolvedValue(0),
+      }),
+    },
+  }
+})
 
 describe("GET /api/session/latest", () => {
   beforeEach(() => {
@@ -49,8 +72,7 @@ describe("GET /api/session/latest", () => {
       tenantId: "tenant-123",
     })
 
-    const { Session } = await import("@/lib/models")
-    vi.mocked(Session.findOne).mockResolvedValue(null)
+    // Session.findOne already returns chainable mock with null result from module mock
 
     const request = new NextRequest("http://localhost/api/session/latest")
 

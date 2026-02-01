@@ -3,6 +3,8 @@
  * @see INTERACT_FLOW_WALKTHROUGH.md
  */
 
+import type { ElementMap } from "@/lib/agent/dom-element-mapping"
+import type { DomMode } from "@/lib/agent/schemas"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { TaskPlan } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
@@ -32,6 +34,18 @@ export interface RunGraphInput {
     didDomMutate?: boolean
     didUrlChange?: boolean
   }
+  // Hybrid Vision + Skeleton fields
+  /** Base64-encoded JPEG screenshot for visual context */
+  screenshot?: string | null
+  /** DOM processing mode: skeleton, full, or hybrid */
+  domMode?: DomMode
+  /** Pre-extracted skeleton DOM containing only interactive elements */
+  skeletonDom?: string
+  /** Hash of screenshot for deduplication */
+  screenshotHash?: string
+  // Robust Element Selectors
+  /** Element mapping for selectorPath fallbacks (parsed from DOM) */
+  elementMap?: ElementMap
 }
 
 /**
@@ -59,12 +73,29 @@ export interface ChainMetadataOutput {
 /**
  * Output from the graph execution
  */
+/**
+ * Structured action details with selector fallback (Robust Element Selectors)
+ * @see docs/ROBUST_ELEMENT_SELECTORS_SPEC.md
+ */
+export interface ActionDetails {
+  /** Action name: click, setValue, press, navigate, finish, fail, etc. */
+  name: string
+  /** Element ID for DOM actions */
+  elementId?: number
+  /** CSS selector path for robust re-finding (from DOM extraction) */
+  selectorPath?: string
+  /** Additional arguments (e.g., value for setValue) */
+  args?: Record<string, unknown>
+}
+
 export interface RunGraphOutput {
   success: boolean
   taskId: string
   isNewTask: boolean
   thought?: string
   action?: string
+  /** Structured action details with selectorPath for robust element finding */
+  actionDetails?: ActionDetails
   chainedActions?: ChainedActionOutput[]
   chainMetadata?: ChainMetadataOutput
   plan?: TaskPlan

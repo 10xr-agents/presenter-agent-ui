@@ -12,6 +12,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { validateActionName } from "@/lib/agent/action-config"
+import { parseFinishMessage } from "@/lib/agent/action-parser"
 import {
   enhancePromptForChaining,
   identifyChainableGroups,
@@ -45,6 +46,7 @@ export async function actionGenerationNode(
     previousActions,
     plan,
     currentStepIndex,
+    planExhausted,
     verificationResult,
     correctionResult,
   } = state
@@ -70,6 +72,15 @@ export async function actionGenerationNode(
         currentPlanStep = currentStep.description
         systemMessages.push(`Current plan step (${currentStepIndex + 1}/${plan.steps.length}): ${currentStep.description}`)
       }
+    } else if (planExhausted && plan) {
+      // All plan steps have been executed - tell LLM to check goal completion
+      systemMessages.push(
+        `PLAN COMPLETED: All ${plan.steps.length} planned steps have been executed. ` +
+        `Check if the user's original goal "${query}" has been achieved. ` +
+        `If the goal is complete (e.g., form submitted, invitation sent, action confirmed), call finish("Goal achieved: [brief description]"). ` +
+        `If something is still missing or needs verification, take one more action to verify or complete.`
+      )
+      log.info(`Plan exhausted - instructing LLM to check goal completion`)
     }
 
     // Add verification failure context
@@ -177,17 +188,24 @@ export async function actionGenerationNode(
     }
 
     // Build action result (single action; chaining not used with structured output)
+    // Extract finishMessage if this is a finish action (deterministic parsing, no regex)
+    const finishMessage = parseFinishMessage(action)
+
     const actionResult: {
       thought: string
       action: string
+      finishMessage?: string
       chainedActions?: ChainedActionResult[]
       chainMetadata?: ChainMetadataResult
     } = {
       thought,
       action,
+      ...(finishMessage && { finishMessage }),
     }
 
-    log.info(`Generated single action: ${action} (${llmDuration}ms)`)
+    log.info(`Generated single action: ${action} (${llmDuration}ms)`, {
+      hasFinishMessage: !!finishMessage,
+    })
 
     return {
       actionResult,

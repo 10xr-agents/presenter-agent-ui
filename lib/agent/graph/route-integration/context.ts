@@ -152,8 +152,29 @@ export async function loadTaskContext(
     trimmedPreviousActions = previousActions.slice(-ROLLING_CONTEXT_WINDOW)
     previousActionsSummary = `${kept} earlier steps completed.`
   }
-  const currentStepIndex =
-    (task.plan as TaskPlan | undefined)?.currentStepIndex ?? fullActionCount
+
+  // IMPORTANT: plan.currentStepIndex is historically not always persisted/advanced.
+  // Use action history as the source of truth, and only use plan.currentStepIndex when it is ahead.
+  const planCurrentStepIndex = (task.plan as TaskPlan | undefined)?.currentStepIndex ?? 0
+  const currentStepIndex = Math.max(fullActionCount, planCurrentStepIndex)
+
+  // Auto-heal stale plan.currentStepIndex so downstream graph nodes that rely on plan.currentStepIndex
+  // (e.g. tiered verification / "is last step") remain consistent.
+  if (task.plan && planCurrentStepIndex !== currentStepIndex) {
+    try {
+      await (Task as any)
+        .findOneAndUpdate(
+          { taskId, tenantId },
+          { $set: { "plan.currentStepIndex": currentStepIndex } }
+        )
+        .exec()
+    } catch (err: unknown) {
+      logger.child({ process: "RouteIntegration", taskId, tenantId }).warn(
+        "loadTaskContext: failed to auto-heal plan.currentStepIndex",
+        { err: err instanceof Error ? err.message : String(err) }
+      )
+    }
+  }
 
   return {
     task,

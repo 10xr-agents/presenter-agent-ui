@@ -37,6 +37,89 @@ export const chainActionErrorSchema = z.object({
 export type ChainActionError = z.infer<typeof chainActionErrorSchema>
 
 /**
+ * DOM processing mode for hybrid vision + skeleton pipeline
+ * V3: semantic_v3 is PRIMARY mode with ultra-light extraction
+ */
+export const domModeSchema = z.enum(["semantic_v3", "semantic", "skeleton", "full", "hybrid"])
+export type DomMode = z.infer<typeof domModeSchema>
+
+// =============================================================================
+// V3 Semantic Extraction Schemas
+// =============================================================================
+
+/**
+ * V3 Semantic Node (minified keys for token efficiency)
+ * See docs/DOM_EXTRACTION_ARCHITECTURE.md for full specification
+ */
+export const semanticNodeV3Schema = z.object({
+  /** Element ID (stable data-llm-id) - use this in click(i) or setValue(i, text) */
+  i: z.string(),
+  /** Role (minified: btn=button, inp=input, link=link, chk=checkbox, sel=select) */
+  r: z.string(),
+  /** Name/label visible to user */
+  n: z.string(),
+  /** Current value (for inputs) */
+  v: z.string().optional(),
+  /** State (disabled, checked, expanded, etc.) */
+  s: z.string().optional(),
+  /** [x, y] center coordinates on screen */
+  xy: z.tuple([z.number(), z.number()]).optional(),
+  /** Frame ID (0 = main frame, omitted if 0) */
+  f: z.number().optional(),
+  // V3 ADVANCED FIELDS:
+  /** Bounding box [x, y, width, height] for Set-of-Mark multimodal */
+  box: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+  /** Scrollable container info: depth=scroll%, h=hasMore */
+  scr: z
+    .object({
+      depth: z.string(),
+      h: z.boolean(),
+    })
+    .optional(),
+  /** True if element is occluded by modal/overlay (don't click) */
+  occ: z.boolean().optional(),
+})
+
+export type SemanticNodeV3 = z.infer<typeof semanticNodeV3Schema>
+
+/**
+ * V2 Semantic Node (full keys, fallback format)
+ */
+export const semanticNodeV2Schema = z.object({
+  id: z.string(),
+  role: z.string(),
+  name: z.string(),
+  value: z.string().optional(),
+  state: z.string().optional(),
+  type: z.string().optional(),
+  placeholder: z.string().optional(),
+  href: z.string().optional(),
+  isInShadow: z.boolean().optional(),
+  frameId: z.number().optional(),
+  bounds: z
+    .object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    })
+    .optional(),
+})
+
+export type SemanticNodeV2 = z.infer<typeof semanticNodeV2Schema>
+
+/**
+ * Scrollable container info for virtual list detection
+ */
+export const scrollableContainerSchema = z.object({
+  id: z.string(),
+  depth: z.string(),
+  hasMore: z.boolean(),
+})
+
+export type ScrollableContainer = z.infer<typeof scrollableContainerSchema>
+
+/**
  * Request body schema for POST /api/agent/interact
  */
 export const interactRequestBodySchema = z.object({
@@ -50,6 +133,127 @@ export const interactRequestBodySchema = z.object({
   }, "Invalid URL"),
   query: z.string().min(1).max(10000),
   dom: z.string().min(1).max(1000000), // Increased from 500000 to 1000000 to handle large DOMs
+  // =========================================================================
+  // Hybrid Vision + Skeleton Fields
+  // =========================================================================
+  /**
+   * Base64-encoded JPEG screenshot of visible viewport.
+   * - Max width: 1024px (aspect ratio maintained)
+   * - Quality: 0.7 (JPEG)
+   * - null if screenshot unchanged since last request (perceptual hash match)
+   * - Max size: 2MB base64 encoded (~1.5MB actual image)
+   */
+  screenshot: z.string().max(2000000).nullable().optional(),
+  /**
+   * Processing mode hint for server.
+   * - "skeleton": Use skeletonDom only (fast, low tokens)
+   * - "full": Use full dom only (backward compatible)
+   * - "hybrid": Use screenshot + skeletonDom (best for visual tasks)
+   */
+  domMode: domModeSchema.optional(),
+  /**
+   * Skeleton DOM containing only interactive elements.
+   * Sent when domMode is "skeleton" or "hybrid".
+   * Server can also extract this from full DOM if not provided.
+   * Max size: 100KB (interactive elements only, much smaller than full DOM)
+   */
+  skeletonDom: z.string().max(100000).optional(),
+  /**
+   * Hash of current screenshot for deduplication.
+   * If server has cached this hash, it can skip image processing.
+   */
+  screenshotHash: z.string().max(256).optional(),
+  // =========================================================================
+  // V3 Semantic Extraction Fields (PRIMARY mode)
+  // See docs/DOM_EXTRACTION_ARCHITECTURE.md and docs/SPECS_AND_CONTRACTS.md
+  // =========================================================================
+  /**
+   * V3 minified interactive element tree (PRIMARY extraction format).
+   * When domMode is "semantic_v3", this contains the viewport-pruned,
+   * minified JSON array of interactive elements.
+   */
+  interactiveTree: z.array(semanticNodeV3Schema).optional(),
+  /**
+   * V2 semantic nodes (fallback format with full keys).
+   * Used when domMode is "semantic" or V3 extraction fails.
+   */
+  semanticNodes: z.array(semanticNodeV2Schema).optional(),
+  /**
+   * Viewport dimensions for coordinate-based interactions.
+   */
+  viewport: z
+    .object({
+      width: z.number(),
+      height: z.number(),
+    })
+    .optional(),
+  /**
+   * Page title for context.
+   */
+  pageTitle: z.string().max(500).optional(),
+  // =========================================================================
+  // V3 Advanced Fields (Production-Grade)
+  // =========================================================================
+  /**
+   * Page scroll depth as percentage (e.g., "0%", "50%", "100%").
+   */
+  scrollPosition: z.string().max(10).optional(),
+  /**
+   * Virtual list containers detected on the page.
+   * Used for infinite scroll handling.
+   */
+  scrollableContainers: z.array(scrollableContainerSchema).optional(),
+  /**
+   * Recent DOM mutation events (mutation stream for ghost state detection).
+   * Format: ["[2s ago] Added: 'Success'", "[1s ago] Removed: 'Loading'"]
+   */
+  recentEvents: z.array(z.string().max(200)).max(20).optional(),
+  /**
+   * True if recent error messages were detected in DOM.
+   */
+  hasErrors: z.boolean().optional(),
+  /**
+   * True if recent success messages were detected in DOM.
+   */
+  hasSuccess: z.boolean().optional(),
+  // =========================================================================
+  // Sentinel Verification Fields (Production-Grade)
+  // =========================================================================
+  /**
+   * Result of client-side Sentinel verification for the previous action.
+   */
+  verification_passed: z.boolean().optional(),
+  /**
+   * Human-readable verification feedback from Sentinel verification.
+   */
+  verification_message: z.string().max(500).optional(),
+  /**
+   * Errors detected by Sentinel verification.
+   */
+  errors_detected: z.array(z.string().max(200)).max(10).optional(),
+  /**
+   * Success messages detected by Sentinel verification.
+   */
+  success_messages: z.array(z.string().max(200)).max(10).optional(),
+  // =========================================================================
+  // DOM RAG Fields (Production-Grade for huge pages)
+  // =========================================================================
+  /**
+   * True if DOM was filtered via DOM RAG (client-side chunking).
+   */
+  dom_filtered: z.boolean().optional(),
+  /**
+   * Reason for DOM filtering (e.g., "Filtered for 'Samsung Price'").
+   */
+  filter_reason: z.string().max(200).optional(),
+  /**
+   * Original node count before filtering.
+   */
+  original_node_count: z.number().int().nonnegative().optional(),
+  /**
+   * Token reduction percentage achieved by DOM RAG.
+   */
+  token_reduction: z.number().min(0).max(100).optional(),
   taskId: z
     .string()
     .refine((val) => {
@@ -276,11 +480,34 @@ export const chainMetadataResponseSchema = z.object({
 export type ChainMetadataResponse = z.infer<typeof chainMetadataResponseSchema>
 
 /**
+ * Structured action details with selector fallback (Robust Element Selectors)
+ * @see docs/ROBUST_ELEMENT_SELECTORS_SPEC.md
+ */
+export const actionDetailsSchema = z.object({
+  /** Action name: click, setValue, press, navigate, finish, fail, etc. */
+  name: z.string(),
+  /** Element ID for DOM actions */
+  elementId: z.number().int().positive().optional(),
+  /** CSS selector path for robust re-finding (from DOM extraction) */
+  selectorPath: z.string().optional(),
+  /** Additional arguments (e.g., value for setValue) */
+  args: z.record(z.string(), z.unknown()).optional(),
+})
+
+export type ActionDetails = z.infer<typeof actionDetailsSchema>
+
+/**
  * Response schema for POST /api/agent/interact
  */
 export const nextActionResponseSchema = z.object({
   thought: z.string(),
   action: z.string(),
+  /**
+   * Structured action details with selectorPath for robust element finding.
+   * When present, extension should prefer selectorPath if elementId fails.
+   * @see docs/ROBUST_ELEMENT_SELECTORS_SPEC.md
+   */
+  actionDetails: actionDetailsSchema.optional(),
   usage: z
     .object({
       promptTokens: z.number().int().nonnegative(),

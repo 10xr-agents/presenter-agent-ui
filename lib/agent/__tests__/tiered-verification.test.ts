@@ -9,7 +9,7 @@
  * @see docs/VERIFICATION_PROCESS.md - Phase 5
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/db/mongoose", () => ({
   connectMongoose: vi.fn().mockResolvedValue(undefined),
@@ -22,14 +22,14 @@ vi.mock("@/lib/llm/gemini-client", () => ({
   generateWithGemini: vi.fn(),
 }))
 
+import type { TaskPlan } from "@/lib/models/task"
+import type { HierarchicalPlan, SubTask } from "../hierarchical-planning"
 import {
-  tryDeterministicVerification,
   computeIsLastStep,
   estimateTokensSaved,
   type TieredVerificationOptions,
+  tryDeterministicVerification,
 } from "../verification/tiered-verification"
-import type { HierarchicalPlan, SubTask } from "../hierarchical-planning"
-import type { TaskPlan } from "@/lib/models/task"
 
 describe("Tiered Verification (Phase 5)", () => {
   describe("computeIsLastStep", () => {

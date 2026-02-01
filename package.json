@@ -147,6 +147,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@total-typescript/ts-reset": "^0.6.1",
+    "@types/jsdom": "^27.0.0",
     "@types/node": "^25.0.3",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19.2.7",

@@ -8,11 +8,16 @@
  * All LLM calls should use structured output (responseJsonSchema) so responses
  * are valid JSON and parseable without regex/markdown extraction.
  *
+ * Supports multimodal inputs (text + images) for the hybrid vision + skeleton pipeline.
+ *
  * @see https://ai.google.dev/gemini-api/docs/structured-output
+ * @see https://ai.google.dev/gemini-api/docs/vision
  */
 
-import * as Sentry from "@sentry/nextjs"
 import { GoogleGenAI, ThinkingLevel } from "@google/genai"
+import * as Sentry from "@sentry/nextjs"
+import type { ImageInput, MultimodalContent } from "./multimodal-helpers"
+import { buildMultimodalContent, isMultimodalContent } from "./multimodal-helpers"
 
 /** Default model for general LLM calls (action generation, etc.) */
 export const DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
@@ -45,6 +50,13 @@ export interface GenerateWithGeminiOptions {
    * @see https://ai.google.dev/gemini-api/docs/structured-output
    */
   responseJsonSchema?: ResponseJsonSchema
+  /**
+   * Images for multimodal (vision) input.
+   * When provided, images are included before the text prompt.
+   * Used in the hybrid vision + skeleton pipeline.
+   * @see https://ai.google.dev/gemini-api/docs/vision
+   */
+  images?: ImageInput[]
   /** For LangFuse/tracing (optional) */
   generationName?: string
   sessionId?: string
@@ -62,10 +74,11 @@ export interface GenerateWithGeminiResult {
 /**
  * Call Gemini generateContent with system + user prompt.
  * Uses config.systemInstruction for system prompt and contents for user message.
+ * Supports multimodal input when options.images is provided.
  *
  * @param systemPrompt - System instruction (role/behavior)
  * @param userPrompt - User message content
- * @param options - Model, temperature, maxOutputTokens, and optional trace metadata
+ * @param options - Model, temperature, maxOutputTokens, images, and optional trace metadata
  * @returns Content and optional token counts, or null on error
  */
 export async function generateWithGemini(
@@ -85,6 +98,7 @@ export async function generateWithGemini(
   const maxOutputTokens = options?.maxOutputTokens ?? 2000
   const useGoogleSearchGrounding = options?.useGoogleSearchGrounding === true
   const thinkingLevel = options?.thinkingLevel
+  const images = options?.images
 
   const thinkingConfig =
     thinkingLevel != null
@@ -104,10 +118,20 @@ export async function generateWithGemini(
 
   const responseJsonSchema = options?.responseJsonSchema
 
+  // Build content: multimodal (with images) or text-only
+  let contents: string | MultimodalContent
+  if (images && images.length > 0) {
+    // Multimodal: images + text
+    contents = buildMultimodalContent(userPrompt, images)
+  } else {
+    // Text-only
+    contents = userPrompt
+  }
+
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: userPrompt,
+      contents,
       config: {
         systemInstruction: systemPrompt,
         temperature,

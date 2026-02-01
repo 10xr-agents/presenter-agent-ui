@@ -7,6 +7,7 @@
 
 import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
+import type { DomMode } from "@/lib/agent/schemas"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
 import type { PlanStep, TaskPlan } from "@/lib/models/task"
@@ -69,6 +70,8 @@ export interface ChainMetadataResult {
 export interface ActionResult {
   thought: string
   action: string
+  /** When action is finish("..."), this contains the extracted message for display */
+  finishMessage?: string
   toolAction?: {
     toolName: string
     toolType: "DOM" | "SERVER"
@@ -191,6 +194,16 @@ export interface InteractGraphState {
   dom: string
   previousUrl?: string
 
+  // Hybrid Vision + Skeleton fields
+  /** Base64-encoded JPEG screenshot of visible viewport (max 1024px width, quality 0.7) */
+  screenshot?: string | null
+  /** Processing mode: skeleton (fast), full (legacy), or hybrid (vision + skeleton) */
+  domMode?: DomMode
+  /** Skeleton DOM containing only interactive elements */
+  skeletonDom?: string
+  /** Hash of current screenshot for deduplication */
+  screenshotHash?: string
+
   // Session context
   sessionId?: string
   taskId?: string
@@ -219,6 +232,9 @@ export interface InteractGraphState {
   currentStepIndex: number
   /** Phase 4 Task 8: Hierarchical plan (sub-tasks) when decomposition was applied. */
   hierarchicalPlan?: HierarchicalPlan
+  /** True when all plan steps have been executed but task wasn't marked complete.
+   * Signals to action generation that it should check goal completion and finish. */
+  planExhausted?: boolean
 
   // Previous actions history
   previousActions: PreviousAction[]

@@ -7,66 +7,59 @@
  * dropdowns) and false verification failures.
  *
  * Used by: Outcome Prediction Engine, Verification Engine.
+ *
+ * Uses deterministic string parsing (no regex) for predictable behavior.
  */
+
+import {
+  extractClickElementId,
+  extractTagName,
+  findElementById,
+  hasNavigationIndicator,
+  hasPopupIndicator,
+} from "./action-parser"
 
 export type ActionType = "dropdown" | "navigation" | "generic"
 
 /**
  * Classify action type from action string and DOM.
+ * Uses deterministic string parsing (no regex).
  *
  * - dropdown: click on element with aria-haspopup or data-has-popup
- * - navigation: navigate(...), goBack(...), OR click on <a> tags / nav links
+ * - navigation: navigate(...), goBack(...), OR click on <a> tags / nav links / tab buttons
  * - generic: everything else (click without popup, setValue, etc.)
  */
 export function classifyActionType(action: string, dom: string): ActionType {
-  const t = action.trim()
+  const t = action.trim().toLowerCase()
 
-  // Explicit navigation commands
-  if (/^navigate\(/i.test(t) || /^goBack\s*\(\s*\)/i.test(t)) {
+  // Explicit navigation commands (deterministic string checks)
+  if (t.startsWith("navigate(") || t.startsWith("goback(")) {
     return "navigation"
   }
 
-  const clickMatch = t.match(/^click\s*\(\s*(\d+)\s*\)\s*$/)
-  if (clickMatch) {
-    const elementId = clickMatch[1]
-    
-    // Try to find the element in the DOM
-    // Match patterns like: id="123" or id='123' or id=123
-    const elementRegex = new RegExp(`id=["']?${elementId}["']?[^>]*>`, "i")
-    const elementMatch = dom.match(elementRegex)
-    
-    if (elementMatch) {
-      const elementHtml = elementMatch[0]
-      
+  // Check if this is a click action
+  const elementId = extractClickElementId(action)
+  if (elementId) {
+    // Find the element in the DOM using deterministic parsing
+    const elementTag = findElementById(dom, elementId)
+
+    if (elementTag) {
       // Check for dropdown/popup indicators
-      const hasPopup =
-        /aria-haspopup=["']?[^"'\s>]+["']?/i.test(elementHtml) ||
-        /data-has-popup=["']?[^"'\s>]+["']?/i.test(elementHtml)
-      if (hasPopup) return "dropdown"
-      
-      // Check for navigation indicators:
-      // 1. Element is an <a> tag (anchor link)
-      // 2. Element has href attribute
-      // 3. Element has role="link"
-      // 4. Element is inside a <nav> element (we check if parent context suggests navigation)
-      const isAnchorTag = elementMatch[0].toLowerCase().startsWith("<a ")
-      const hasHref = /href=["']?[^"'\s>]+["']?/i.test(elementHtml)
-      const hasRoleLink = /role=["']?link["']?/i.test(elementHtml)
-      
-      if (isAnchorTag || hasHref || hasRoleLink) {
+      if (hasPopupIndicator(elementTag)) {
+        return "dropdown"
+      }
+
+      // Check for navigation indicators (links, tabs, etc.)
+      if (hasNavigationIndicator(elementTag)) {
         return "navigation"
       }
     }
-    
-    // Additional check: Look for the element by expanding the regex to capture the tag name
-    const tagRegex = new RegExp(`<(\\w+)[^>]*id=["']?${elementId}["']?[^>]*>`, "i")
-    const tagMatch = dom.match(tagRegex)
-    if (tagMatch) {
-      const tagName = tagMatch[1]?.toLowerCase()
-      // <a> tags are navigation
-      if (tagName === "a") {
-        return "navigation"
-      }
+
+    // Fallback: check tag name even if full tag wasn't found
+    // Sometimes the DOM structure makes it hard to capture the full tag
+    const tagName = elementTag ? extractTagName(elementTag) : undefined
+    if (tagName === "a") {
+      return "navigation"
     }
   }
 

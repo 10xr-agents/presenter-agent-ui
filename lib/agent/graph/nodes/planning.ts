@@ -36,7 +36,9 @@ export async function planningNode(
   if (plan) {
     log.info(`Using existing plan with ${plan.steps.length} steps, currentIndex=${plan.currentStepIndex}`)
     return {
-      currentStepIndex: plan.currentStepIndex || 0,
+      // Preserve any higher step index computed from action history (route-integration context),
+      // while still supporting plans that are legitimately ahead.
+      currentStepIndex: Math.max(state.currentStepIndex ?? 0, plan.currentStepIndex || 0),
       status: "executing",
     }
   }

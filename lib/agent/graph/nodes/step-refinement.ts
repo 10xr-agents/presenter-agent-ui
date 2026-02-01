@@ -7,6 +7,7 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
+import { parseFinishMessage } from "@/lib/agent/action-parser"
 import { refineStep } from "@/lib/agent/step-refinement-engine"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
@@ -38,9 +39,18 @@ export async function stepRefinementNode(
   })
 
   if (!plan || currentStepIndex >= plan.steps.length) {
-    log.info("No plan or step index out of bounds, falling back to LLM")
+    // Plan exhausted: all steps completed but task wasn't marked complete by verification
+    // Signal to action generation that plan is done so it can check goal completion
+    const planExhausted = plan && currentStepIndex >= plan.steps.length
+    log.info(
+      planExhausted
+        ? `Plan exhausted (${plan.steps.length} steps done), falling back to LLM for goal check`
+        : "No plan, falling back to LLM"
+    )
     return {
       // Signal to use action_generation instead
+      // Pass planExhausted flag so action generation knows all plan steps are complete
+      planExhausted,
       status: "executing",
     }
   }
@@ -54,6 +64,16 @@ export async function stepRefinementNode(
   }
 
   log.info(`Refining step ${currentStepIndex}: "${currentStep.description}"`)
+
+  // Log DOM size for debugging analysis steps
+  const isAnalysisStep =
+    currentStep.description.toLowerCase().includes("analyze") ||
+    currentStep.description.toLowerCase().includes("figure out") ||
+    currentStep.description.toLowerCase().includes("find") ||
+    currentStep.description.toLowerCase().includes("identify")
+  if (isAnalysisStep) {
+    log.debug(`Analysis step detected, DOM size: ${dom.length} chars`)
+  }
 
   const verificationSummary =
     verificationResult != null
@@ -91,11 +111,17 @@ export async function stepRefinementNode(
         }
       }
 
-      log.info(`Refined to action: ${refinedAction.action}`)
+      // Extract finishMessage if this is a finish action (deterministic parsing, no regex)
+      const finishMessage = parseFinishMessage(refinedAction.action)
+
+      log.info(`Refined to action: ${refinedAction.action}`, {
+        hasFinishMessage: !!finishMessage,
+      })
       return {
         actionResult: {
           thought: `Refined from plan step: ${currentStep.description}`,
           action: refinedAction.action,
+          ...(finishMessage && { finishMessage }),
           toolAction: {
             toolName: refinedAction.toolName,
             toolType: refinedAction.toolType,

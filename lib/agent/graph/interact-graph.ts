@@ -55,11 +55,11 @@ import { contextAnalysisNode, routeAfterContextAnalysis } from "./nodes/context-
 import { correctionNode, routeAfterCorrection } from "./nodes/correction"
 import { directActionNode, routeAfterDirectAction } from "./nodes/direct-action"
 import { finalizeNode } from "./nodes/finalize"
+import { goalAchievedNode } from "./nodes/goal-achieved"
 import { outcomePredictionNode, routeAfterOutcomePrediction } from "./nodes/outcome-prediction"
 import { planningNode, routeAfterPlanning } from "./nodes/planning"
 import { replanningNode, routeAfterReplanning } from "./nodes/replanning" // Phase 3 Task 2
 import { routeAfterStepRefinement, stepRefinementNode } from "./nodes/step-refinement"
-import { goalAchievedNode } from "./nodes/goal-achieved"
 import { routeAfterVerification, verificationNode } from "./nodes/verification"
 import { DEFAULT_GRAPH_CONFIG } from "./types"
 import type { ComplexityLevel, GraphTaskStatus, InteractGraphConfig, InteractGraphState, NodeName } from "./types"
