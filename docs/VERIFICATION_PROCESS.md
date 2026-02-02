@@ -78,12 +78,12 @@ Tasks below are ordered by importance (1 = highest). Same status legend: ✅ = C
 | **6** | **Extension beforeDomHash (optional)** | 🔲 Planned | 3.x | Extension captures domHash (or skeleton) **immediately before** executing the action and sends in request; server compares client-before vs client-after to reduce state drift from tickers/ads. Protocol/extension change. **Files:** API schema, extension, verification engine (optional beforeDomHash in request). |
 | **7** | **Planner / step_refinement: pass verification outcome into context (optional)** | ✅ Complete | 3.0.4 | Pass `action_succeeded` and `task_completed` into planning and step_refinement so the prompt can say "Previous action succeeded; full goal not yet achieved." **Files:** `lib/agent/verification/types.ts` (VerificationSummary), `lib/agent/planning-engine.ts` (PlanningContext.verificationSummary), `lib/agent/step-refinement-engine.ts` (verificationSummary param), `lib/agent/graph/nodes/step-refinement.ts` (pass from state.verificationResult), `lib/agent/graph/nodes/replanning.ts` (pass verificationSummary to generatePlan). |
 | **8** | **Semantic loop prevention (velocity check)** | ✅ Complete | — | If the agent performs 5+ consecutive successful verifications without task_completed (e.g. paging through list forever), route to finalize with a reflection message. **Logic:** `consecutiveSuccessWithoutTaskComplete` incremented when verification success && !goalAchieved; reset when goalAchieved or verification failed. When >= 5, verification node sets error/status and router routes to finalize. **Files:** `lib/agent/graph/nodes/verification.ts`, `lib/agent/graph/types.ts`, `lib/models/task.ts`, `lib/agent/graph/route-integration/persistence.ts`. See INTERACT_FLOW_WALKTHROUGH.md § Logical improvements. |
-| **10** | **Tiered verification: Add isLastStep to context** | 🔲 Planned | 5.0 | Pass `plan.currentStepIndex` and `plan.steps.length` to verification; compute `isLastStep`. **Critical for Tier 1 optimization.** See "Phase 5: Tiered Verification Optimization" below. |
-| **11** | **Tiered verification: Tier 1 deterministic heuristics** | 🔲 Planned | 5.0 | Implement `tryDeterministicVerification()` for intermediate navigation/interaction success (0 tokens). |
-| **12** | **Tiered verification: Tier 2 lightweight LLM** | 🔲 Planned | 5.0 | Implement `performLightweightVerification()` with `thinkingLevel="low"`, no grounding (~100 tokens). |
-| **13** | **Tiered verification: Wire tiers into main flow** | 🔲 Planned | 5.0 | Update `verifyActionWithObservations()` to try Tier 1 → Tier 2 → Tier 3. |
-| **14** | **URL normalization utility** | 🔲 Planned | 5.0 | Use `URL` API for robust hostname/pathname comparison, `isCrossDomainNavigation()`. |
-| **15** | **Observability: tier attribution** | 🔲 Planned | 5.0 | Add `verificationTier` to result; log which tier was used for cost tracking. |
+| **10** | **Tiered verification: Add isLastStep to context** | ✅ Complete | 5.0 | `computeIsLastStep()` in tiered-verification.ts; hierarchical-plan aware. |
+| **11** | **Tiered verification: Tier 1 deterministic heuristics** | ✅ Complete | 5.0 | `tryDeterministicVerification()` with 6 checks: navigation, DOM change, cross-domain, look-ahead, SIMPLE nav. |
+| **12** | **Tiered verification: Tier 2 lightweight LLM** | ✅ Complete | 5.0 | `performLightweightVerification()` with thinkingLevel="low", ~100 tokens, safety gates. |
+| **13** | **Tiered verification: Wire tiers into main flow** | ✅ Complete | 5.0 | `runTieredVerification()` called in verification-engine.ts; Tier 1→2→3 flow. |
+| **14** | **URL normalization utility** | ✅ Complete | 5.0 | `hasSignificantUrlChange()`, `isCrossDomainNavigation()`, `normalizeUrl()` in dom-helpers.ts. |
+| **15** | **Observability: tier attribution** | ✅ Complete | 5.0 | LangFuse scores `verification_tier` (1.0/0.5/0.0) and `verification_tokens_saved`. |
 
 **Progress (Verification + Planner):** Task 7 implemented. `VerificationSummary` type added; step-refinement and planning engines accept it and inject the continuation sentence into the LLM prompt when `action_succeeded === true` and `task_completed === false`. Step-refinement and replanning nodes pass summary from `state.verificationResult`. Task 8 (velocity check) implemented: prevents semantic loops by failing the task with a reflection message after 5 steps without sub-goal completion. Tests: `lib/agent/__tests__/step-refinement-engine.test.ts`, `lib/agent/__tests__/planning-engine.test.ts`. See PLANNER_PROCESS.md Changelog.
 **Progress (Task 9 — Sub-task-level verification):** When hierarchicalPlan is present, verification node passes current sub-task objective (subTaskObjective) to verifyActionWithObservations. Semantic verification prompt and parser support sub_task_completed; engine returns sub_task_completed when subTaskObjective was provided. Verification node advances sub-task (completeSubTask with success: true) when sub_task_completed && confidence ≥ 0.7, fails sub-task (completeSubTask with success: false) when sub_task_completed === false && !success; goalAchieved set when all sub-tasks complete (isHierarchicalPlanComplete). Files: verification/types.ts, semantic-verification.ts, verification-engine.ts, graph/nodes/verification.ts.
@@ -163,6 +163,64 @@ The extension tracks DOM changes between snapshots and reports them as `recentEv
 
 ---
 
+## Action Chaining Verification Levels
+
+**Status:** ✅ Implemented | **Phase:** 5.5
+
+When actions are chained (e.g., form fills), the system uses **tiered verification levels** to reduce round-trips while maintaining accuracy.
+
+### Verification Levels
+
+| Level | Where | Token Cost | When Used |
+|-------|-------|------------|-----------|
+| `client` | Chrome Extension | 0 | Intermediate form fills, checkbox changes |
+| `lightweight` | Server (Tier 2 LLM) | ~100 | Last action in safe chains |
+| `full` | Server (Tier 3 LLM) | ~400+ | Navigation, complex verifications |
+
+### Client-Side Verification
+
+For `verificationLevel: "client"`, the extension performs local checks WITHOUT calling the server:
+
+| Check Type | Description |
+|------------|-------------|
+| `value_matches` | Verify input field value equals expected |
+| `state_changed` | Verify checkbox/radio state changed |
+| `element_visible` | Verify element is visible after action |
+| `no_error_message` | No error toast/message appeared |
+
+### Chain Verification Flow
+
+```
+Chain: [setValue(1, "John"), setValue(2, "Doe"), setValue(3, "email")]
+                 ↓                    ↓                    ↓
+        verificationLevel:   verificationLevel:   verificationLevel:
+            "client"             "client"          "lightweight"
+                 ↓                    ↓                    ↓
+        Extension checks     Extension checks     Server verifies
+          value="John"        value="Doe"         final state
+```
+
+### Integration with Tiered Verification
+
+| Chain Verification Level | Maps to Server Tier |
+|--------------------------|---------------------|
+| `client` | N/A (no server call) |
+| `lightweight` | Tier 2 (lightweight LLM) |
+| `full` | Tier 3 (full semantic) |
+
+### When Client Verification is Sufficient
+
+| Chain Reason | Client Sufficient? |
+|--------------|-------------------|
+| `FORM_FILL` | ✅ Yes |
+| `RELATED_INPUTS` | ✅ Yes |
+| `BULK_SELECTION` | ✅ Yes |
+| `SEQUENTIAL_STEPS` | ❌ No |
+
+**Reference:** See `docs/SPECS_AND_CONTRACTS.md` § 9 (Atomic Actions & Action Chaining) and `lib/agent/chaining/types.ts`.
+
+---
+
 ## Unified Task Order (Verification + Planner)
 
 Verification and planner are **dependent**: verification produces outcomes that the planner consumes, and (later) planner hierarchical state requires sub-task-level verification. Use this **single ordered sequence** so both flows stay in sync.
@@ -178,9 +236,9 @@ Verification and planner are **dependent**: verification produces outcomes that 
 | **7** | Verification | Extension beforeDomHash (optional) | — | Verification Task 6; protocol/extension change. Independent of 1–6. |
 | **8** | Planner | **Wire hierarchical planning into interact graph** | — | ✅ Complete. hierarchicalPlan in graph state; planning node calls decomposePlan; persisted with task. |
 | **9** | Verification | **Sub-task-level verification** (when hierarchical in graph) | 8 | ✅ Complete. subTaskObjective passed to verification; sub_task_completed returned; verification node advances/fails sub-task; goalAchieved when all sub-tasks complete. |
-| **10** | Verification | **Tiered verification: Planner-aware isLastStep** | — | 🔲 Planned. Pass plan context to verification; enable Tier 1 deterministic checks for intermediate steps. See Phase 5 below. |
-| **11** | Verification | **Tiered verification: Deterministic heuristics (Tier 1)** | 10 | 🔲 Planned. Zero-token verification for intermediate navigation/interaction. |
-| **12** | Verification | **Tiered verification: Lightweight LLM (Tier 2)** | 10 | 🔲 Planned. Reduced tokens for simple final-step verification. |
+| **10** | Verification | **Tiered verification: Planner-aware isLastStep** | — | ✅ Complete. `computeIsLastStep()` in tiered-verification.ts. |
+| **11** | Verification | **Tiered verification: Deterministic heuristics (Tier 1)** | 10 | ✅ Complete. Zero-token verification with 6 checks. |
+| **12** | Verification | **Tiered verification: Lightweight LLM (Tier 2)** | 10 | ✅ Complete. ~100 tokens with safety gates. |
 
 **Summary:** Do **Verification 1 → 2, 3, 4** (verification contract and robustness), then **5 + 6** (wire verification outcome to planner), then **7** (optional extension), then **8 → 9** (hierarchical: planner first, then verification sub-task support). See **PLANNER_PROCESS.md** § Unified Task Order for the same table and planner-side details.
 

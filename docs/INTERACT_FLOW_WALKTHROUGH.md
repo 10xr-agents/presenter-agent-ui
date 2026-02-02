@@ -28,7 +28,8 @@
 | **LangGraph.js + Complexity Routing** | ✅ **DEFAULT** | 1 | `lib/agent/graph/` - Always enabled, no flag needed |
 | **LangFuse + Sentry Separation** | ✅ **COMPLETE** | 1 | `lib/observability/` - Enable when LangFuse keys are set |
 | **Hybrid Cost Tracking** | ✅ **COMPLETE** | 1 | `lib/cost/` - Dual-write to MongoDB + LangFuse |
-| **Action Chaining** | ✅ **COMPLETE** | 2 | `lib/agent/chaining/` - Chain safety analysis + partial failure recovery |
+| **Action Chaining** | ✅ **COMPLETE** | 2 | `lib/agent/chaining/` - Chain safety analysis + partial failure recovery + verification levels |
+| **Atomic Action Validator** | ✅ **COMPLETE** | 5 | `lib/agent/atomic-action-validator.ts` - Ensures each plan step = ONE Chrome action |
 | **Knowledge Extraction Pipeline** | ✅ **COMPLETE** | 2 | `lib/knowledge/` - Multi-format doc ingestion + web crawling |
 | **Two-Phase SPA Ingestion** | 🔲 Planned | 3 | Required for Knowledge Extraction |
 | **DOM Similarity Algorithm** | ✅ **COMPLETE** | 3 | `lib/agent/dom-similarity.ts` - Jaccard similarity on element signatures |
@@ -43,6 +44,10 @@
 | **Tiered Verification** | ✅ **COMPLETE** | 5 | `lib/agent/verification/tiered-verification.ts`. **Token efficiency optimization:** Tier 1 (deterministic, 0 tokens), Tier 2 (lightweight LLM, ~100 tokens), Tier 3 (full LLM). Intermediate steps use Tier 1; final steps use Tier 2/3. See **VERIFICATION_PROCESS.md** Phase 5. |
 | **V3 Semantic Extraction** | ✅ **SCHEMA READY** | 5 | `lib/agent/schemas.ts`. **PRIMARY DOM mode:** 99%+ token reduction with minified JSON (`interactiveTree`). V3 Advanced fields: `recentEvents`, `hasErrors`, `scrollableContainers`. See **DOM_EXTRACTION_ARCHITECTURE.md**. |
 | **Sentinel Verification** | ✅ **SCHEMA READY** | 5 | `lib/agent/schemas.ts`. **Client-side verification:** `verification_passed`, `errors_detected`, `success_messages`. See **VERIFICATION_PROCESS.md** § V3 Advanced. |
+| **Blocker Detection & Pause/Resume** | ✅ **COMPLETE** | 6 | `lib/agent/blocker-detection.ts`. **Auto-detection:** Login failures, CAPTCHA, MFA, rate limits. Task pauses with `awaiting_user` status. Resume via `/api/session/[sessionId]/task/[taskId]/resume`. See § Blocker Detection & Task Pause/Resume System. |
+| **Session & Task Memory** | ✅ **COMPLETE** | 6 | `lib/agent/memory/`. **Hierarchical memory:** Task-scoped (default) and session-scoped (opt-in via exportToSession). Actions: `remember`, `recall`, `exportToSession`. |
+| **File Attachments & Chat-Only Mode** | ✅ **COMPLETE** | 7 | `lib/agent/task-type-classifier.ts`, `lib/agent/file-context.ts`, `lib/agent/graph/nodes/chat-response.ts`. **True chatbot mode:** Tasks can be `chat_only` (no browser), `web_only`, or `web_with_file`. URL is optional for chat-only tasks. |
+| **Report Generation** | ✅ **COMPLETE** | 7 | `lib/agent/report-generator.ts`, `/api/session/[sessionId]/task/[taskId]/report`. **Downloadable reports:** JSON, CSV, Markdown formats from task results. |
 
 **Legend:** ✅ = Complete/Default | 🔄 = In Progress | 🔲 Planned
 
@@ -52,6 +57,8 @@
 
 - **Verification:** The interact flow uses **observation-based verification only** (`verifyActionWithObservations`). We compare **beforeState** (url, domHash, optional semanticSkeleton) to current DOM/URL, build an observation list, and ask the semantic LLM for a verdict. **Prediction-based verification** (expectedOutcome + DOM checks via `verifyAction`) is **not** used for the primary verification path; it exists only for correction/legacy support. **Phase 5 Tiered Verification:** For token efficiency, verification now uses a 3-tier approach: Tier 1 (deterministic heuristics, 0 tokens) for intermediate steps; Tier 2 (lightweight LLM, ~100 tokens) for simple final steps; Tier 3 (full LLM) for complex cases. Results include `verificationTier` and `tokensSaved` for observability. See **VERIFICATION_PROCESS.md** for goalAchieved, action_succeeded vs task_completed, step-level vs task-level, sub-task verification, and Phase 5 tiered verification.
 - **Planner:** Verification outcome (action_succeeded, task_completed) is passed into planning and step_refinement; hierarchical planning is wired in the graph with sub-task-level verification. See **PLANNER_PROCESS.md** for planning engine, step refinement, replanning, conditional and hierarchical planning.
+- **Atomic Actions:** Each plan step represents exactly ONE Chrome action. The planning engine post-processes plans via `validateAndSplitPlan()` to detect and split compound actions (e.g., "type X and click Submit" → two steps). This ensures alignment with `CHROME_TAB_ACTIONS.md`. See **PLANNER_PROCESS.md** § Atomic Action Enforcement.
+- **Action Chaining with Verification Levels:** Related atomic actions (form fills) can be chained with lighter verification. Verification levels: `client` (0 tokens), `lightweight` (~100 tokens), `full` (~400 tokens). Client-side verification handles intermediate form field checks. See **SPECS_AND_CONTRACTS.md** § Atomic Actions & Action Chaining.
 
 **Logical improvements (process hardening):**
 
@@ -67,12 +74,18 @@
 ## High-Level Loop
 
 1. **Extension** sends `POST /api/agent/interact` with:
-   - **V3 Semantic (PRIMARY):** `{ url, query, dom?, domMode: "semantic", interactiveTree, viewport?, pageTitle?, taskId?, sessionId?, tabId? }`  
+   - **V3 Semantic (PRIMARY):** `{ url, query, dom?, domMode: "semantic", interactiveTree, viewport?, pageTitle?, taskId?, sessionId?, tabId? }`
      *(Backend treats `domMode: "semantic"` + `interactiveTree` as V3 semantic-first; `dom` is only sent when explicitly requested.)*
    - **Legacy/Fallback:** `{ url, query, dom, domMode?, skeletonDom?, screenshot?, taskId?, sessionId? }`
-2. **Backend** authenticates, fetches RAG, runs reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action, returns `{ thought, action, actionDetails, taskId, sessionId, ... }`. All LLM calls that expect JSON (verification verdict, action thought+action) use **structured output** (Gemini `responseJsonSchema`) so responses are valid JSON only — see `docs/GEMINI_USAGE.md` § Structured outputs.
-3. **Extension** executes the action (e.g. `click("14")`, `setValue("14", "Jas")`) on the page using element ID from `interactiveTree`, then sends the **next** request with **updated state** and **the same `taskId`** from the response.
-4. **Backend** verifies the **previous** action against the new state, then produces the **next** action. Repeat until `finish()` or `fail()` or max steps/retries.
+   - **Chat-Only (NEW):** `{ query, sessionId?, attachment? }` — **URL and DOM are optional** for non-web tasks (questions, file analysis, memory queries). See § 7.
+2. **Backend** authenticates, fetches RAG, **classifies task type** (`chat_only`, `web_only`, `web_with_file`), then either:
+   - **Chat-only path:** Process file attachment (if any), generate direct LLM response, return `finish()` action.
+   - **Web path:** Run reasoning/planning, calls LLM (or step refinement), predicts outcome, stores the action.
+   Returns `{ thought, action, actionDetails, taskId, sessionId, taskType, ... }`. All LLM calls that expect JSON use **structured output** (Gemini `responseJsonSchema`).
+3. **Extension** checks `taskType`:
+   - **`chat_only`:** Display response directly (NO DOM execution). Task is complete.
+   - **`web_only` / `web_with_file`:** Execute the action (e.g. `click("14")`, `setValue("14", "Jas")`) on the page, then send the **next** request with **updated state** and **the same `taskId`**.
+4. **Backend** (web tasks only) verifies the **previous** action against the new state, then produces the **next** action. Repeat until `finish()` or `fail()` or max steps/retries.
 
 ### Client contract and troubleshooting (verification continuation)
 
@@ -94,6 +107,13 @@ This section defines **mandatory client-side behaviors** to prevent common proce
 | 4 | Send `clientObservations` (didNetworkOccur, didDomMutate, didUrlChange) | ✅ Implemented | `currentTask.ts`: builds from `lastDOMChanges` + content script RPC; sent in `agentInteract`. |
 | 5 | Send `taskId` on every request after the first (continuation) | ✅ Implemented | Without it, every request is treated as a new task. |
 | 6 | Send updated `dom` and `url` after executing an action | ✅ Implemented | Required for verification. |
+| 7 | Handle `status: "awaiting_user"` (blocker detected) | 🔲 Required | Stop action loop, display blocker UI. See § Blocker Detection & Task Pause/Resume System. |
+| 8 | Call resume endpoint after blocker resolved | 🔲 Required | `POST /api/session/{sessionId}/task/{taskId}/resume`. |
+| 9 | Handle memory actions (`toolType: "SERVER"`) | ✅ Implemented | Skip DOM execution, immediately request next action. |
+| 10 | Handle `taskType: "chat_only"` responses | 🔲 Required | No DOM action needed; display response directly. See § 7. |
+| 11 | File upload before interact (for file tasks) | 🔲 Required | Upload to `/api/knowledge/upload-to-s3`, include `attachment` in request. |
+| 12 | Allow requests without URL/DOM (chat-only) | 🔲 Required | Query-only requests for questions, file analysis, memory. |
+| 13 | Report download button after task completion | 🔲 Required | Link to `/api/session/{sessionId}/task/{taskId}/report?format=json`. |
 
 ### 1. taskId Persistence (Prevents "Lost Task" Loop)
 
@@ -351,6 +371,176 @@ The following backend changes **do not** require any new extension behavior:
 - **RAG freshness:** Spec only; implementation is in the knowledge pipeline. No extension change.
 
 No new contract or API fields were added for the extension in the recent logical-improvements work.
+
+### 7. File-Based Tasks & Chat-Only Mode (Extension Changes Required)
+
+**Status:** ✅ **COMPLETE** (Phase 7)
+
+This feature transforms the agent from a web-only automation tool into a **true AI assistant** that can handle tasks without browser interaction. The extension MUST implement these changes.
+
+#### Task Types
+
+| Task Type | Description | Browser Required | URL Required |
+|-----------|-------------|------------------|--------------|
+| `web_only` | Standard web automation (existing flow) | ✅ Yes | ✅ Yes |
+| `web_with_file` | Web automation using attached file data | ✅ Yes | ✅ Yes |
+| `chat_only` | Direct AI response, no browser needed | ❌ No | ❌ No |
+
+#### API Changes
+
+**Request Schema (Extended):**
+
+```typescript
+POST /api/agent/interact
+
+{
+  query: string,           // Required - user's question or instruction
+  url?: string,            // NOW OPTIONAL - only required for web tasks
+  sessionId?: string,
+  taskId?: string,
+  // ... existing DOM fields (only required for web tasks)
+
+  // NEW: File attachment (upload first via /api/knowledge/upload-to-s3)
+  attachment?: {
+    s3Key: string,         // S3 storage key from upload response
+    filename: string,      // Original filename (e.g., "sales.csv")
+    mimeType: string,      // MIME type (e.g., "text/csv")
+    size: number,          // File size in bytes
+  }
+}
+```
+
+**Response Schema (Extended):**
+
+```typescript
+{
+  taskId: string,
+  sessionId: string,
+  thought: string,
+  action: string,
+  taskType: "chat_only" | "web_only" | "web_with_file",  // NEW
+  // ... existing fields
+}
+```
+
+#### Extension Implementation Requirements
+
+| # | Requirement | Description |
+|---|-------------|-------------|
+| 1 | Handle `taskType: "chat_only"` | When response contains `taskType: "chat_only"`, do NOT execute DOM actions. Display the response directly to the user. The action will be `finish("response text")`. |
+| 2 | File upload before interact | When user attaches a file, upload to `/api/knowledge/upload-to-s3` FIRST, then include the `attachment` object in the interact request. |
+| 3 | Allow requests without URL/DOM | For chat-only queries (questions, file analysis), the extension can send requests with just `query` and optionally `attachment`. No DOM/URL required. |
+| 4 | Report download button | After task completion, show a "Download Report" button that links to `/api/session/{sessionId}/task/{taskId}/report?format=json` (or csv, markdown). |
+
+#### Task Type Classification (Server-Side)
+
+The server automatically classifies tasks based on query patterns:
+
+**Chat-Only Patterns (no browser needed):**
+- Questions: "What is...", "How many...", "Explain..."
+- File analysis: "From the CSV...", "In the uploaded file..."
+- Memory queries: "What did we discuss...", "Remember when..."
+- Calculations: "Calculate...", "Sum...", "Total..."
+
+**Web Patterns (browser required):**
+- Interactions: "Click...", "Fill...", "Navigate to..."
+- Form actions: "Submit...", "Enter in the form..."
+- CRUD operations: "Add a new...", "Delete the..."
+
+**Web-With-File Patterns:**
+- "Fill the form using data from the CSV"
+- "Upload the file to the page"
+
+#### Example Flows
+
+**1. Chat-Only (File Analysis):**
+```
+User: "What's the total revenue from sales.csv?"
+Extension: Uploads sales.csv to S3, sends { query, attachment }
+Server: Returns { taskType: "chat_only", action: "finish('Total revenue: $45,230.50')" }
+Extension: Displays response directly (NO DOM action)
+```
+
+**2. Chat-Only (Memory Query):**
+```
+User: "What tasks did we complete yesterday?"
+Extension: Sends { query } (no URL, no DOM, no file)
+Server: Returns { taskType: "chat_only", action: "finish('You completed 3 tasks...')" }
+Extension: Displays response directly (NO DOM action)
+```
+
+**3. Web-With-File (Form Fill from CSV):**
+```
+User: "Fill the patient form with data from patients.csv"
+Extension: Uploads patients.csv, sends { query, url, dom, attachment }
+Server: Returns { taskType: "web_with_file", action: "setValue('14', 'John Doe')" }
+Extension: Executes DOM action as usual
+```
+
+#### File Upload Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   File Upload Sequence                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. User selects file in extension UI                        │
+│                                                              │
+│  2. Extension calls:                                         │
+│     POST /api/knowledge/upload-to-s3                         │
+│     Content-Type: multipart/form-data                        │
+│     { file: <file>, filename: "sales.csv" }                  │
+│                                                              │
+│  3. Server responds:                                         │
+│     { success: true, s3Key: "uploads/123/sales.csv", ... }   │
+│                                                              │
+│  4. Extension calls:                                         │
+│     POST /api/agent/interact                                 │
+│     {                                                        │
+│       query: "What's the total revenue?",                    │
+│       attachment: {                                          │
+│         s3Key: "uploads/123/sales.csv",                      │
+│         filename: "sales.csv",                               │
+│         mimeType: "text/csv",                                │
+│         size: 1024                                           │
+│       }                                                      │
+│     }                                                        │
+│                                                              │
+│  5. Server processes file, returns response                  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Report Download Endpoint
+
+```
+GET /api/session/{sessionId}/task/{taskId}/report?format=json|csv|markdown
+
+Response: File download with appropriate Content-Type header
+- JSON: application/json, filename: task-report-{timestamp}.json
+- CSV: text/csv, filename: task-report-{timestamp}.csv
+- Markdown: text/markdown, filename: task-report-{timestamp}.md
+```
+
+**Report Contents:**
+- Task query and result summary
+- Action history (steps taken)
+- Memory collected during task
+- Timestamps and metadata
+
+#### Supported File Types
+
+| Type | MIME Type | Content Extraction |
+|------|-----------|-------------------|
+| PDF | application/pdf | Full text + metadata |
+| CSV | text/csv | Structured data |
+| JSON | application/json | Full content |
+| Text | text/plain | Full text |
+| Markdown | text/markdown | Full text |
+| DOCX | application/vnd.openxmlformats-officedocument.wordprocessingml.document | Full text |
+| XML | application/xml | Full content |
+
+**Note:** Images and other binary files are stored but content cannot be extracted for LLM analysis.
 
 ---
 
@@ -2009,6 +2199,174 @@ describe("Action Chaining", () => {
 | **P4** | Hierarchical Planning | ✅ **DONE** | Very High | Medium | All above ✅ |
 
 **Critical Path:** ~~LangGraph~~ → ~~LangFuse~~ → ~~Cost Tracking~~ → ~~Action Chaining~~ → ~~Skills Library~~ → ✅ Phase 4 Complete
+
+---
+
+### H. Blocker Detection & Task Pause/Resume System
+
+The backend implements automatic blocker detection that pauses tasks when user intervention is required (login failures, CAPTCHA, MFA, etc.). This section documents the system and Chrome extension requirements.
+
+#### Blocker Types
+
+| Type | Description | Resolution Methods |
+|------|-------------|-------------------|
+| `login_failure` | Invalid credentials, auth errors | `provide_in_chat`, `user_action_on_web` |
+| `mfa_required` | Multi-factor authentication needed | `user_action_on_web`, `provide_in_chat` |
+| `captcha` | CAPTCHA/reCAPTCHA challenge | `user_action_on_web` only |
+| `cookie_consent` | Cookie consent banner (often auto-dismissable) | `alternative_action`, `user_action_on_web` |
+| `rate_limit` | Too many attempts | `auto_retry` (with delay) |
+| `session_expired` | Session timeout | `user_action_on_web`, `provide_in_chat` |
+| `access_denied` | Permission/authorization error | `user_action_on_web` |
+| `page_error` | Page errors (404, 500, etc.) | `alternative_action` |
+
+#### API Response Changes
+
+When a blocker is detected, the `/api/agent/interact` response includes:
+
+```typescript
+{
+  status: "awaiting_user",
+  blockerInfo: {
+    type: string,           // e.g., "login_failure", "mfa_required"
+    description: string,    // Human-readable description
+    userMessage?: string,   // User-friendly message explaining what to do
+    resolutionMethods: Array<"user_action_on_web" | "provide_in_chat" | "auto_retry" | "alternative_action">,
+    requiredFields?: Array<{
+      name: string,
+      label: string,
+      type: "text" | "password" | "email" | "code",
+      description?: string
+    }>,
+    retryAfterSeconds?: number,  // For rate_limit type
+    confidence?: number          // Detection confidence (0-1)
+  }
+}
+```
+
+#### Resume Endpoint
+
+**POST `/api/session/[sessionId]/task/[taskId]/resume`**
+
+Resume a paused task after user provides resolution data.
+
+**Request body:**
+```typescript
+{
+  resolutionMethod: "provide_in_chat" | "user_action_on_web",
+  resolutionData?: {
+    [key: string]: unknown  // e.g., { username: "...", password: "..." }
+  }
+}
+```
+
+**Response:**
+```typescript
+{
+  taskId: string,
+  status: "executing",
+  message: string,
+  resumedAt: string  // ISO timestamp
+}
+```
+
+#### Chrome Extension Requirements
+
+| # | Requirement | Priority | Description |
+|---|-------------|----------|-------------|
+| 1 | Handle `status: "awaiting_user"` | P0 | Stop the action loop, do NOT continue polling |
+| 2 | Display blocker UI | P0 | Show `blockerInfo.userMessage` to user with resolution options |
+| 3 | Show resolution options | P0 | Based on `resolutionMethods`, show appropriate buttons |
+| 4 | Collect user input (if `provide_in_chat`) | P0 | Render form fields from `requiredFields` array |
+| 5 | Call resume endpoint | P0 | POST to `/api/session/{sessionId}/task/{taskId}/resume` |
+| 6 | Handle rate limit delays | P1 | If `retryAfterSeconds` is set, show countdown timer |
+| 7 | Support "Resolved on website" button | P0 | For `user_action_on_web`, let user indicate they resolved it |
+
+**Implementation flow:**
+
+```
+1. Receive response with status="awaiting_user" and blockerInfo
+2. Pause action loop (do NOT send another interact request)
+3. Display blocker UI based on blockerInfo.type:
+
+   For login_failure/mfa_required/session_expired:
+   - Show input fields from blockerInfo.requiredFields
+   - User fills in credentials/code → call resume with resolutionData
+
+   For captcha:
+   - Show message: "Please complete the CAPTCHA on the website"
+   - User clicks "I've completed it" → call resume with resolutionMethod="user_action_on_web"
+
+   For rate_limit:
+   - Show countdown from blockerInfo.retryAfterSeconds
+   - Auto-resume after countdown (or let user click "Retry now")
+
+4. After resume call succeeds (status="executing"):
+   - Resume action loop
+   - Send next interact request with updated DOM
+```
+
+**UI mockup for blocker dialog:**
+
+```
+┌─────────────────────────────────────────────┐
+│  ⚠️ Login Required                          │
+│                                             │
+│  The site says: "Invalid credentials"       │
+│                                             │
+│  Please provide your credentials:           │
+│                                             │
+│  Username/Email: [________________]         │
+│  Password:       [________________]         │
+│                                             │
+│  ┌─────────────┐  ┌──────────────────────┐ │
+│  │   Cancel    │  │  Submit & Continue   │ │
+│  └─────────────┘  └──────────────────────┘ │
+│                                             │
+│  Or: [I'll resolve this on the website →]   │
+└─────────────────────────────────────────────┘
+```
+
+#### Task State Machine
+
+```
+                    ┌──────────────────┐
+                    │     active       │
+                    └────────┬─────────┘
+                             │
+                    ┌────────▼─────────┐
+     ┌──────────────│    executing     │◄─────────────┐
+     │              └────────┬─────────┘              │
+     │                       │                        │
+     │   blocker detected    │    verification       │
+     │    (user required)    │      passed           │
+     │                       │                        │
+     │              ┌────────▼─────────┐              │
+     └─────────────►│  awaiting_user   │              │
+                    └────────┬─────────┘              │
+                             │                        │
+                    resume   │                        │
+                    called   │                        │
+                             │                        │
+                    ┌────────▼─────────┐              │
+                    │    executing     ├──────────────┘
+                    └────────┬─────────┘
+                             │
+              goal achieved  │  max retries
+                             │  exceeded
+                    ┌────────▼─────────┐
+                    │ completed/failed │
+                    └──────────────────┘
+```
+
+#### Files
+
+| File | Purpose |
+|------|---------|
+| `lib/agent/blocker-detection.ts` | Pattern-based blocker detection |
+| `lib/models/task.ts` | Task model with `awaiting_user` status and `blockerContext` |
+| `lib/agent/graph/nodes/verification.ts` | Integrates blocker detection |
+| `lib/agent/graph/route-integration/persistence.ts` | Persists blocker context |
+| `app/api/session/[sessionId]/task/[taskId]/resume/route.ts` | Resume endpoint |
 
 ### Deferred: Visual / Non-DOM Features (End of Roadmap)
 

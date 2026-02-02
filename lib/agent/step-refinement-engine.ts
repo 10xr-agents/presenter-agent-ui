@@ -13,10 +13,12 @@ import {
   VISUAL_BRIDGE_PROMPT,
 } from "@/lib/llm/multimodal-helpers"
 import { STEP_REFINEMENT_SCHEMA } from "@/lib/llm/response-schemas"
-import type { PlanStep } from "@/lib/models/task"
+import type { PlanStep, TaskAttachment } from "@/lib/models/task"
 
 import { getAvailableActionsPrompt, validateActionName } from "./action-config"
 import { getOrCreateSkeleton } from "./dom-skeleton"
+import { formatFileContextForPrompt } from "./file-context"
+import { taskRecallAll, sessionRecallAll } from "./memory"
 import { shouldUseVisualMode } from "./mode-router"
 import type { DomMode, SemanticNodeV3 } from "./schemas"
 
@@ -58,6 +60,56 @@ export interface HybridOptions {
   recentEvents?: string[]
   hasErrors?: boolean
   hasSuccess?: boolean
+  /** User-provided resolution data (from resume after blocker) */
+  userResolutionData?: Record<string, unknown>
+  /** File attachments with extracted content (File-Based Tasks) */
+  attachments?: TaskAttachment[]
+}
+
+/**
+ * Format memory context for LLM prompt
+ */
+function formatMemoryContext(
+  taskMemory: Record<string, unknown>,
+  sessionMemory: Record<string, unknown>
+): string {
+  const parts: string[] = []
+
+  const taskKeys = Object.keys(taskMemory)
+  const sessionKeys = Object.keys(sessionMemory)
+
+  if (taskKeys.length === 0 && sessionKeys.length === 0) {
+    return ""
+  }
+
+  parts.push("\n--- Available Memory Context ---")
+
+  if (taskKeys.length > 0) {
+    parts.push("Task Memory (current task):")
+    for (const key of taskKeys) {
+      const value = taskMemory[key]
+      const valueStr = typeof value === "object" ? JSON.stringify(value) : String(value)
+      // Truncate long values
+      const displayValue = valueStr.length > 200 ? valueStr.substring(0, 200) + "..." : valueStr
+      parts.push(`  - ${key}: ${displayValue}`)
+    }
+  }
+
+  if (sessionKeys.length > 0) {
+    parts.push("Session Memory (persistent across tasks):")
+    for (const key of sessionKeys) {
+      const value = sessionMemory[key]
+      const valueStr = typeof value === "object" ? JSON.stringify(value) : String(value)
+      // Truncate long values
+      const displayValue = valueStr.length > 200 ? valueStr.substring(0, 200) + "..." : valueStr
+      parts.push(`  - ${key}: ${displayValue}`)
+    }
+  }
+
+  parts.push("Use recall(key) to access these values or remember(key, value) to store new data.")
+  parts.push("--- End Memory Context ---\n")
+
+  return parts.join("\n")
 }
 
 const SEMANTIC_LEGEND = `LEGEND for interactiveTree (semantic) format:
@@ -179,7 +231,19 @@ If the plan step contains compound actions like "type X and press Enter" or "ent
 1. Check previous actions - if setValue/type was already done for this search, generate press("Enter") to submit
 2. If the input field already contains the search text (visible in DOM), generate press("Enter") or click on the search/submit button
 3. For search workflows: After typing, the NEXT action should be press("Enter") or clicking the search button
-4. NEVER skip the submit/enter step - search boxes require both typing AND pressing Enter to work`
+4. NEVER skip the submit/enter step - search boxes require both typing AND pressing Enter to work
+
+**ATOMIC ACTION RULE:**
+Generate exactly ONE action per call. If the step description mentions multiple actions (e.g., "enter text and click submit"):
+- Generate ONLY the first action now (e.g., setValue)
+- The next call will handle the subsequent action (e.g., click)
+- Never combine multiple actions into one response
+
+**HANDLING USER-PROVIDED DATA:**
+When user resolution data is available (e.g., credentials, MFA code provided after a blocker):
+1. Use the provided values directly in your actions (e.g., setValue with the provided username/password)
+2. Do not ask for information that has already been provided
+3. The data will be in the context under "User Resolution Data" section`
 
   // Build user message with context
   const userParts: string[] = []
@@ -292,6 +356,50 @@ If the plan step contains compound actions like "type X and press Enter" or "ent
   } else {
     userParts.push(`- ${domLabel}:`)
     userParts.push(domContent)
+  }
+
+  // Add memory context if taskId and sessionId are available
+  if (context?.taskId && context?.sessionId) {
+    try {
+      const [taskMemoryResult, sessionMemoryResult] = await Promise.all([
+        taskRecallAll(context.taskId),
+        sessionRecallAll(context.sessionId),
+      ])
+
+      const taskMemory = (taskMemoryResult.success ? taskMemoryResult.value : {}) as Record<string, unknown>
+      const sessionMemory = (sessionMemoryResult.success ? sessionMemoryResult.value : {}) as Record<string, unknown>
+
+      const memoryContext = formatMemoryContext(taskMemory, sessionMemory)
+      if (memoryContext) {
+        userParts.push(memoryContext)
+      }
+    } catch (memError: unknown) {
+      // Log but don't fail the refinement
+      console.warn("[Step Refinement] Failed to load memory context:", memError)
+    }
+  }
+
+  // Add file attachment context if available (File-Based Tasks)
+  if (hybridOptions?.attachments && hybridOptions.attachments.length > 0) {
+    const fileContext = formatFileContextForPrompt(hybridOptions.attachments)
+    if (fileContext) {
+      userParts.push(fileContext)
+      userParts.push("Use the data from attached files when filling form fields or performing actions that reference file content.")
+    }
+  }
+
+  // Add user resolution data if available (from resume after blocker)
+  if (hybridOptions?.userResolutionData && Object.keys(hybridOptions.userResolutionData).length > 0) {
+    userParts.push("\n--- User Resolution Data (use these values to fill forms) ---")
+    for (const [key, value] of Object.entries(hybridOptions.userResolutionData)) {
+      // Mask sensitive values like passwords
+      const displayValue = key.toLowerCase().includes("password")
+        ? "[PROVIDED]"
+        : String(value)
+      userParts.push(`  - ${key}: ${displayValue}`)
+    }
+    userParts.push("Use these values when filling in form fields. The user provided this data to resolve a previous blocker.")
+    userParts.push("--- End User Resolution Data ---\n")
   }
 
   userParts.push(

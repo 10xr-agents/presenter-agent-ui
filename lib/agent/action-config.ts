@@ -549,6 +549,37 @@ export const AVAILABLE_ACTIONS: readonly ActionDefinition[] = [
     pattern: /^verifySuccess\([^)]+\)$/,
     example: 'verifySuccess("I see the Order Confirmed banner on the page")',
   },
+  // Memory Actions (SERVER tools for hierarchical memory layer)
+  {
+    name: "remember",
+    description: "Store a value in task memory for later use in this task. Use this to save intermediate results from multi-step operations (e.g., data extracted from multiple pages). This is a SERVER tool.",
+    parameters: [
+      { name: "key", type: "string", required: true },
+      { name: "value", type: "string", required: true },
+    ],
+    pattern: /^remember\([^,]+,\s*.+\)$/,
+    example: 'remember("page1_prices", [10.99, 24.99, 15.00])',
+  },
+  {
+    name: "recall",
+    description: "Retrieve a value from memory. Default scope is 'task' (current task only). Use scope='session' to access data persisted from previous tasks. Use key='*' to recall all memory. This is a SERVER tool.",
+    parameters: [
+      { name: "key", type: "string", required: true },
+      { name: "scope", type: "string", required: false },
+    ],
+    pattern: /^recall\([^)]+\)$/,
+    example: 'recall("page1_prices")',
+  },
+  {
+    name: "exportToSession",
+    description: "Export a value from task memory to session memory for persistence across tasks. Use this when you want data to be available in future tasks. This is a SERVER tool.",
+    parameters: [
+      { name: "key", type: "string", required: true },
+      { name: "sessionKey", type: "string", required: false },
+    ],
+    pattern: /^exportToSession\([^)]+\)$/,
+    example: 'exportToSession("total_items")',
+  },
 ] as const
 
 /**
@@ -648,6 +679,7 @@ export function getAvailableActionsPrompt(): string {
     "Network Control": [],
     "Storage & Cookies": [],
     "Performance & Tracing": [],
+    "Memory (SERVER)": [],
     "Task Completion": [],
   }
 
@@ -679,6 +711,8 @@ export function getAvailableActionsPrompt(): string {
       categories["Storage & Cookies"]!.push(action)
     } else if (["startTracing", "stopTracing", "getMetrics"].includes(action.name)) {
       categories["Performance & Tracing"]!.push(action)
+    } else if (["remember", "recall", "exportToSession"].includes(action.name)) {
+      categories["Memory (SERVER)"]!.push(action)
     } else if (["finish", "fail"].includes(action.name)) {
       categories["Task Completion"]!.push(action)
     }

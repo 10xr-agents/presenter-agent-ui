@@ -8,6 +8,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { parseFinishMessage } from "@/lib/agent/action-parser"
+import { handleMemoryAction, isMemoryAction } from "@/lib/agent/memory"
 import { refineStep } from "@/lib/agent/step-refinement-engine"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState } from "../types"
@@ -112,12 +113,56 @@ export async function stepRefinementNode(
         recentEvents: state.recentEvents,
         hasErrors: state.hasErrors,
         hasSuccess: state.hasSuccess,
+        userResolutionData: state.userResolutionData,
       }
     )
 
     if (refinedAction) {
-      // Check if it's a SERVER tool (not implemented yet)
+      // Check if it's a SERVER tool
       if (refinedAction.toolType === "SERVER") {
+        // Handle memory actions inline
+        if (isMemoryAction(refinedAction.toolName)) {
+          log.info(`Memory action detected: ${refinedAction.toolName}`)
+
+          // Execute memory action if we have taskId and sessionId
+          if (state.taskId && state.sessionId) {
+            try {
+              const memoryResult = await handleMemoryAction({
+                actionName: refinedAction.toolName as "remember" | "recall" | "exportToSession",
+                taskId: state.taskId,
+                sessionId: state.sessionId,
+                parameters: refinedAction.parameters,
+              })
+
+              log.info(`Memory action result: ${memoryResult.message}`, {
+                success: memoryResult.success,
+                key: memoryResult.key,
+              })
+
+              // Return a thought message about the memory action result
+              return {
+                actionResult: {
+                  thought: `Memory operation: ${memoryResult.message}`,
+                  action: `${refinedAction.toolName}(${Object.values(refinedAction.parameters).map(v => JSON.stringify(v)).join(", ")})`,
+                  toolAction: {
+                    toolName: refinedAction.toolName,
+                    toolType: "SERVER",
+                    parameters: refinedAction.parameters,
+                    memoryResult,
+                  },
+                },
+                status: "executing",
+              }
+            } catch (error: unknown) {
+              log.error("Memory action error", error)
+              // Fall through to LLM on error
+            }
+          } else {
+            log.warn("Memory action requested but missing taskId or sessionId")
+          }
+        }
+
+        // Other SERVER tools fall back to LLM
         log.info("SERVER tool detected, falling back to LLM")
         return {
           status: "executing",

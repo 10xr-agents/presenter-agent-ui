@@ -12,12 +12,13 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { validateActionName } from "@/lib/agent/action-config"
-import { parseFinishMessage } from "@/lib/agent/action-parser"
+import { parseFinishMessage, extractActionName } from "@/lib/agent/action-parser"
 import {
   enhancePromptForChaining,
   identifyChainableGroups,
 } from "@/lib/agent/chaining"
 import { callActionLLM } from "@/lib/agent/llm-client"
+import { handleMemoryAction, isMemoryAction, parseMemoryAction } from "@/lib/agent/memory"
 import { computeContextRequestForAction } from "@/lib/agent/page-state-negotiation"
 import { buildActionPrompt } from "@/lib/agent/prompt-builder"
 import { logger } from "@/lib/utils/logger"
@@ -217,6 +218,52 @@ export async function actionGenerationNode(
     // Note: We skip the inline search in graph execution and let the route handle it
     // This simplifies the graph logic and avoids needing tenantId in this node
     // The original route.ts code handles googleSearch() actions properly
+
+    // Handle memory actions (SERVER tools)
+    const actionNameFromResponse = extractActionName(action)
+    if (actionNameFromResponse && isMemoryAction(actionNameFromResponse)) {
+      log.info(`Memory action detected: ${actionNameFromResponse}`)
+
+      if (state.taskId && state.sessionId) {
+        try {
+          const parsed = parseMemoryAction(action)
+          if (parsed) {
+            const memoryResult = await handleMemoryAction({
+              actionName: parsed.actionName as "remember" | "recall" | "exportToSession",
+              taskId: state.taskId,
+              sessionId: state.sessionId,
+              parameters: parsed.parameters,
+            })
+
+            log.info(`Memory action result: ${memoryResult.message}`, {
+              success: memoryResult.success,
+              key: memoryResult.key,
+            })
+
+            return {
+              actionResult: {
+                thought: `${thought}\n\nMemory operation: ${memoryResult.message}`,
+                action,
+                toolAction: {
+                  toolName: actionNameFromResponse,
+                  toolType: "SERVER",
+                  parameters: parsed.parameters,
+                  memoryResult,
+                },
+              },
+              llmUsage: llmResponse.usage,
+              llmDuration,
+              status: "executing",
+            }
+          }
+        } catch (error: unknown) {
+          log.error("Memory action error", error)
+          // Continue with normal flow on error
+        }
+      } else {
+        log.warn("Memory action requested but missing taskId or sessionId")
+      }
+    }
 
     // Validate action name
     if (!validateActionName(action)) {

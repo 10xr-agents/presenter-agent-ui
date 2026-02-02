@@ -103,11 +103,49 @@ export async function saveGraphResults(
   }
 
   // Persist terminal task status so the task record reflects completion or failure
+  // Also clear task memory on completion/failure to prevent stale data accumulation
   if (result.status === "completed" || result.status === "failed") {
     await (Task as any)
       .findOneAndUpdate(
         { taskId, tenantId },
-        { $set: { status: result.status } }
+        {
+          $set: { status: result.status },
+          $unset: { memory: 1 }, // Clear task memory on completion
+        }
+      )
+      .exec()
+  }
+
+  // Persist awaiting_user status with blocker context when a blocker is detected
+  if (result.status === "awaiting_user" && result.blockerResult?.detected) {
+    const log = logger.child({ process: "RouteIntegration", sessionId, taskId })
+    log.info(
+      `saveGraphResults: blocker detected, pausing task taskId=${taskId}, blockerType=${result.blockerResult.type}`
+    )
+
+    const blockerContext = {
+      type: result.blockerResult.type,
+      description: result.blockerResult.description ?? `Blocker: ${result.blockerResult.type}`,
+      userMessage: result.blockerResult.userMessage,
+      resolutionMethods: result.blockerResult.resolutionMethods ?? [],
+      requiredFields: result.blockerResult.requiredFields,
+      matchedPattern: result.blockerResult.matchedPattern,
+      confidence: result.blockerResult.confidence,
+      retryAfterSeconds: result.blockerResult.retryAfterSeconds,
+      pausedAtStep: result.currentStepIndex,
+      pausedAtUrl: url,
+    }
+
+    await (Task as any)
+      .findOneAndUpdate(
+        { taskId, tenantId },
+        {
+          $set: {
+            status: "awaiting_user",
+            pausedAt: new Date(),
+            blockerContext,
+          },
+        }
       )
       .exec()
   }

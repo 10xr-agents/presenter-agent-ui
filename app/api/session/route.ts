@@ -312,12 +312,16 @@ export async function POST(req: NextRequest) {
 
     Sentry.logger.info("Session archive: archiving session")
     // Archive the session (update status to 'archived')
+    // Also clear session memory on archive to prevent stale data accumulation
     await (BrowserSession as any)
       .findOneAndUpdate(
         { sessionId, tenantId },
         {
           $set: {
             status: "archived",
+          },
+          $unset: {
+            memory: 1, // Clear session memory on archive
           },
         }
       )

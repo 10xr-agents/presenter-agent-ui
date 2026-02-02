@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs"
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
+import { processTaskAttachment } from "@/lib/agent/file-context"
 import { runInteractGraph } from "@/lib/agent/graph/route-integration"
 import {
   interactRequestBodySchema,
@@ -8,11 +9,13 @@ import {
   needsUserInputResponseSchema,
   type NextActionResponse,
 } from "@/lib/agent/schemas"
+import { classifyTaskType } from "@/lib/agent/task-type-classifier"
 import { getSessionFromRequest } from "@/lib/auth/session"
 import { connectDB } from "@/lib/db/mongoose"
 import { getRAGChunks } from "@/lib/knowledge-extraction/rag-helper"
 import { applyRateLimit } from "@/lib/middleware/rate-limit"
 import { BrowserSession, Message } from "@/lib/models"
+import type { TaskAttachment } from "@/lib/models/task"
 import { triggerInteractResponse, triggerNewMessage } from "@/lib/pusher/server"
 import { errorResponse } from "@/lib/utils/api-response"
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/utils/cors"
@@ -195,8 +198,53 @@ export async function POST(req: NextRequest) {
       recentEvents: requestRecentEvents,
       hasErrors: requestHasErrors,
       hasSuccess: requestHasSuccess,
+      // File-Based Tasks & Chat Mode
+      attachment: requestAttachment,
     } = validationResult.data
     taskId = requestTaskId
+
+    // Process file attachment if provided
+    let processedAttachment: TaskAttachment | undefined
+    if (requestAttachment) {
+      try {
+        Sentry.logger.info("Interact: processing file attachment", {
+          filename: requestAttachment.filename,
+          mimeType: requestAttachment.mimeType,
+          size: requestAttachment.size,
+        })
+        processedAttachment = await processTaskAttachment(requestAttachment)
+      } catch (attachError: unknown) {
+        Sentry.captureException(attachError)
+        Sentry.logger.warn("Interact: file attachment processing failed, continuing without content", {
+          error: attachError instanceof Error ? attachError.message : String(attachError),
+        })
+        // Create a basic attachment without extracted content
+        processedAttachment = {
+          id: randomUUID(),
+          filename: requestAttachment.filename,
+          mimeType: requestAttachment.mimeType,
+          s3Key: requestAttachment.s3Key,
+          size: requestAttachment.size,
+          extractedContent: `[Failed to extract content: ${attachError instanceof Error ? attachError.message : "Unknown error"}]`,
+          uploadedAt: new Date(),
+        }
+      }
+    }
+
+    // Classify task type based on query, URL, and attachment
+    const taskTypeClassification = classifyTaskType({
+      query,
+      hasAttachment: !!processedAttachment,
+      hasUrl: !!url,
+      attachmentMimeType: processedAttachment?.mimeType,
+    })
+
+    Sentry.logger.info("Interact: task type classified", {
+      taskType: taskTypeClassification.taskType,
+      confidence: taskTypeClassification.confidence,
+      requiresBrowser: taskTypeClassification.requiresBrowser,
+      hasFileContext: taskTypeClassification.hasFileContext,
+    })
 
     // High-signal client execution telemetry (helps diagnose "action not executed" vs "verification mismatch").
     // Keep this small; never log full DOM.
@@ -244,7 +292,7 @@ export async function POST(req: NextRequest) {
       if (!currentSession) {
         Sentry.logger.info("Interact: creating new session for provided sessionId")
         // First message for this sessionId (e.g. extension created session locally) – create session and proceed
-        const sessionDomain = requestDomain || extractDomain(url) || undefined
+        const sessionDomain = requestDomain || (url ? extractDomain(url) : undefined) || undefined
         const sessionTitle =
           requestTitle ||
           (sessionDomain ? generateSessionTitle(sessionDomain, query) : query.substring(0, 200))
@@ -310,7 +358,7 @@ export async function POST(req: NextRequest) {
 
         // Tab-Scoped Sessions: Update session url/domain/tabId if changed
         // Sessions persist across domain navigations within the same tab
-        const currentDomain = requestDomain || extractDomain(url) || undefined
+        const currentDomain = requestDomain || (url ? extractDomain(url) : undefined) || undefined
         const sessionUrlChanged = currentSession.url !== url
         const sessionDomainChanged = currentSession.domain !== currentDomain
         const sessionTabIdChanged = requestTabId && currentSession.tabId !== requestTabId
@@ -405,7 +453,7 @@ export async function POST(req: NextRequest) {
       const newSessionId = randomUUID()
       
       // Extract domain from URL (use provided domain or extract from URL)
-      const sessionDomain = requestDomain || extractDomain(url) || undefined
+      const sessionDomain = requestDomain || (url ? extractDomain(url) : undefined) || undefined
       
       // Generate title (use provided title or generate from domain and query)
       const sessionTitle = requestTitle || 
@@ -504,7 +552,7 @@ export async function POST(req: NextRequest) {
 
     // RAG: Fetch chunks early for use in graph execution
     const ragStartTime = Date.now()
-    const { chunks, hasOrgKnowledge, ragDebug } = await getRAGChunks(url, query, tenantId)
+    const { chunks, hasOrgKnowledge, ragDebug } = await getRAGChunks(url ?? "", query, tenantId)
     const ragDuration = Date.now() - ragStartTime
 
     // =========================================================================
@@ -520,7 +568,7 @@ export async function POST(req: NextRequest) {
     const graphResult = await runInteractGraph({
       tenantId,
       userId,
-      url,
+      url: url ?? "",
       query,
       dom: dom ?? "",
       previousUrl: requestPreviousUrl,
@@ -545,6 +593,9 @@ export async function POST(req: NextRequest) {
       recentEvents: requestRecentEvents,
       hasErrors: requestHasErrors,
       hasSuccess: requestHasSuccess,
+      // File-Based Tasks & Chat Mode
+      taskType: taskTypeClassification.taskType,
+      attachments: processedAttachment ? [processedAttachment] : undefined,
     })
 
     Sentry.logger.info("Interact: LangGraph run completed", {
@@ -638,8 +689,12 @@ export async function POST(req: NextRequest) {
           ? "I need a bit more context from the page to proceed."
           : ""),
       action: graphResult.action || (isTerminal ? "finish()" : ""),
+      // File-Based Tasks & Chat Mode: Include task type for client routing
+      taskType: taskTypeClassification.taskType,
       // Robust Element Selectors: Include structured action details with selectorPath
       actionDetails: graphResult.actionDetails,
+      // Tool action metadata (for SERVER tools like memory actions - extension should skip execution)
+      toolAction: graphResult.toolAction,
       // Backend-driven page-state negotiation (semantic-first)
       requestedDomMode: graphResult.requestedDomMode,
       needsSkeletonDom: graphResult.needsSkeletonDom,

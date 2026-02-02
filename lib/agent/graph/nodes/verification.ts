@@ -19,6 +19,13 @@
 import * as Sentry from "@sentry/nextjs"
 import { classifyActionType } from "@/lib/agent/action-type"
 import {
+  detectBlocker,
+  requiresUserIntervention,
+  canAutoRetry,
+  canAutoDismiss,
+  type BlockerDetectionResult,
+} from "@/lib/agent/blocker-detection"
+import {
   completeSubTask,
   extractSubTaskOutputs,
   getCurrentSubTask,
@@ -99,6 +106,69 @@ export async function verificationNode(
         : state.skeletonDom && state.skeletonDom.length > 0
           ? state.skeletonDom
           : renderInteractiveTreeAsHtml(state.interactiveTree, state.recentEvents)
+
+    // Blocker detection: check for conditions that require user intervention
+    // Skip cookie consent (often auto-dismissable) and page errors (handled by correction)
+    const blockerResult = detectBlocker(domForVerification, url, {
+      skipCookieConsent: true, // Let the action system try to dismiss these
+      skipPageErrors: true, // Let correction handle navigation errors
+      minConfidence: 0.8, // Higher threshold to reduce false positives
+    })
+
+    if (blockerResult.detected && blockerResult.type) {
+      log.info(
+        `Blocker detected: type=${blockerResult.type}, confidence=${blockerResult.confidence?.toFixed(2)}, pattern="${blockerResult.matchedPattern}"`
+      )
+
+      // Blockers requiring user intervention pause the task
+      if (requiresUserIntervention(blockerResult.type)) {
+        log.info(
+          `User intervention required for ${blockerResult.type}, pausing task`
+        )
+        return {
+          blockerResult,
+          status: "awaiting_user",
+          verificationResult: {
+            success: false,
+            confidence: blockerResult.confidence ?? 0.9,
+            reason: blockerResult.description ?? `Blocker detected: ${blockerResult.type}`,
+            goalAchieved: false,
+            action_succeeded: false,
+            task_completed: false,
+          },
+        }
+      }
+
+      // Auto-retry blockers (rate limit): route to correction with delay hint
+      if (canAutoRetry(blockerResult.type)) {
+        log.info(
+          `Auto-retry blocker detected (${blockerResult.type}), routing to correction`
+        )
+        return {
+          blockerResult,
+          status: "correcting",
+          verificationResult: {
+            success: false,
+            confidence: blockerResult.confidence ?? 0.9,
+            reason: blockerResult.description ?? `Rate limited, will retry`,
+            goalAchieved: false,
+            action_succeeded: false,
+            task_completed: false,
+            routeToCorrection: true,
+          },
+          consecutiveFailures: state.consecutiveFailures + 1,
+        }
+      }
+
+      // Auto-dismissable blockers (cookie consent): let action system handle
+      if (canAutoDismiss(blockerResult.type)) {
+        log.info(
+          `Auto-dismissable blocker detected (${blockerResult.type}), continuing with verification`
+        )
+        // Store the blocker result but continue with normal verification
+        // The action generator will see the banner and try to dismiss it
+      }
+    }
 
     // Phase 5: Classify action type for tiered verification
     const actionType = classifyActionType(lastAction, domForVerification)
@@ -270,18 +340,28 @@ export async function verificationNode(
  */
 export function routeAfterVerification(
   state: InteractGraphState
-): "correction" | "planning" | "goal_achieved" | "finalize" {
+): "correction" | "planning" | "goal_achieved" | "finalize" | "awaiting_user" {
   const {
     verificationResult,
     consecutiveFailures,
     correctionAttempts,
     consecutiveSuccessWithoutTaskComplete,
+    blockerResult,
   } = state
   const log = logger.child({
     process: "Graph:router",
     sessionId: state.sessionId,
     taskId: state.taskId ?? "",
   })
+
+  // Blocker requiring user intervention - pause the task
+  if (
+    state.status === "awaiting_user" ||
+    (blockerResult?.detected && blockerResult.type && requiresUserIntervention(blockerResult.type))
+  ) {
+    log.info(`Routing to awaiting_user (blocker: ${blockerResult?.type})`)
+    return "awaiting_user"
+  }
 
   // Check for max retries exceeded
   if (correctionAttempts >= 3) {

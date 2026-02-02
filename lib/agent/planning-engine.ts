@@ -11,6 +11,7 @@ import { formatScreenshotContext } from "@/lib/llm/multimodal-helpers"
 import { PLANNING_RESPONSE_SCHEMA } from "@/lib/llm/response-schemas"
 import type { PlanStep, TaskPlan } from "@/lib/models/task"
 
+import { getAtomicActionGuidelines, validateAndSplitPlan } from "./atomic-action-validator"
 import { getOrCreateSkeleton } from "./dom-skeleton"
 import { shouldUseVisualMode } from "./mode-router"
 import type { DomMode, SemanticNodeV3 } from "./schemas"
@@ -139,6 +140,10 @@ Guidelines:
 - ❌ WRONG: "Fill in the form and click Submit" (this is MULTIPLE actions)
 - ✅ CORRECT: Separate steps for each field, then a step for clicking Submit
 - Search workflows require TWO steps: (1) Type in search box, (2) Press Enter or click search button
+- ❌ WRONG: "Enter email and password" (this is TWO actions)
+- ✅ CORRECT: Step 1: "Enter email address", Step 2: "Enter password"
+
+${getAtomicActionGuidelines()}
 
 **CRITICAL: Every action-oriented plan must end with a completion step**
 - For form submissions: Include "Verify the form was submitted successfully and the confirmation appears"
@@ -330,11 +335,17 @@ Remember: Write all step descriptions in user-friendly language that a non-techn
       })
       .sort((a, b) => a.index - b.index)
 
-    return {
+    const plan: TaskPlan = {
       steps,
       currentStepIndex: 0,
       createdAt: new Date(),
     }
+
+    // Post-process: Validate and split any compound actions into atomic steps
+    // This ensures each step maps to exactly one Chrome action
+    const validatedPlan = validateAndSplitPlan(plan)
+
+    return validatedPlan
   } catch (error: unknown) {
     Sentry.captureException(error)
     throw error

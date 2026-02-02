@@ -21,8 +21,12 @@ import type {
   ChainedAction,
   ChainMetadata,
   ChainReason,
+  VerificationLevel,
 } from "./types"
 import {
+  buildClientVerificationChecks,
+  canUseClientVerification,
+  determineVerificationLevel,
   extractActionType,
   extractElementId,
   isChainableActionType,
@@ -63,12 +67,16 @@ export function generateFormFillChain(
     const elementId = findElementIdByLabel(dom, fieldName)
 
     if (elementId !== undefined) {
+      const actionStr = `setValue(${elementId}, '${escapeValue(value)}')`
       actions.push({
-        action: `setValue(${elementId}, '${escapeValue(value)}')`,
+        action: actionStr,
         description: `Enter ${fieldName}`,
         index: foundFields,
         targetElementId: elementId,
         actionType: "setValue",
+        // Form fills use client verification for intermediate steps
+        verificationLevel: "client",
+        clientVerificationChecks: buildClientVerificationChecks(actionStr, "setValue"),
       })
       foundFields++
     }
@@ -81,9 +89,23 @@ export function generateFormFillChain(
   // Limit chain size
   const chainedActions = actions.slice(0, MAX_CHAIN_SIZE)
 
+  // Update verification levels - last action needs server verification
+  const actionsWithVerification = chainedActions.map((a, i) => ({
+    ...a,
+    index: i,
+    verificationLevel: i === chainedActions.length - 1 ? "lightweight" as VerificationLevel : "client" as VerificationLevel,
+  }))
+
+  const metadata = buildChainMetadata(actionsWithVerification, "FORM_FILL", containerSelector)
+
   return {
-    actions: chainedActions.map((a, i) => ({ ...a, index: i })),
-    metadata: buildChainMetadata(chainedActions, "FORM_FILL", containerSelector),
+    actions: actionsWithVerification,
+    metadata: {
+      ...metadata,
+      defaultVerificationLevel: "client",
+      clientVerificationSufficient: true,
+      finalVerificationLevel: "lightweight",
+    },
   }
 }
 
@@ -128,23 +150,42 @@ export function generateChainFromActions(
     }
   }
 
-  // Build chained actions
-  const chainedActions: ChainedAction[] = chainableActions
-    .slice(0, MAX_CHAIN_SIZE)
-    .map((action, index) => ({
+  // Build chained actions with verification levels
+  const limitedActions = chainableActions.slice(0, MAX_CHAIN_SIZE)
+  const chainedActions: ChainedAction[] = limitedActions.map((action, index) => {
+    const actionType = extractActionType(action)
+    const isLastInChain = index === limitedActions.length - 1
+    const verificationLevel = determineVerificationLevel(actionType, isLastInChain)
+
+    return {
       action,
       description: descriptions?.[index] || generateActionDescription(action),
       index,
       targetElementId: extractElementId(action),
-      actionType: extractActionType(action),
-    }))
+      actionType,
+      verificationLevel,
+      clientVerificationChecks: verificationLevel === "client"
+        ? buildClientVerificationChecks(action, actionType)
+        : undefined,
+    }
+  })
 
   // Determine chain reason
   const reason = determineChainReason(chainedActions)
 
+  // Check if client verification is sufficient
+  const clientSufficient = canUseClientVerification(chainedActions, reason)
+
+  const metadata = buildChainMetadata(chainedActions, reason)
+
   return {
     actions: chainedActions,
-    metadata: buildChainMetadata(chainedActions, reason),
+    metadata: {
+      ...metadata,
+      defaultVerificationLevel: clientSufficient ? "client" : "lightweight",
+      clientVerificationSufficient: clientSufficient,
+      finalVerificationLevel: clientSufficient ? "lightweight" : "full",
+    },
   }
 }
 

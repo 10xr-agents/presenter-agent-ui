@@ -21,6 +21,7 @@ import {
 import { logger } from "@/lib/utils/logger"
 import { renderInteractiveTreeAsHtml } from "@/lib/agent/semantic-v3"
 import { createTask, loadTaskContext } from "./context"
+import { createPlanPreviewMessage } from "./plan-message"
 import { saveGraphResults } from "./persistence"
 import type { RunGraphInput, RunGraphOutput } from "./types"
 import { executeInteractGraph } from "../executor"
@@ -244,6 +245,8 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       consecutiveSuccessWithoutTaskComplete:
         taskContext?.consecutiveSuccessWithoutTaskComplete ?? 0,
       webSearchResult: taskContext?.webSearchResult,
+      // User resolution data (from resume after blocker)
+      userResolutionData: taskContext?.userResolutionData,
       // Hybrid Vision + Skeleton
       screenshot,
       domMode,
@@ -311,6 +314,9 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
           success: graphResult.verificationResult.success,
           confidence: graphResult.verificationResult.confidence,
           reason: graphResult.verificationResult.reason,
+          // Phase 5: Tier attribution (Task 15)
+          verificationTier: graphResult.verificationResult.verificationTier,
+          tokensSaved: graphResult.verificationResult.tokensSaved,
         })
       }
 
@@ -350,6 +356,29 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       )
     }
 
+    // Create plan preview message for new tasks with plans
+    // This shows users the plan before execution begins
+    if (
+      isNewTask &&
+      graphResult.plan &&
+      graphResult.plan.steps.length > 0 &&
+      sessionId &&
+      currentTaskId
+    ) {
+      try {
+        await createPlanPreviewMessage({
+          sessionId,
+          tenantId,
+          userId,
+          plan: graphResult.plan,
+          taskId: currentTaskId,
+        })
+      } catch (err: unknown) {
+        // Log but don't fail the request
+        log.warn("Failed to create plan preview message", { error: err })
+      }
+    }
+
     if (currentTaskId) {
       const domForPersistence =
         domStr ||
@@ -379,6 +408,20 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
     const missingInfo = graphResult.contextAnalysis?.missingInfo
     // Build actionDetails with selectorPath for robust element finding
     const actionDetails = buildActionDetails(graphResult.actionResult?.action, elementMap)
+
+    // Build blocker info if present
+    const blockerInfo = graphResult.blockerResult?.detected && graphResult.blockerResult.type
+      ? {
+          type: graphResult.blockerResult.type,
+          description: graphResult.blockerResult.description ?? `Blocker: ${graphResult.blockerResult.type}`,
+          userMessage: graphResult.blockerResult.userMessage,
+          resolutionMethods: graphResult.blockerResult.resolutionMethods ?? [],
+          requiredFields: graphResult.blockerResult.requiredFields,
+          retryAfterSeconds: graphResult.blockerResult.retryAfterSeconds,
+          confidence: graphResult.blockerResult.confidence,
+        }
+      : undefined
+
     return {
       success: graphResult.success,
       taskId: currentTaskId || "",
@@ -392,6 +435,8 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
       needsContextReason: graphResult.needsContextReason,
       // Robust Element Selectors: Include structured action details with selectorPath
       actionDetails,
+      // Tool action metadata (for SERVER tools like memory actions)
+      toolAction: graphResult.actionResult?.toolAction,
       chainedActions: graphResult.actionResult?.chainedActions?.map((a) => ({
         action: a.action,
         description: a.description,
@@ -440,6 +485,7 @@ export async function runInteractGraph(input: RunGraphInput): Promise<RunGraphOu
         .join(", "),
       missingInformation: missingInfo?.map((info) => info.field),
       graphDuration,
+      blockerInfo,
     }
   } catch (error: unknown) {
     const graphDuration = Date.now() - startTime

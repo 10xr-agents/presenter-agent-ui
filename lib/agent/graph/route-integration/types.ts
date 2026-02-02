@@ -4,6 +4,7 @@
  */
 
 import type { ElementMap } from "@/lib/agent/dom-element-mapping"
+import type { MemoryActionResult } from "@/lib/agent/memory"
 import type {
   DomMode,
   ScrollableContainer,
@@ -11,7 +12,7 @@ import type {
   SemanticNodeV3,
 } from "@/lib/agent/schemas"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import type { TaskPlan } from "@/lib/models/task"
+import type { TaskAttachment, TaskPlan, TaskType } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 
 /**
@@ -70,6 +71,11 @@ export interface RunGraphInput {
   // Robust Element Selectors
   /** Element mapping for selectorPath fallbacks (parsed from DOM) */
   elementMap?: ElementMap
+  // File-Based Tasks & Chat Mode
+  /** Task type classification from route */
+  taskType?: TaskType
+  /** Processed file attachments with extracted content */
+  attachments?: TaskAttachment[]
 }
 
 /**
@@ -125,6 +131,18 @@ export interface RunGraphOutput {
   needsContextReason?: string
   /** Structured action details with selectorPath for robust element finding */
   actionDetails?: ActionDetails
+  /**
+   * Tool action metadata from step refinement.
+   * When toolType is "SERVER", the extension should NOT execute the action
+   * and instead immediately request the next action.
+   */
+  toolAction?: {
+    toolName: string
+    toolType: "DOM" | "SERVER"
+    parameters: Record<string, unknown>
+    /** Result from memory actions (remember, recall, exportToSession) */
+    memoryResult?: MemoryActionResult
+  }
   chainedActions?: ChainedActionOutput[]
   chainMetadata?: ChainMetadataOutput
   plan?: TaskPlan
@@ -155,4 +173,29 @@ export interface RunGraphOutput {
   userQuestion?: string
   missingInformation?: string[]
   graphDuration: number
+  /**
+   * Blocker information when task is paused awaiting user intervention.
+   * Present when status is "awaiting_user".
+   */
+  blockerInfo?: {
+    /** Type of blocker (login_failure, mfa_required, captcha, etc.) */
+    type: string
+    /** Human-readable description of the blocker */
+    description: string
+    /** User-friendly message explaining what to do */
+    userMessage?: string
+    /** How the user can resolve the blocker */
+    resolutionMethods: Array<"user_action_on_web" | "provide_in_chat" | "auto_retry" | "alternative_action">
+    /** Fields the user needs to provide (for login, MFA, etc.) */
+    requiredFields?: Array<{
+      name: string
+      label: string
+      type: "text" | "password" | "email" | "code"
+      description?: string
+    }>
+    /** Suggested wait time before retry (for rate_limit type) */
+    retryAfterSeconds?: number
+    /** Confidence score (0-1) */
+    confidence?: number
+  }
 }

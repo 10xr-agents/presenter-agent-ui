@@ -120,9 +120,30 @@ export const scrollableContainerSchema = z.object({
 export type ScrollableContainer = z.infer<typeof scrollableContainerSchema>
 
 /**
+ * File attachment schema for task context (File-Based Tasks & Chat Mode)
+ */
+export const taskAttachmentInputSchema = z.object({
+  /** S3 key where file is stored (from /api/knowledge/upload-to-s3) */
+  s3Key: z.string().min(1),
+  /** Original filename */
+  filename: z.string().min(1).max(500),
+  /** MIME type (e.g., "text/csv", "application/pdf") */
+  mimeType: z.string().min(1).max(100),
+  /** File size in bytes */
+  size: z.number().int().positive(),
+})
+
+export type TaskAttachmentInput = z.infer<typeof taskAttachmentInputSchema>
+
+/**
  * Request body schema for POST /api/agent/interact
  */
 export const interactRequestBodySchema = z.object({
+  /**
+   * URL is now optional for chat-only tasks (File-Based Tasks & Chat Mode).
+   * - Required for web_only and web_with_file task types
+   * - Optional when task can be completed without browser (chat_only)
+   */
   url: z.string().refine((val) => {
     try {
       new URL(val)
@@ -130,8 +151,14 @@ export const interactRequestBodySchema = z.object({
     } catch {
       return false
     }
-  }, "Invalid URL"),
+  }, "Invalid URL").optional(),
   query: z.string().min(1).max(10000),
+  /**
+   * File attachment for task context (File-Based Tasks & Chat Mode).
+   * Upload file first via /api/knowledge/upload-to-s3, then provide S3 key here.
+   * Supported formats: CSV, PDF, JSON, TXT, MD, DOCX, XML
+   */
+  attachment: taskAttachmentInputSchema.optional(),
   /**
    * Full DOM HTML (legacy / fallback).
    *
@@ -415,6 +442,18 @@ export const interactRequestBodySchema = z.object({
       })
     }
 
+    // Chat-Only Mode (File-Based Tasks): Allow requests without page artifacts
+    // when no URL is provided (attachment-only or memory queries).
+    const hasUrl = typeof val.url === "string" && val.url.length > 0
+    const hasAttachment = !!val.attachment
+
+    // If no URL is provided, this is potentially a chat-only request.
+    // Allow it without page artifacts (will be classified by task-type-classifier).
+    if (!hasUrl) {
+      // Chat-only mode: no page artifacts needed
+      return
+    }
+
     // Compatibility: require at least one page artifact (semantic tree OR skeleton OR full DOM).
     // This enables semantic-first negotiation: clients may omit full HTML as long as they provide
     // semantic nodes (preferred) or skeletonDom (fallback).
@@ -423,7 +462,7 @@ export const interactRequestBodySchema = z.object({
         code: "custom",
         path: ["dom"],
         message:
-          "At least one page artifact is required: interactiveTree, semanticNodes, skeletonDom, or dom",
+          "At least one page artifact is required when URL is provided: interactiveTree, semanticNodes, skeletonDom, or dom",
       })
     }
   })
@@ -557,11 +596,24 @@ export const actionDetailsSchema = z.object({
 export type ActionDetails = z.infer<typeof actionDetailsSchema>
 
 /**
+ * Task type schema for File-Based Tasks & Chat Mode
+ */
+export const taskTypeSchema = z.enum(["web_only", "web_with_file", "chat_only"])
+export type TaskTypeResponse = z.infer<typeof taskTypeSchema>
+
+/**
  * Response schema for POST /api/agent/interact
  */
 export const nextActionResponseSchema = z.object({
   thought: z.string(),
   action: z.string(),
+  /**
+   * Task type classification (File-Based Tasks & Chat Mode).
+   * - web_only: Requires browser interaction
+   * - web_with_file: Web task with file context
+   * - chat_only: No browser needed, response complete
+   */
+  taskType: taskTypeSchema.optional(),
   /**
    * Structured action details with selectorPath for robust element finding.
    * When present, extension should prefer selectorPath if elementId fails.

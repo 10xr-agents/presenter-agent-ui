@@ -6,6 +6,7 @@
  */
 
 import * as Sentry from "@sentry/nextjs"
+import type { BlockerDetectionResult } from "@/lib/agent/blocker-detection"
 import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
 import type {
@@ -16,10 +17,11 @@ import type {
 } from "@/lib/agent/schemas"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import type { TaskPlan } from "@/lib/models/task"
+import type { TaskAttachment, TaskPlan, TaskType } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 import { logger } from "@/lib/utils/logger"
 import { getInteractGraph } from "./interact-graph"
+import { chatResponseNode } from "./nodes/chat-response"
 import type {
   ActionResult,
   ComplexityLevel,
@@ -102,6 +104,9 @@ export interface ExecuteGraphParams {
   // Existing web search result
   webSearchResult?: WebSearchResult | null
 
+  // User-provided resolution data (from resume after blocker)
+  userResolutionData?: Record<string, unknown>
+
   // Hybrid Vision + Skeleton fields
   /** Base64-encoded JPEG screenshot for visual context */
   screenshot?: string | null
@@ -122,6 +127,12 @@ export interface ExecuteGraphParams {
   recentEvents?: string[]
   hasErrors?: boolean
   hasSuccess?: boolean
+
+  // File-Based Tasks & Chat Mode
+  /** Task type classification from route */
+  taskType?: TaskType
+  /** Processed file attachments with extracted content */
+  attachments?: TaskAttachment[]
 }
 
 /**
@@ -174,6 +185,9 @@ export interface ExecuteGraphResult {
   status: string
   error?: string
 
+  // Blocker detection
+  blockerResult?: BlockerDetectionResult
+
   // Backend-driven page-state negotiation
   requestedDomMode?: "skeleton" | "hybrid" | "full"
   needsSkeletonDom?: boolean
@@ -207,6 +221,63 @@ export async function executeInteractGraph(
   log.info(`isNewTask=${params.isNewTask}, hasTaskId=${!!params.taskId}`)
 
   try {
+    // Chat-only fast path: bypass full graph for non-web tasks
+    if (params.taskType === "chat_only") {
+      log.info("Chat-only task detected, bypassing full graph execution")
+
+      // Build minimal state for chat response
+      const chatState: InteractGraphState = {
+        tenantId: params.tenantId,
+        userId: params.userId,
+        url: params.url || "",
+        query: params.query,
+        dom: "",
+        isNewTask: params.isNewTask,
+        sessionId: params.sessionId,
+        taskId: params.taskId,
+        langfuseTraceId: params.langfuseTraceId,
+        ragChunks: params.ragChunks,
+        hasOrgKnowledge: params.hasOrgKnowledge,
+        previousActions: params.previousActions || [],
+        previousMessages: params.previousMessages || [],
+        currentStepIndex: 0,
+        correctionAttempts: 0,
+        consecutiveFailures: 0,
+        consecutiveSuccessWithoutTaskComplete: 0,
+        complexity: "SIMPLE",
+        complexityReason: "Chat-only task",
+        complexityConfidence: 1.0,
+        status: "pending",
+        startTime,
+        // File-Based Tasks & Chat Mode
+        taskType: params.taskType,
+        attachments: params.attachments,
+      }
+
+      // Execute chat response node directly
+      const chatResult = await chatResponseNode(chatState)
+      const graphDuration = Date.now() - startTime
+
+      log.info(`Chat-only response generated in ${graphDuration}ms`)
+
+      return {
+        success: chatResult.status !== "failed",
+        complexity: "SIMPLE",
+        complexityReason: "Chat-only task - no browser required",
+        complexityConfidence: 1.0,
+        currentStepIndex: 0,
+        correctionAttempts: 0,
+        consecutiveFailures: 0,
+        consecutiveSuccessWithoutTaskComplete: 0,
+        actionResult: chatResult.actionResult,
+        llmUsage: chatResult.llmUsage,
+        llmDuration: chatResult.llmDuration,
+        status: chatResult.status || "completed",
+        error: chatResult.error,
+        graphDuration,
+      }
+    }
+
     // Get the graph instance
     const graph = getInteractGraph(config)
     if (!graph) {
@@ -267,11 +338,18 @@ export async function executeInteractGraph(
       // Web search
       webSearchResult: params.webSearchResult,
 
+      // User resolution data (from resume after blocker)
+      userResolutionData: params.userResolutionData,
+
       // Hybrid Vision + Skeleton
       screenshot: params.screenshot,
       domMode: params.domMode,
       skeletonDom: params.skeletonDom,
       screenshotHash: params.screenshotHash,
+
+      // File-Based Tasks & Chat Mode
+      taskType: params.taskType,
+      attachments: params.attachments,
 
       // Initial status
       status: "pending",
@@ -327,6 +405,9 @@ export async function executeInteractGraph(
       // Status
       status: result.status || "unknown",
       error: result.error,
+
+      // Blocker detection
+      blockerResult: result.blockerResult,
 
       // Backend-driven page-state negotiation
       requestedDomMode: result.requestedDomMode,

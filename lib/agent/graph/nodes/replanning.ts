@@ -15,6 +15,7 @@
 
 import * as Sentry from "@sentry/nextjs"
 import { generatePlan } from "@/lib/agent/planning-engine"
+import { createPlanUpdateMessage } from "@/lib/agent/graph/route-integration/plan-message"
 import { applyPlanModifications, determineReplanAction, validatePlanHealth } from "@/lib/agent/replanning-engine"
 import { logger } from "@/lib/utils/logger"
 import type { InteractGraphState, ReplanningResult } from "../types"
@@ -178,6 +179,23 @@ export async function replanningNode(
     }
 
     log.info(`New plan generated with ${newPlan.steps.length} steps`)
+
+    // Send plan update message to notify users of the new plan
+    if (state.sessionId && state.tenantId && state.userId) {
+      try {
+        await createPlanUpdateMessage({
+          sessionId: state.sessionId,
+          tenantId: state.tenantId,
+          userId: state.userId,
+          plan: newPlan,
+          taskId: state.taskId,
+          reason: replanningResult.reason,
+        })
+      } catch (err: unknown) {
+        // Log but don't fail the replanning
+        log.warn("Failed to create plan update message", { error: err })
+      }
+    }
 
     return {
       plan: newPlan,

@@ -42,6 +42,8 @@ export interface IBrowserSession extends mongoose.Document {
   status: SessionStatus // Session status
   createdAt: Date // When session was created
   updatedAt: Date // Last update timestamp
+  // Session-scoped memory for persistent data across tasks
+  memory?: Record<string, unknown>
   metadata?: {
     // Additional session metadata
     taskType?: string
@@ -99,6 +101,12 @@ const BrowserSessionSchema = new Schema<IBrowserSession>(
       default: "active",
       required: true,
       index: true,
+    },
+    // Session-scoped memory for persistent data across tasks
+    memory: {
+      type: Schema.Types.Mixed,
+      required: false,
+      default: {},
     },
     metadata: {
       type: Schema.Types.Mixed,

@@ -41,6 +41,8 @@ export interface LoadTaskContextResult {
   /** Semantic loop prevention: consecutive successful verifications without task_completed. */
   consecutiveSuccessWithoutTaskComplete: number
   webSearchResult?: WebSearchResult | null
+  /** User-provided resolution data (from resume after blocker) */
+  userResolutionData?: Record<string, unknown>
 }
 
 /**
@@ -190,6 +192,7 @@ export async function loadTaskContext(
     consecutiveSuccessWithoutTaskComplete:
       (task as any).consecutiveSuccessWithoutTaskComplete ?? 0,
     webSearchResult: task.webSearchResult,
+    userResolutionData: task.userResolutionData as Record<string, unknown> | undefined,
   }
 }
 

@@ -297,6 +297,9 @@ export async function recordVerificationScore(
     success: boolean
     confidence: number
     reason?: string
+    // Phase 5: Tier attribution (Task 15)
+    verificationTier?: "deterministic" | "lightweight" | "full"
+    tokensSaved?: number
   }
 ): Promise<void> {
   if (!ctx.enabled) return
@@ -315,6 +318,33 @@ export async function recordVerificationScore(
     value: verification.confidence,
     traceId: ctx.traceId,
   })
+
+  // Phase 5: Tier attribution (Task 15)
+  // verification_tier score: 1.0 = deterministic (zero tokens), 0.5 = lightweight (~100 tokens), 0.0 = full (~400 tokens)
+  if (verification.verificationTier) {
+    const tierValue =
+      verification.verificationTier === "deterministic"
+        ? 1.0
+        : verification.verificationTier === "lightweight"
+          ? 0.5
+          : 0.0
+    await addScore({
+      name: "verification_tier",
+      value: tierValue,
+      comment: `Tier: ${verification.verificationTier}`,
+      traceId: ctx.traceId,
+    })
+  }
+
+  // Phase 5: Tokens saved score (Task 15)
+  if (verification.tokensSaved !== undefined && verification.tokensSaved > 0) {
+    await addScore({
+      name: "verification_tokens_saved",
+      value: verification.tokensSaved,
+      comment: `Tokens saved by ${verification.verificationTier ?? "tiered"} verification`,
+      traceId: ctx.traceId,
+    })
+  }
 }
 
 /**

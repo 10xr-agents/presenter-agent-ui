@@ -103,6 +103,8 @@ If V3 extraction fails or is empty, the extension falls back to:
 | **Hierarchical in graph** | ✅ Implemented | 4.x | hierarchicalPlan in graph state; planning node calls decomposePlan; persisted with task; verification node uses sub_task_completed to advance/fail sub-task (see VERIFICATION_PROCESS.md Task 5) |
 | **Semantic loop prevention (velocity check)** | ✅ Implemented | — | After 5 consecutive successful verifications without task_completed, route to finalize with reflection message. Task field `consecutiveSuccessWithoutTaskComplete`; verification node and router. See INTERACT_FLOW_WALKTHROUGH.md § Logical improvements. |
 | **Rolling summarization (context cap)** | ✅ Implemented | — | When previousActions.length > 10, keep only last 10 raw actions; pass `previousActionsSummary` (e.g. "N earlier steps completed.") to step_refinement. loadTaskContext trims; currentStepIndex from plan or full count. |
+| **Atomic Action Validator** | ✅ Implemented | 5 | `lib/agent/atomic-action-validator.ts` — Validates plan steps are atomic (one action per step); splits compound actions. Integrated in planning-engine.ts via `validateAndSplitPlan()`. |
+| **Action Chaining with Verification Levels** | ✅ Implemented | 5 | `lib/agent/chaining/types.ts` — Verification levels (client/lightweight/full) for chained actions; client-side verification for form fills. |
 
 **Legend:** ✅ = Complete | 🔄 = In Progress | 🔲 = Planned
 
@@ -259,6 +261,196 @@ Planner and verification are **dependent**: planner needs verification outcomes 
 - **Re-planning:** DOM similarity threshold 0.7 (configurable in validatePlanHealth). Uses default Gemini model (`DEFAULT_PLANNING_MODEL`).
 - **Tavily:** When the reasoning engine triggers web search (e.g. insufficient RAG), we use **Tavily** for domain-restricted search. Use Tavily when confidence from Google Search grounding is lower or when domain-specific results are needed.
 - **Step advancement:** currentStepIndex = previousActions.length at graph invocation (run-graph.ts). Client must send taskId and updated dom/url so that previousActions are loaded and count is correct.
+
+---
+
+## Atomic Action Enforcement
+
+**Status:** ✅ Implemented (February 2026)
+
+Each plan step MUST represent exactly **ONE Chrome action**. The Chrome extension can only execute one action at a time, so compound actions like "type X and click Submit" cannot be executed atomically.
+
+### Why Atomic Actions?
+
+1. **Chrome Extension Constraint:** The extension executes ONE action per request
+2. **Verification Granularity:** Each action needs individual verification
+3. **Error Recovery:** If step 2 of a compound action fails, we can retry just that step
+4. **Action Chaining:** Atomic actions can be safely chained when appropriate
+
+### Compound Action Detection
+
+The `lib/agent/atomic-action-validator.ts` detects compound actions using patterns:
+
+| Pattern | Example | Split Into |
+|---------|---------|------------|
+| "X and click Y" | "Type email and click Submit" | 1. "Type email", 2. "Click Submit" |
+| "X and press Enter" | "Enter search query and press Enter" | 1. "Enter search query", 2. "Press Enter" |
+| "Fill X and Y" | "Fill in username and password" | 1. "Enter username", 2. "Enter password" |
+| "X then Y" | "Click dropdown then select option" | 1. "Click dropdown", 2. "Select option" |
+
+### Post-Processing
+
+After the LLM generates a plan, `validateAndSplitPlan()` is called to:
+1. Analyze each step for atomicity
+2. Split compound steps into atomic steps
+3. Re-index all steps sequentially
+4. Preserve reasoning (with reference to original compound step)
+
+### LLM Prompt Guidelines
+
+The planning prompt includes atomic action rules:
+
+```
+**CRITICAL: ONE action per step - NO compound actions:**
+- Each step must represent exactly ONE browser action
+- ❌ WRONG: "Type 'search query' and press Enter"
+- ✅ CORRECT: Step 1: "Type search query", Step 2: "Press Enter"
+```
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `lib/agent/atomic-action-validator.ts` | `analyzeStepAtomicity()`, `splitCompoundAction()`, `validateAndSplitPlan()` |
+| `lib/agent/planning-engine.ts` | Imports validator; calls `validateAndSplitPlan()` after generating plan |
+| `lib/agent/step-refinement-engine.ts` | Includes atomic action reminder in prompt |
+
+### Relation to Chrome Tab Actions
+
+Each atomic step maps to exactly one action from `docs/CHROME_TAB_ACTIONS.md`:
+
+| Action Type | Examples |
+|-------------|----------|
+| Navigation | `navigate(url)`, `goBack()` |
+| Input | `setValue(id, text)`, `type(text)` |
+| Click | `click(id)`, `doubleClick(id)` |
+| Selection | `check(id)`, `uncheck(id)`, `select(id, value)` |
+| Keyboard | `press("Enter")`, `press("Tab")` |
+
+---
+
+## Action Chaining with Verification Levels
+
+**Status:** ✅ Implemented (February 2026)
+
+For related atomic actions (e.g., filling multiple form fields), the system can **chain** them together with **lighter verification** to reduce round-trips.
+
+### Verification Levels
+
+| Level | Where | When Used | Token Cost |
+|-------|-------|-----------|------------|
+| `client` | Chrome extension | Intermediate form fills, checkboxes | 0 |
+| `lightweight` | Server (Tier 2 LLM) | Simple final steps, navigation | ~100 |
+| `full` | Server (Tier 3 LLM) | Complex verifications, task completion | ~400+ |
+
+### Client-Side Verification Checks
+
+When `verificationLevel: "client"`, the extension performs local checks:
+
+| Check Type | Description | Example |
+|------------|-------------|---------|
+| `value_matches` | Input value equals expected | Email field contains "test@example.com" |
+| `state_changed` | Checkbox/radio state changed | Checkbox is now checked |
+| `element_visible` | Element is visible | Submit button is visible |
+| `no_error_message` | No error message appeared | No "Invalid email" toast |
+
+### Chain Metadata
+
+Chains include verification configuration:
+
+```typescript
+{
+  actions: [
+    { action: "setValue(1, 'John')", verificationLevel: "client", ... },
+    { action: "setValue(2, 'Doe')", verificationLevel: "client", ... },
+    { action: "setValue(3, 'john@email.com')", verificationLevel: "lightweight", ... }
+  ],
+  metadata: {
+    defaultVerificationLevel: "client",
+    clientVerificationSufficient: true,
+    finalVerificationLevel: "lightweight"
+  }
+}
+```
+
+### When to Use Client Verification
+
+| Chain Reason | Client Verification Sufficient? |
+|--------------|--------------------------------|
+| `FORM_FILL` | ✅ Yes |
+| `RELATED_INPUTS` | ✅ Yes |
+| `BULK_SELECTION` | ✅ Yes |
+| `SEQUENTIAL_STEPS` | ❌ No (may have navigation) |
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `lib/agent/chaining/types.ts` | `VerificationLevel`, `ClientVerificationCheck`, verification helpers |
+| `lib/agent/chaining/chain-generator.ts` | Assigns verification levels when building chains |
+| `lib/agent/chaining/chain-analyzer.ts` | Safety analysis for chaining decisions |
+
+---
+
+## Plan Preview Messages
+
+**Status:** ✅ Implemented (February 2026)
+
+When the agent generates a plan for a new task, the system automatically creates a **plan preview message** that shows users the planned steps before execution begins. This provides transparency into what the agent intends to do.
+
+### Message Types
+
+| Type | When Created | Purpose |
+|------|--------------|---------|
+| `plan_preview` | New task with plan generated | Show initial plan before execution |
+| `plan_update` | Plan regenerated during replanning | Notify users of plan changes |
+
+### Message Structure
+
+```typescript
+{
+  messageId: "uuid",
+  sessionId: "session-uuid",
+  role: "system",
+  content: "Here's my plan to complete this task:\n\n1. Navigate to login\n2. Enter credentials\n3. Click submit",
+  sequenceNumber: 1,
+  timestamp: "2024-...",
+  metadata: {
+    messageType: "plan_preview",  // or "plan_update"
+    taskId: "task-uuid",
+    plan: {
+      steps: [
+        { index: 0, description: "Navigate to login page", status: "pending" },
+        { index: 1, description: "Enter email address", status: "pending" },
+        { index: 2, description: "Click submit button", status: "pending" }
+      ],
+      totalSteps: 3,
+      currentStepIndex: 0
+    }
+  }
+}
+```
+
+### Flow
+
+1. User sends a complex task request
+2. Agent generates a plan (COMPLEX tasks only; SIMPLE tasks have no plan)
+3. **Plan preview message** is created and broadcast via Pusher
+4. Agent begins executing step-by-step
+5. If plan is regenerated during replanning, a **plan update message** is sent
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `lib/agent/graph/route-integration/plan-message.ts` | `createPlanPreviewMessage()` and `createPlanUpdateMessage()` helpers |
+| `lib/agent/graph/route-integration/run-graph.ts` | Calls `createPlanPreviewMessage()` after plan generation for new tasks |
+| `lib/agent/graph/nodes/replanning.ts` | Calls `createPlanUpdateMessage()` when plan is regenerated |
+| `components/ai/agent-chat.tsx` | Renders plan messages with special UI (numbered list in card) |
+
+### Real-time Broadcast
+
+Plan messages are broadcast via Pusher using `triggerNewMessage()` with `role: "system"`. The Chrome extension and web app receive these messages in real-time and render them with a special UI distinct from regular assistant messages.
 
 ---
 

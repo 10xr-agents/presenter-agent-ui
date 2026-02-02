@@ -5,7 +5,9 @@
  * Each node reads from and writes to this state.
  */
 
+import type { BlockerDetectionResult } from "@/lib/agent/blocker-detection"
 import type { HierarchicalPlan } from "@/lib/agent/hierarchical-planning"
+import type { MemoryActionResult } from "@/lib/agent/memory"
 import type { ContextAnalysisResult } from "@/lib/agent/reasoning/context-analyzer"
 import type {
   DomMode,
@@ -15,7 +17,7 @@ import type {
 } from "@/lib/agent/schemas"
 import type { WebSearchResult } from "@/lib/agent/web-search"
 import type { ResolveKnowledgeChunk } from "@/lib/knowledge-extraction/resolve-client"
-import type { PlanStep, TaskPlan } from "@/lib/models/task"
+import type { PlanStep, TaskAttachment, TaskPlan, TaskType } from "@/lib/models/task"
 import type { ExpectedOutcome } from "@/lib/models/task-action"
 
 /**
@@ -36,6 +38,8 @@ export type GraphTaskStatus =
   | "completed"
   | "failed"
   | "needs_user_input"
+  // Blocker detected, waiting for user to resolve
+  | "awaiting_user"
   // Backend-driven page-state negotiation (semantic-first)
   | "needs_context"
   // Backward compatibility: legacy full DOM fallback request
@@ -85,6 +89,8 @@ export interface ActionResult {
     toolName: string
     toolType: "DOM" | "SERVER"
     parameters: Record<string, unknown>
+    /** Result from memory actions (remember, recall, exportToSession) */
+    memoryResult?: MemoryActionResult
   }
   /** Chained actions (Phase 2 Task 1) - when present, action is first in chain */
   chainedActions?: ChainedActionResult[]
@@ -256,6 +262,12 @@ export interface InteractGraphState {
   ragChunks: ResolveKnowledgeChunk[]
   hasOrgKnowledge: boolean
 
+  // File-Based Tasks & Chat Mode
+  /** Task type classification (web_only, web_with_file, chat_only) */
+  taskType?: TaskType
+  /** Processed file attachments with extracted content */
+  attachments?: TaskAttachment[]
+
   // Complexity routing
   complexity: ComplexityLevel
   complexityReason: string
@@ -333,6 +345,14 @@ export interface InteractGraphState {
   // Graph execution state
   status: GraphTaskStatus
   error?: string
+
+  // Blocker detection
+  /** Result from blocker detection (login failures, CAPTCHA, MFA, etc.) */
+  blockerResult?: BlockerDetectionResult
+
+  // User resolution data (from resume after blocker)
+  /** User-provided data to resolve a blocker (e.g., credentials, MFA code) */
+  userResolutionData?: Record<string, unknown>
 
   // Timing
   startTime: number
